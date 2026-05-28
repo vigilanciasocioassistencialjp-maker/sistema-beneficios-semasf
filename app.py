@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
-from banco import criar_banco
+from banco import criar_banco, get_db_connection
 import os
 import json
 from datetime import datetime
@@ -37,32 +37,43 @@ app.secret_key = "sistema_cestas"
 # 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
 criar_banco()
 
+# CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (se não existir nenhum usuário)
+import bcrypt
 
-# 🔧 CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (SE NÃO EXISTIR)
+
 def criar_admin_automatico():
     try:
-        conn = sqlite3.connect('sistema.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Verificar se existe algum usuário
+        # Verificar se existe algum usuário na tabela
         cursor.execute("SELECT COUNT(*) FROM usuarios")
         count = cursor.fetchone()[0]
 
         if count == 0:
-            # Criar admin (senha: admin123)
+            # Criar admin com senha 'admin123'
             senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
-            cursor.execute('''
+
+            # Inserir o admin
+            cursor.execute("""
                 INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
                 VALUES (?, ?, ?, ?, ?)
-            ''', ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
+            """, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
+
             conn.commit()
             print("✅ Usuário admin criado automaticamente!")
             print("Usuário: admin")
             print("Senha: admin123")
+        else:
+            print(f"✅ Banco já possui {count} usuário(s)")
 
         conn.close()
     except Exception as e:
-        print(f"Erro ao criar admin: {e}")
+        print(f"⚠️ Erro ao criar admin: {e}")
+
+
+# Chamar a função
+criar_admin_automatico()
 
 
 # Chamar a função depois de criar o banco
@@ -73,17 +84,9 @@ criar_admin_automatico()
 # =====================================================
 
 def get_db():
-    import sqlite3
+    """Retorna conexão com o banco - usa a função do banco.py"""
+    return get_db_connection()
     
-    if os.environ.get('PYTHONANYWHERE_DOMAIN'):
-        # PythonAnywhere - salvar na pasta home
-        user = os.environ.get('USER', 'seu_usuario')
-        db_path = f'/home/{user}/sistema.db'
-    else:
-        # Local
-        db_path = "sistema.db"
-    
-    return sqlite3.connect(db_path)
 
 # =====================================================
 # LOGIN MANAGER
