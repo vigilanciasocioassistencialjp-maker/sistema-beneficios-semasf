@@ -28,6 +28,46 @@ criar_banco()
 app = Flask(__name__)
 app.secret_key = "sistema_cestas"
 
+from banco import criar_banco
+import bcrypt
+
+app = Flask(__name__)
+app.secret_key = "sistema_cestas"
+
+# 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
+criar_banco()
+
+
+# 🔧 CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (SE NÃO EXISTIR)
+def criar_admin_automatico():
+    try:
+        conn = sqlite3.connect('sistema.db')
+        cursor = conn.cursor()
+
+        # Verificar se existe algum usuário
+        cursor.execute("SELECT COUNT(*) FROM usuarios")
+        count = cursor.fetchone()[0]
+
+        if count == 0:
+            # Criar admin (senha: admin123)
+            senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
+            cursor.execute('''
+                INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
+            conn.commit()
+            print("✅ Usuário admin criado automaticamente!")
+            print("Usuário: admin")
+            print("Senha: admin123")
+
+        conn.close()
+    except Exception as e:
+        print(f"Erro ao criar admin: {e}")
+
+
+# Chamar a função depois de criar o banco
+criar_admin_automatico()
+
 # =====================================================
 # FUNÇÃO DE CONEXÃO COM BANCO (SQLite local ou MySQL produção)
 # =====================================================
