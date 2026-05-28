@@ -17,6 +17,14 @@ import qrcode
 # APP
 # =====================================================
 
+from banco import criar_banco
+
+app = Flask(__name__)
+app.secret_key = "sistema_cestas"
+
+# 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
+criar_banco()
+
 app = Flask(__name__)
 app.secret_key = "sistema_cestas"
 
