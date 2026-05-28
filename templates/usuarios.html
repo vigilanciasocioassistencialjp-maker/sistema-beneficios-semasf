@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <!-- Cabeçalho -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-users text-success"></i>
+                Gerenciar Usuários
+            </h2>
+        </div>
+
+        <!-- Botão Novo Usuário -->
+        <div class="mb-3 text-end">
+            <a href="/usuario/novo" class="btn btn-success">
+                <i class="fas fa-user-plus"></i> Novo Usuário
+            </a>
+        </div>
+
+        <!-- Mensagens de feedback -->
+        {% if erro %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ erro }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if sucesso %}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            {{ sucesso }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Tabela de Usuários -->
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuário (Login)</th>
+                        <th>Nome Completo</th>
+                        <th>Perfil</th>
+                        <th>CRAS</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u[0] }}</td>
+                        <td>{{ u[1] }}</td>
+                        <td>
+                            <form action="/usuario/editar/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <input type="text" name="nome" value="{{ u[2] if u[2] else u[1] }}" class="form-control" style="width: 180px;">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </form>
+                          </td>
+                        <td>
+                            <form action="/usuario/editar_perfil/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="perfil" class="form-select" style="width: 120px;">
+                                        <option value="tecnico" {% if u[3] == 'tecnico' %}selected{% endif %}>Técnico</option>
+                                        <option value="gestor" {% if u[3] == 'gestor' %}selected{% endif %}>Gestor</option>
+                                        <option value="admin" {% if u[3] == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </form>
+                          </td>
+                        <td>
+                            {% if u[3] == 'tecnico' %}
+                            <form action="/usuario/editar_cras/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="cras" class="form-select" style="width: 200px;">
+                                        <option value="CRAS MORAR MELHOR" {% if u[4] == 'CRAS MORAR MELHOR' %}selected{% endif %}>CRAS MORAR MELHOR</option>
+                                        <option value="CRAS JARDIM DOS MIGRANTES" {% if u[4] == 'CRAS JARDIM DOS MIGRANTES' %}selected{% endif %}>CRAS JARDIM DOS MIGRANTES</option>
+                                        <option value="CRAS SÃO FRANCISCO" {% if u[4] == 'CRAS SÃO FRANCISCO' %}selected{% endif %}>CRAS SÃO FRANCISCO</option>
+                                        <option value="CRAS RODA MOINHO" {% if u[4] == 'CRAS RODA MOINHO' %}selected{% endif %}>CRAS RODA MOINHO</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </form>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                          </td>
+                        <td>
+                            {% if u[1] != current_user.id %}
+                            <a href="/usuario/excluir/{{ u[0] }}" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir este usuário?')">
+                                <i class="fas fa-trash"></i> Excluir
+                            </a>
+                            {% else %}
+                                <span class="text-muted">(Você)</span>
+                            {% endif %}
+                          </td>
+                      </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

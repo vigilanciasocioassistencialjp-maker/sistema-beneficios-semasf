@@ -1,0 +1,35 @@
+# Banco de dados (MUITO IMPORTANTE - NUNCA COMMITAR!)
+*.db
+*.sqlite
+*.sqlite3
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+ENV/
+
+# Arquivos temporários do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configurações da IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Credenciais do Google (NUNCA COMMITAR!)
+*.json
+*.pickle
+credentials_oauth.json
+token.pickle
+
+# Arquivos de log
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

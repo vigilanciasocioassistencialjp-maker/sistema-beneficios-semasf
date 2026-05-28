@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <!-- Cabeçalho -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Detalhes da Solicitação</h2>
+        </div>
+
+        <!-- Botões de ação -->
+        <div class="mb-3">
+            <a href="/solicitacoes" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Voltar para lista
+            </a>
+            <a href="/gerar_pdf/{{ solicitacao[0] }}" class="btn btn-primary" target="_blank">
+                <i class="fas fa-print"></i> Gerar PDF
+            </a>
+        </div>
+
+        {% if solicitacao %}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <strong>Dados do Beneficiário</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Nome:</strong> {{ solicitacao[1] }}</p>
+                        <p><strong>CPF:</strong> {{ solicitacao[2] }}</p>
+                        <p><strong>Data Nascimento:</strong> {{ solicitacao[3] if solicitacao[3] else 'Não informado' }}</p>
+                        <p><strong>Telefone:</strong> {{ solicitacao[4] if solicitacao[4] else 'Não informado' }}</p>
+                        <p><strong>E-mail:</strong> {{ solicitacao[6] if solicitacao[6] else 'Não informado' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <strong>Endereço</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Endereço:</strong> {{ solicitacao[7] if solicitacao[7] else 'Não informado' }}, {{ solicitacao[8] if solicitacao[8] else 'S/N' }}</p>
+                        <p><strong>Complemento:</strong> {{ solicitacao[9] if solicitacao[9] else 'Não informado' }}</p>
+                        <p><strong>Bairro:</strong> {{ solicitacao[10] }}</p>
+                        <p><strong>CEP:</strong> {{ solicitacao[11] if solicitacao[11] else 'Não informado' }}</p>
+                        <p><strong>Referência:</strong> {{ solicitacao[12] if solicitacao[12] else 'Não informado' }}</p>
+                        <p><strong>CRAS:</strong> {{ solicitacao[13] }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <strong>Informações Socioeconômicas</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Renda Bruta:</strong> R$ {{ "%.2f"|format(solicitacao[14]) if solicitacao[14] else 'Não informada' }}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ {{ "%.2f"|format(solicitacao[15]) if solicitacao[15] else 'Não informada' }}</p>
+                        <p><strong>Benefícios:</strong> {{ solicitacao[16] if solicitacao[16] else 'Nenhum' }}</p>
+                        <p><strong>Vulnerabilidades:</strong> {{ solicitacao[17] if solicitacao[17] else 'Não informado' }}</p>
+                        <p><strong>Serviços SUAS:</strong> {{ solicitacao[24] if solicitacao[24] else 'Não informado' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <strong>Composição Familiar</strong>
+                    </div>
+                    <div class="card-body">
+                        {% if solicitacao[23] %}
+                        <table class="table table-sm">
+                            <thead>
+                                <tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for membro in json.loads(solicitacao[23]) %}
+                                <tr>
+                                    <td>{{ membro.nome }}</td>
+                                    <td>{{ membro.idade }}</td>
+                                    <td>{{ membro.vinculo }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p>Não informado</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header bg-warning">
+                <strong>Parecer Técnico / Histórico Familiar</strong>
+            </div>
+            <div class="card-body">
+                <p>{{ solicitacao[20] if solicitacao[20] else 'Sem parecer técnico registrado' }}</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <strong>Registro de Atendimento</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Técnico que realizou a Escuta:</strong>
+                            {% if solicitacao[25] %}
+                                {{ solicitacao[25] }}
+                            {% else %}
+                                {{ solicitacao[22] }}
+                            {% endif %}
+                        </p>
+                        <p><strong>Data da Solicitação:</strong> {{ solicitacao[5] }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <strong>Registro de Entrega</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Status:</strong>
+                            <span class="badge
+                                {% if solicitacao[21] == 'Cadastrada' %}bg-warning
+                                {% elif solicitacao[21] == 'Entregue' %}bg-success
+                                {% elif solicitacao[21] == 'Ausente' %}bg-danger
+                                {% else %}bg-secondary
+                                {% endif %}">
+                                {{ solicitacao[21] }}
+                            </span>
+                        </p>
+
+                        {% if solicitacao[18] %}
+                        <p><strong>Data da Entrega:</strong>
+                            {{ solicitacao[18]|formatar_data }}
+                        </p>
+                        <p><strong>Técnico que entregou:</strong>
+                            {% if solicitacao[26] %}
+                                {{ solicitacao[26] }}
+                            {% else %}
+                                {{ solicitacao[19] if solicitacao[19] else 'Não registrado' }}
+                            {% endif %}
+                        </p>
+                        {% else %}
+                        <p class="text-muted mt-2">
+                            <i class="fas fa-clock"></i>
+                            <em>Entrega ainda não registrada</em>
+                        </p>
+                        {% if current_user.perfil != 'gestor' %}
+                        <a href="/solicitacoes" class="btn btn-sm btn-success mt-2">
+                            <i class="fas fa-truck"></i> Registrar Entrega
+                        </a>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-danger">
+            Solicitação não encontrada!
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
