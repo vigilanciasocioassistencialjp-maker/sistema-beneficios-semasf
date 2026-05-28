@@ -9,4 +9,3 @@ reportlab==4.0.9
 qrcode==7.4.2
 pillow==10.2.0
 google-auth-oauthlib==1.2.0
-werkzeug==2.3.3
