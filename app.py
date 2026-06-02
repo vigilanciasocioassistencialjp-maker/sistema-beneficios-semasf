@@ -14,32 +14,18 @@ import io
 import qrcode
 
 # =====================================================
-# APP
+# CONFIGURAÇÃO DO APP
 # =====================================================
 
-from banco import criar_banco
-
 app = Flask(__name__)
 app.secret_key = "sistema_cestas"
 
 # 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
 criar_banco()
 
-app = Flask(__name__)
-app.secret_key = "sistema_cestas"
-
-from banco import criar_banco
-import bcrypt
-
-app = Flask(__name__)
-app.secret_key = "sistema_cestas"
-
-# 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
-criar_banco()
-
-# CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (se não existir nenhum usuário)
-import bcrypt
-
+# =====================================================
+# CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (Se não houver usuários)
+# =====================================================
 
 def criar_admin_automatico():
     try:
@@ -48,45 +34,49 @@ def criar_admin_automatico():
 
         # Verificar se existe algum usuário na tabela
         cursor.execute("SELECT COUNT(*) FROM usuarios")
-        count = cursor.fetchone()[0]
+        
+        # Ajuste para ler o resultado tanto de tupla (Postgres) quanto de Row (SQLite)
+        resultado = cursor.fetchone()
+        count = resultado[0] if resultado else 0
 
         if count == 0:
             # Criar admin com senha 'admin123'
             senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
+            
+            # Identifica se é Postgres/Supabase para usar %s ou SQLite para usar ?
+            database_url = os.environ.get('DATABASE_URL')
+            marcador = "%s" if database_url else "?"
 
-            # Inserir o admin
-            cursor.execute("""
+            sql = f"""
                 INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
-                VALUES (?, ?, ?, ?, ?)
-            """, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
+                VALUES ({marcador}, {marcador}, {marcador}, {marcador}, {marcador})
+            """
+            
+            cursor.execute(sql, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
 
-            conn.commit()
-            print("✅ Usuário admin criado automaticamente!")
-            print("Usuário: admin")
-            print("Senha: admin123")
+            if hasattr(conn, 'commit'):
+                conn.commit()
+                
+            print("✅ Usuário admin criado automaticamente no banco!")
+            print("Usuário: admin | Senha: admin123")
         else:
             print(f"✅ Banco já possui {count} usuário(s)")
 
+        cursor.close()
         conn.close()
     except Exception as e:
-        print(f"⚠️ Erro ao criar admin: {e}")
+        print(f"⚠️ Erro ao criar admin automático: {e}")
 
-
-# Chamar a função
-criar_admin_automatico()
-
-
-# Chamar a função depois de criar o banco
+# Executa a função uma única vez após a criação das tabelas
 criar_admin_automatico()
 
 # =====================================================
-# FUNÇÃO DE CONEXÃO COM BANCO (SQLite local ou MySQL produção)
+# FUNÇÃO DE CONEXÃO COM BANCO 
 # =====================================================
 
 def get_db():
     """Retorna conexão com o banco - usa a função do banco.py"""
     return get_db_connection()
-    
 
 # =====================================================
 # LOGIN MANAGER
@@ -129,7 +119,7 @@ def formatar_data(data):
     return data
 
 # =====================================================
-# LOGIN
+# LOGIN (Adaptado para funcionar em ambos os bancos)
 # =====================================================
 
 @app.route("/login", methods=["GET", "POST"])
@@ -143,13 +133,18 @@ def login():
         conexao = get_db()
         cursor = conexao.cursor()
 
-        cursor.execute("""
+        # Tratamento dinâmico do marcador (?, %s)
+        database_url = os.environ.get('DATABASE_URL')
+        marcador = "%s" if database_url else "?"
+
+        cursor.execute(f"""
             SELECT usuario, senha, perfil, primeiro_acesso, cras, nome
             FROM usuarios
-            WHERE usuario = ?
+            WHERE usuario = {marcador}
         """, (usuario,))
 
         dados = cursor.fetchone()
+        cursor.close()
         conexao.close()
 
         if dados:
@@ -168,7 +163,6 @@ def login():
                     if primeiro_acesso == 1:
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
-                    # Admin e Gestor vão para dashboard, Técnico para solicitações
                     if perfil_banco in ['admin', 'gestor']:
                         return redirect(url_for("dashboard"))
                     else:
@@ -184,7 +178,7 @@ def login():
     return render_template("login.html", erro=erro)
 
 # =====================================================
-# TROCAR SENHA
+# TROCAR SENHA (Adaptado para funcionar em ambos os bancos)
 # =====================================================
 
 @app.route("/trocar_senha", methods=["GET", "POST"])
@@ -206,11 +200,15 @@ def trocar_senha():
         elif nova_senha != confirmar_senha:
             erro = "A confirmação da senha não corresponde!"
         else:
+            database_url = os.environ.get('DATABASE_URL')
+            marcador = "%s" if database_url else "?"
+
             if not primeiro_acesso:
                 conexao = get_db()
                 cursor = conexao.cursor()
-                cursor.execute("SELECT senha FROM usuarios WHERE usuario = ?", (current_user.id,))
+                cursor.execute(f"SELECT senha FROM usuarios WHERE usuario = {marcador}", (current_user.id,))
                 senha_hash = cursor.fetchone()[0]
+                cursor.close()
                 conexao.close()
                 
                 if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash.encode('utf-8')):
@@ -222,12 +220,13 @@ def trocar_senha():
                 
                 conexao = get_db()
                 cursor = conexao.cursor()
-                cursor.execute("""
+                cursor.execute(f"""
                     UPDATE usuarios 
-                    SET senha = ?, primeiro_acesso = 0 
-                    WHERE usuario = ?
+                    SET senha = {marcador}, primeiro_acesso = 0 
+                    WHERE usuario = {marcador}
                 """, (nova_senha_hash, current_user.id))
                 conexao.commit()
+                cursor.close()
                 conexao.close()
                 
                 sucesso = "✅ Senha alterada com sucesso!"
@@ -242,6 +241,9 @@ def trocar_senha():
                          erro=erro, 
                          sucesso=sucesso, 
                          primeiro_acesso=primeiro_acesso)
+
+
+
 
 # =====================================================
 # LOGOUT
