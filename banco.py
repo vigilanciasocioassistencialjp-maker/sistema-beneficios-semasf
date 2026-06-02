@@ -1,30 +1,42 @@
-# banco.py - VERSÃO PYTHONANYWHERE (MYSQL)
-import MySQLdb
 import os
+import psycopg2
 
 # =====================================================
-# CONFIGURAÇÃO DO MYSQL NO PYTHONANYWHERE
+# CONEXÃO COM SUPABASE POSTGRESQL
 # =====================================================
 
 def get_db_connection():
-    """Retorna conexão com MySQL do PythonAnywhere"""
+    """Retorna conexão com o banco Supabase PostgreSQL"""
+    
+    database_url = os.environ.get('DATABASE_URL')
+    
+    if not database_url:
+        raise Exception("❌ Variável de ambiente 'DATABASE_URL' não encontrada!")
+    
     try:
-        conn = MySQLdb.connect(
-            host='SEU_USUARIO.mysql.pythonanywhere-services.com',
-            user='SEU_USUARIO',
-            passwd='SUA_SENHA_MYSQL',
-            db='SEU_USUARIO$default',
-            charset='utf8mb4',
-            use_unicode=True
+        conn = psycopg2.connect(
+            database_url,
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5
         )
+        print("✅ Conectado ao Supabase PostgreSQL!")
         return conn
+        
     except Exception as e:
-        print(f"❌ Erro na conexão MySQL: {e}")
+        print(f"❌ Erro fatal na conexão com Supabase: {e}")
         raise e
 
 
+# =====================================================
+# CRIAÇÃO DAS TABELAS
+# =====================================================
+
 def criar_banco():
-    """Cria as tabelas se não existirem"""
+    """Cria as tabelas se não existirem no Supabase"""
+    
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -32,53 +44,54 @@ def criar_banco():
         # Tabela de usuários
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                usuario VARCHAR(50) UNIQUE NOT NULL,
-                nome VARCHAR(100) NOT NULL,
-                senha VARCHAR(255) NOT NULL,
-                perfil VARCHAR(20) NOT NULL,
-                cras VARCHAR(50),
-                primeiro_acesso TINYINT DEFAULT 1
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                id SERIAL PRIMARY KEY,
+                usuario TEXT UNIQUE NOT NULL,
+                nome TEXT NOT NULL,
+                senha TEXT NOT NULL,
+                perfil TEXT NOT NULL,
+                cras TEXT,
+                primeiro_acesso INTEGER DEFAULT 1
+            )
         ''')
         
         # Tabela de solicitações
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                tecnico VARCHAR(50),
-                cpf VARCHAR(20),
-                nome VARCHAR(100),
-                data_nascimento VARCHAR(20),
-                telefone VARCHAR(20),
-                email VARCHAR(100),
-                endereco VARCHAR(200),
-                numero VARCHAR(10),
-                complemento VARCHAR(100),
-                bairro VARCHAR(100),
-                cep VARCHAR(20),
-                referencia VARCHAR(200),
-                cras VARCHAR(50),
-                data_escuta VARCHAR(20),
-                total_pessoas INT,
+                id SERIAL PRIMARY KEY,
+                tecnico TEXT,
+                cpf TEXT,
+                nome TEXT,
+                data_nascimento TEXT,
+                telefone TEXT,
+                email TEXT,
+                endereco TEXT,
+                numero TEXT,
+                complemento TEXT,
+                bairro TEXT,
+                cep TEXT,
+                referencia TEXT,
+                cras TEXT,
+                data_escuta TEXT,
+                total_pessoas INTEGER,
                 composicao_familiar TEXT,
-                renda_bruta DECIMAL(10,2),
-                renda_per_capita DECIMAL(10,2),
+                renda_bruta REAL,
+                renda_per_capita REAL,
                 beneficios TEXT,
                 vulnerabilidade TEXT,
                 servicos_suas TEXT,
                 parecer TEXT,
-                status VARCHAR(20) DEFAULT 'Cadastrada',
-                data_solicitacao VARCHAR(30),
-                data_entrega VARCHAR(30),
-                tecnico_entrega VARCHAR(50)
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                status TEXT DEFAULT 'Cadastrada',
+                data_solicitacao TEXT,
+                data_entrega TEXT,
+                tecnico_entrega TEXT
+            )
         ''')
         
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Tabelas criadas/verificadas no MySQL (PythonAnywhere)")
+        
+        print("✅ Tabelas criadas/verificadas no Supabase!")
         print("🎉 Banco de dados pronto para uso!")
         
     except Exception as e:
