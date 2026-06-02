@@ -10,3 +10,4 @@ qrcode
 pillow
 google-auth-oauthlib
 psycopg2-binary
+python-dotenv
