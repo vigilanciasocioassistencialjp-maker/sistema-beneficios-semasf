@@ -35,7 +35,6 @@ def criar_admin_automatico():
         # Verificar se existe algum usuário na tabela
         cursor.execute("SELECT COUNT(*) FROM usuarios")
         
-        # Ajuste para ler o resultado tanto de tupla (Postgres) quanto de Row (SQLite)
         resultado = cursor.fetchone()
         count = resultado[0] if resultado else 0
 
@@ -43,19 +42,13 @@ def criar_admin_automatico():
             # Criar admin com senha 'admin123'
             senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
             
-            # Identifica se é Postgres/Supabase para usar %s ou SQLite para usar ?
-            database_url = os.environ.get('DATABASE_URL')
-            marcador = "%s" if database_url else "?"
-
-            sql = f"""
+            sql = """
                 INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
-                VALUES ({marcador}, {marcador}, {marcador}, {marcador}, {marcador})
+                VALUES (%s, %s, %s, %s, %s)
             """
             
             cursor.execute(sql, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
-
-            if hasattr(conn, 'commit'):
-                conn.commit()
+            conn.commit()
                 
             print("✅ Usuário admin criado automaticamente no banco!")
             print("Usuário: admin | Senha: admin123")
@@ -119,7 +112,7 @@ def formatar_data(data):
     return data
 
 # =====================================================
-# LOGIN (Adaptado para funcionar em ambos os bancos)
+# LOGIN
 # =====================================================
 
 @app.route("/login", methods=["GET", "POST"])
@@ -133,14 +126,10 @@ def login():
         conexao = get_db()
         cursor = conexao.cursor()
 
-        # Tratamento dinâmico do marcador (?, %s)
-        database_url = os.environ.get('DATABASE_URL')
-        marcador = "%s" if database_url else "?"
-
-        cursor.execute(f"""
+        cursor.execute("""
             SELECT usuario, senha, perfil, primeiro_acesso, cras, nome
             FROM usuarios
-            WHERE usuario = {marcador}
+            WHERE usuario = %s
         """, (usuario,))
 
         dados = cursor.fetchone()
@@ -178,7 +167,7 @@ def login():
     return render_template("login.html", erro=erro)
 
 # =====================================================
-# TROCAR SENHA (Adaptado para funcionar em ambos os bancos)
+# TROCAR SENHA
 # =====================================================
 
 @app.route("/trocar_senha", methods=["GET", "POST"])
@@ -200,19 +189,22 @@ def trocar_senha():
         elif nova_senha != confirmar_senha:
             erro = "A confirmação da senha não corresponde!"
         else:
-            database_url = os.environ.get('DATABASE_URL')
-            marcador = "%s" if database_url else "?"
-
             if not primeiro_acesso:
                 conexao = get_db()
                 cursor = conexao.cursor()
-                cursor.execute(f"SELECT senha FROM usuarios WHERE usuario = {marcador}", (current_user.id,))
-                senha_hash = cursor.fetchone()[0]
-                cursor.close()
-                conexao.close()
-                
-                if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash.encode('utf-8')):
-                    erro = "Senha atual incorreta!"
+                cursor.execute("SELECT senha FROM usuarios WHERE usuario = %s", (current_user.id,))
+                resultado = cursor.fetchone()
+                if resultado:
+                    senha_hash = resultado[0]
+                    cursor.close()
+                    conexao.close()
+                    
+                    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash.encode('utf-8')):
+                        erro = "Senha atual incorreta!"
+                else:
+                    cursor.close()
+                    conexao.close()
+                    erro = "Usuário não encontrado!"
             
             if not erro:
                 salt = bcrypt.gensalt()
@@ -220,10 +212,10 @@ def trocar_senha():
                 
                 conexao = get_db()
                 cursor = conexao.cursor()
-                cursor.execute(f"""
+                cursor.execute("""
                     UPDATE usuarios 
-                    SET senha = {marcador}, primeiro_acesso = 0 
-                    WHERE usuario = {marcador}
+                    SET senha = %s, primeiro_acesso = 0 
+                    WHERE usuario = %s
                 """, (nova_senha_hash, current_user.id))
                 conexao.commit()
                 cursor.close()
@@ -241,9 +233,6 @@ def trocar_senha():
                          erro=erro, 
                          sucesso=sucesso, 
                          primeiro_acesso=primeiro_acesso)
-
-
-
 
 # =====================================================
 # LOGOUT
@@ -330,7 +319,7 @@ def inicio():
                 renda_bruta, renda_per_capita, beneficios, vulnerabilidade,
                 servicos_suas, parecer, status, data_solicitacao
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             tecnico, cpf, nome, data_nascimento, telefone, email,
             endereco, numero, complemento, bairro, cep, referencia,
@@ -371,20 +360,20 @@ def solicitacoes(pagina=1):
                 id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status
             FROM solicitacoes
             ORDER BY id DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (registros_por_pagina, offset))
     else:
         # Técnico vê apenas solicitações do seu CRAS
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ?", (current_user.cras,))
+        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = %s", (current_user.cras,))
         total_registros = cursor.fetchone()[0]
         
         cursor.execute("""
             SELECT 
                 id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status
             FROM solicitacoes
-            WHERE cras = ?
+            WHERE cras = %s
             ORDER BY id DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (current_user.cras, registros_por_pagina, offset))
     
     total_paginas = (total_registros + registros_por_pagina - 1) // registros_por_pagina
@@ -424,7 +413,7 @@ def ver_solicitacao(id):
         FROM solicitacoes s
         LEFT JOIN usuarios u_tecnico ON s.tecnico = u_tecnico.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
-        WHERE s.id = ?
+        WHERE s.id = %s
     """, (id,))
     
     solicitacao = cursor.fetchone()
@@ -461,7 +450,7 @@ def gerar_pdf_assinatura(id):
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
-        WHERE s.id = ?
+        WHERE s.id = %s
     """, (id,))
    
     solicitacao = cursor.fetchone()
@@ -703,607 +692,4 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
 @login_required
 def registrar_entrega(id):
     status_entrega = request.form.get("status_entrega", "")
-    data_entrega = request.form.get("data_entrega", "")
-    observacoes = request.form.get("observacoes", "")
-
-    if not status_entrega or status_entrega not in ['Entregue', 'Ausente']:
-        flash("Status de entrega inválido!", "danger")
-        return redirect(url_for("solicitacoes"))
-
-    if not data_entrega:
-        flash("Data de entrega é obrigatória!", "danger")
-        return redirect(url_for("solicitacoes"))
-
-    conexao = get_db()
-    cursor = conexao.cursor()
-
-    # VERIFICAR se a solicitação já foi entregue ou está ausente
-    cursor.execute("SELECT status FROM solicitacoes WHERE id = ?", (id,))
-    resultado = cursor.fetchone()
-
-    if not resultado:
-        conexao.close()
-        flash("Solicitação não encontrada!", "danger")
-        return redirect(url_for("solicitacoes"))
-
-    status_atual = resultado[0]
-
-    # Se já está Entregue ou Ausente, não permite nova alteração
-    if status_atual in ['Entregue', 'Ausente']:
-        conexao.close()
-        flash(f"Esta solicitação já está com status '{status_atual}' e não pode ser alterada!", "warning")
-        return redirect(url_for("solicitacoes"))
-
-    # Admin e Gestor podem registrar entrega para qualquer CRAS
-    if current_user.perfil not in ['admin', 'gestor']:
-        cursor.execute("SELECT cras FROM solicitacoes WHERE id = ?", (id,))
-        result = cursor.fetchone()
-        if not result or result[0] != current_user.cras:
-            conexao.close()
-            flash("Você não tem permissão para registrar entrega desta solicitação!", "danger")
-            return redirect(url_for("solicitacoes"))
-
-    # Atualizar a solicitação
-    cursor.execute("""
-        UPDATE solicitacoes 
-        SET status = ?,
-            data_entrega = ?,
-            tecnico_entrega = ?
-        WHERE id = ?
-    """, (status_entrega, data_entrega, current_user.id, id))
-
-    if observacoes:
-        cursor.execute("""
-            UPDATE solicitacoes 
-            SET parecer = parecer || '\n\n--- OBSERVAÇÕES DA ENTREGA ---\n' || ?
-            WHERE id = ?
-        """, (observacoes, id))
-
-    conexao.commit()
-    conexao.close()
-
-    if status_entrega == 'Entregue':
-        flash(f'✅ Entrega registrada com sucesso! Cesta entregue para a família.', 'success')
-    else:
-        flash(
-            f'❌ Ausência registrada. O beneficiário perdeu o direito a esta cesta e precisará fazer uma nova solicitação.',
-            'warning')
-
-    return redirect(url_for("solicitacoes"))
-
-# =====================================================
-# DASHBOARD
-# =====================================================
-
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    # Apenas Admin e Gestor podem ver o dashboard
-    if current_user.perfil not in ['admin', 'gestor']:
-        return redirect(url_for("solicitacoes"))
-    
-    conexao = get_db()
-    cursor = conexao.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM solicitacoes")
-    total_solicitacoes = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Entregue'")
-    total_entregues = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Ausente'")
-    total_ausentes = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Cadastrada'")
-    total_pendentes = cursor.fetchone()[0]
-    
-    conexao.close()
-    
-    return render_template(
-        "dashboard.html",
-        total_solicitacoes=total_solicitacoes,
-        total_entregues=total_entregues,
-        total_ausentes=total_ausentes,
-        total_pendentes=total_pendentes,
-        datetime=datetime,
-        current_user=current_user
-    )
-
-# =====================================================
-# RELATÓRIO MENSAL
-# =====================================================
-
-@app.route("/relatorio")
-@login_required
-def relatorio():
-    mes = request.args.get('mes', datetime.now().strftime('%Y-%m'))
-    ano = mes[:4]
-    mes_num = mes[5:7]
-
-    meses = {
-        '01': 'Janeiro', '02': 'Fevereiro', '03': 'Março', '04': 'Abril',
-        '05': 'Maio', '06': 'Junho', '07': 'Julho', '08': 'Agosto',
-        '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
-    }
-    nome_mes = meses.get(mes_num, mes_num)
-
-    conexao = get_db()
-    cursor = conexao.cursor()
-
-    # =============================================
-    # VERIFICAR FORMATO DAS DATAS DE ENTREGA
-    # =============================================
-    print(f"\n=== VERIFICANDO DATAS DE ENTREGA ===")
-    cursor.execute("SELECT id, nome, status, data_entrega FROM solicitacoes WHERE status IN ('Entregue', 'Ausente')")
-    entregas = cursor.fetchall()
-    for e in entregas:
-        print(f"ID: {e[0]}, Status: {e[2]}, Data Entrega: '{e[3]}'")
-
-    # =============================================
-    # CORREÇÃO: Função auxiliar para extrair ano e mês de qualquer formato
-    # =============================================
-
-    # 1. TOTAL DE SOLICITAÇÕES no mês (formato brasileiro)
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes 
-        WHERE data_solicitacao IS NOT NULL
-        AND SUBSTR(data_solicitacao, 7, 4) = ?
-        AND SUBSTR(data_solicitacao, 4, 2) = ?
-    """, (ano, mes_num))
-    total_solicitacoes = cursor.fetchone()[0] or 0
-
-    # 2. ENTREGUES - Verificando múltiplos formatos
-    # Tenta ambos os formatos: dd/mm/aaaa e aaaa-mm-dd
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes 
-        WHERE status = 'Entregue' 
-        AND data_entrega IS NOT NULL
-        AND (
-            (SUBSTR(data_entrega, 7, 4) = ? AND SUBSTR(data_entrega, 4, 2) = ?)
-            OR (SUBSTR(data_entrega, 1, 4) = ? AND SUBSTR(data_entrega, 6, 2) = ?)
-        )
-    """, (ano, mes_num, ano, mes_num))
-    total_entregues = cursor.fetchone()[0] or 0
-
-    # 3. AUSENTES - Verificando múltiplos formatos
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes 
-        WHERE status = 'Ausente' 
-        AND data_entrega IS NOT NULL
-        AND (
-            (SUBSTR(data_entrega, 7, 4) = ? AND SUBSTR(data_entrega, 4, 2) = ?)
-            OR (SUBSTR(data_entrega, 1, 4) = ? AND SUBSTR(data_entrega, 6, 2) = ?)
-        )
-    """, (ano, mes_num, ano, mes_num))
-    total_ausentes = cursor.fetchone()[0] or 0
-
-    # 4. PENDENTES
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes 
-        WHERE status = 'Cadastrada'
-        AND data_solicitacao IS NOT NULL
-        AND SUBSTR(data_solicitacao, 7, 4) = ?
-        AND SUBSTR(data_solicitacao, 4, 2) = ?
-    """, (ano, mes_num))
-    total_pendentes = cursor.fetchone()[0] or 0
-
-    print(f"\n=== RELATÓRIO {mes} ===")
-    print(f"Total Solicitações: {total_solicitacoes}")
-    print(f"Total Entregues: {total_entregues}")
-    print(f"Total Ausentes: {total_ausentes}")
-    print(f"Total Pendentes: {total_pendentes}")
-
-    # 5. Por CRAS
-    cursor.execute("""
-        SELECT 
-            cras, 
-            COUNT(*) as total,
-            SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-            SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-        FROM solicitacoes 
-        WHERE data_solicitacao IS NOT NULL
-        AND SUBSTR(data_solicitacao, 7, 4) = ?
-        AND SUBSTR(data_solicitacao, 4, 2) = ?
-        GROUP BY cras
-    """, (ano, mes_num))
-    por_cras = cursor.fetchall()
-
-    # 6. Por técnico
-    cursor.execute("""
-        SELECT 
-            COALESCE(u.nome, 'Técnico não identificado') as nome_tecnico,
-            COUNT(*) as total,
-            SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-            SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-        FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-        WHERE s.status IN ('Entregue', 'Ausente')
-        AND s.data_entrega IS NOT NULL
-        AND (
-            (SUBSTR(s.data_entrega, 7, 4) = ? AND SUBSTR(s.data_entrega, 4, 2) = ?)
-            OR (SUBSTR(s.data_entrega, 1, 4) = ? AND SUBSTR(s.data_entrega, 6, 2) = ?)
-        )
-        GROUP BY s.tecnico_entrega
-    """, (ano, mes_num, ano, mes_num))
-    por_tecnico = cursor.fetchall()
-
-    # 7. Últimas entregas
-    cursor.execute("""
-        SELECT 
-            s.nome, 
-            s.cpf, 
-            s.bairro, 
-            s.cras, 
-            s.status, 
-            s.data_entrega,
-            COALESCE(u.nome, 'Não informado') as tecnico_nome
-        FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-        WHERE s.status IN ('Entregue', 'Ausente') 
-        AND s.data_entrega IS NOT NULL
-        AND (
-            (SUBSTR(s.data_entrega, 7, 4) = ? AND SUBSTR(s.data_entrega, 4, 2) = ?)
-            OR (SUBSTR(s.data_entrega, 1, 4) = ? AND SUBSTR(s.data_entrega, 6, 2) = ?)
-        )
-        ORDER BY s.data_entrega DESC
-        LIMIT 20
-    """, (ano, mes_num, ano, mes_num))
-    ultimas_entregas = cursor.fetchall()
-
-    # 8. Lista de meses
-    lista_meses = []
-    for i in range(12):
-        data = datetime.now().replace(day=1)
-        if i > 0:
-            if data.month > 1:
-                data = data.replace(month=data.month - 1)
-            else:
-                data = data.replace(year=data.year - 1, month=12)
-
-        valor = data.strftime('%Y-%m')
-        nome_mes_calc = meses.get(data.strftime('%m'), data.strftime('%m'))
-        lista_meses.append({
-            'valor': valor,
-            'nome': f"{nome_mes_calc} de {data.strftime('%Y')}"
-        })
-
-    conexao.close()
-
-    return render_template(
-        "relatorio.html",
-        mes=mes,
-        nome_mes=nome_mes,
-        ano=ano,
-        total_solicitacoes=total_solicitacoes,
-        total_entregues=total_entregues,
-        total_ausentes=total_ausentes,
-        total_pendentes=total_pendentes,
-        por_cras=por_cras,
-        ultimas_entregas=ultimas_entregas,
-        por_tecnico=por_tecnico,
-        lista_meses=lista_meses,
-        datetime=datetime,
-        current_user=current_user
-    )
-
-# =====================================================
-# GERENCIAR USUÁRIOS
-# =====================================================
-
-@app.route("/usuario/novo", methods=["GET", "POST"])
-@login_required
-def novo_usuario():
-    # Apenas ADMIN pode criar usuários
-    if current_user.perfil != 'admin':
-        flash("Acesso negado! Apenas administradores podem criar usuários.", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    erro = None
-    sucesso = None
-    
-    if request.method == "POST":
-        usuario = request.form.get("usuario", "").strip()
-        nome = request.form.get("nome", "").strip()
-        perfil = request.form.get("perfil", "")
-        senha = request.form.get("senha", "")
-        cras = request.form.get("cras", "")
-        
-        # Validações básicas
-        if not usuario or not nome or not perfil or not senha:
-            erro = "Todos os campos são obrigatórios!"
-        elif len(senha) < 4:
-            erro = "A senha deve ter no mínimo 4 caracteres!"
-        elif perfil not in ['tecnico', 'gestor', 'admin']:
-            erro = "Perfil inválido!"
-        # Se for técnico, precisa de CRAS
-        elif perfil == 'tecnico' and not cras:
-            erro = "Técnico deve ter um CRAS de referência!"
-        else:
-            salt = bcrypt.gensalt()
-            senha_hash = bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
-            
-            conexao = get_db()
-            cursor = conexao.cursor()
-            
-            try:
-                cursor.execute("""
-                    INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso)
-                    VALUES (?, ?, ?, ?, ?, 1)
-                """, (usuario, nome, senha_hash, perfil, cras if perfil == 'tecnico' else None))
-                conexao.commit()
-                sucesso = f"Usuário {usuario} criado com sucesso!"
-            except Exception as e:
-                if "UNIQUE" in str(e) or "Duplicate" in str(e):
-                    erro = f"Usuário {usuario} já existe!"
-                else:
-                    erro = f"Erro ao criar usuário: {e}"
-            finally:
-                conexao.close()
-    
-    return render_template("novo_usuario.html", erro=erro, sucesso=sucesso)
-
-
-@app.route("/usuarios")
-@login_required
-def listar_usuarios():
-    # Apenas ADMIN pode ver lista de usuários
-    if current_user.perfil != 'admin':
-        flash("Acesso negado! Apenas administradores podem acessar esta página.", "danger")
-        return redirect(url_for("dashboard"))
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios ORDER BY id")
-    usuarios = cursor.fetchall()
-    conexao.close()
-    
-    return render_template("usuarios.html", usuarios=usuarios, current_user=current_user)
-
-
-@app.route("/usuario/excluir/<int:id>")
-@login_required
-def excluir_usuario(id):
-    # Apenas ADMIN pode excluir usuários
-    if current_user.perfil != 'admin':
-        flash("Acesso negado! Apenas administradores podem excluir usuários.", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    # Não permitir excluir o próprio usuário
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("SELECT usuario, perfil FROM usuarios WHERE id = ?", (id,))
-    usuario = cursor.fetchone()
-    
-    if not usuario:
-        conexao.close()
-        return redirect(url_for("listar_usuarios"))
-    
-    if usuario[0] == current_user.id:
-        conexao.close()
-        flash("Você não pode excluir seu próprio usuário!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    # Impedir excluir outro admin
-    if usuario[1] == 'admin':
-        conexao.close()
-        flash("Não é possível excluir outro administrador!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    cursor.execute("DELETE FROM usuarios WHERE id = ?", (id,))
-    conexao.commit()
-    conexao.close()
-    
-    flash(f"Usuário {usuario[0]} excluído com sucesso!", "success")
-    return redirect(url_for("listar_usuarios"))
-
-
-@app.route("/usuario/editar/<int:id>", methods=["POST"])
-@login_required
-def editar_usuario(id):
-    # Admin e Gestor podem editar nomes
-    if current_user.perfil not in ['admin', 'gestor']:
-        return redirect(url_for("solicitacoes"))
-    
-    novo_nome = request.form.get("nome", "").strip()
-    
-    if not novo_nome:
-        return redirect(url_for("listar_usuarios"))
-    
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET nome = ? WHERE id = ?", (novo_nome, id))
-    conexao.commit()
-    conexao.close()
-    
-    return redirect(url_for("listar_usuarios"))
-
-@app.route("/usuario/editar_cras/<int:id>", methods=["POST"])
-@login_required
-def editar_cras_usuario(id):
-    # Admin e Gestor podem editar CRAS
-    if current_user.perfil not in ['admin', 'gestor']:
-        return redirect(url_for("solicitacoes"))
-    
-    novo_cras = request.form.get("cras", "").strip()
-    
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET cras = ? WHERE id = ?", (novo_cras, id))
-    conexao.commit()
-    conexao.close()
-    
-    return redirect(url_for("listar_usuarios"))
-
-@app.route("/usuario/editar_perfil/<int:id>", methods=["POST"])
-@login_required
-def editar_perfil_usuario(id):
-    # Apenas ADMIN pode editar perfis
-    if current_user.perfil != 'admin':
-        flash("Acesso negado! Apenas administradores podem alterar perfis.", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("SELECT usuario FROM usuarios WHERE id = ?", (id,))
-    usuario = cursor.fetchone()
-    
-    if usuario and usuario[0] == current_user.id:
-        conexao.close()
-        flash("Você não pode alterar seu próprio perfil!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    novo_perfil = request.form.get("perfil", "").strip()
-    
-    if novo_perfil not in ['tecnico', 'gestor', 'admin']:
-        conexao.close()
-        return redirect(url_for("listar_usuarios"))
-    
-    cursor.execute("UPDATE usuarios SET perfil = ? WHERE id = ?", (novo_perfil, id))
-    conexao.commit()
-    conexao.close()
-    
-    flash(f"Perfil do usuário alterado para {novo_perfil}!", "success")
-    return redirect(url_for("listar_usuarios"))
-
-
-@app.route("/usuario/alterar_senha/<int:id>", methods=["POST"])
-@login_required
-def alterar_senha_usuario(id):
-    # Buscar o usuário pelo ID numérico
-    conexao = get_db()
-    cursor = conexao.cursor()
-    
-    # Primeiro, obter o login do usuário pelo ID
-    cursor.execute("SELECT usuario FROM usuarios WHERE id = ?", (id,))
-    usuario_logado = cursor.fetchone()
-    
-    if not usuario_logado:
-        conexao.close()
-        flash("Usuário não encontrado!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    # Verificar se o usuário logado é o mesmo (comparando os logins)
-    if current_user.id != usuario_logado[0]:
-        conexao.close()
-        flash("Você só pode alterar sua própria senha!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    senha_atual = request.form.get("senha_atual", "")
-    nova_senha = request.form.get("nova_senha", "")
-    confirmar_senha = request.form.get("confirmar_senha", "")
-    
-    if not nova_senha or len(nova_senha) < 4:
-        conexao.close()
-        flash("A nova senha deve ter no mínimo 4 caracteres!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    if nova_senha != confirmar_senha:
-        conexao.close()
-        flash("As senhas não coincidem!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    cursor.execute("SELECT senha FROM usuarios WHERE id = ?", (id,))
-    result = cursor.fetchone()
-    if not result:
-        conexao.close()
-        flash("Usuário não encontrado!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    senha_hash_atual = result[0]
-    
-    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash_atual.encode('utf-8')):
-        conexao.close()
-        flash("Senha atual incorreta!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    salt = bcrypt.gensalt()
-    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
-    
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 0 WHERE id = ?", (nova_senha_hash, id))
-    conexao.commit()
-    conexao.close()
-    
-    flash("✅ Senha alterada com sucesso!", "success")
-    return redirect(url_for("listar_usuarios"))
-
-
-@app.route("/usuario/resetar_senha/<int:id>", methods=["POST"])
-@login_required
-def resetar_senha_usuario(id):
-    # Apenas ADMIN pode resetar senhas
-    if current_user.perfil != 'admin':
-        flash("Acesso negado! Apenas administradores podem resetar senhas.", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    if current_user.id == id:
-        flash("Use a opção 'Alterar Senha' para modificar sua própria senha.", "warning")
-        return redirect(url_for("listar_usuarios"))
-    
-    nova_senha = "123456"
-    salt = bcrypt.gensalt()
-    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
-    
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 1 WHERE id = ?", (nova_senha_hash, id))
-    conexao.commit()
-    conexao.close()
-    
-    flash(f"✅ Senha do usuário resetada para: 123456. O usuário deverá trocar a senha no próximo acesso.", "success")
-    return redirect(url_for("listar_usuarios"))
-
-
-@app.route("/usuario/alterar_senha", methods=["POST"])
-@login_required
-def alterar_senha_simples():
-    # Buscar o ID do usuário pelo login
-    conexao = get_db()
-    cursor = conexao.cursor()
-    
-    cursor.execute("SELECT id, senha FROM usuarios WHERE usuario = ?", (current_user.id,))
-    result = cursor.fetchone()
-    
-    if not result:
-        conexao.close()
-        flash("Usuário não encontrado!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    user_id = result[0]
-    senha_hash_atual = result[1]
-    
-    senha_atual = request.form.get("senha_atual", "")
-    nova_senha = request.form.get("nova_senha", "")
-    confirmar_senha = request.form.get("confirmar_senha", "")
-    
-    if not nova_senha or len(nova_senha) < 4:
-        conexao.close()
-        flash("A nova senha deve ter no mínimo 4 caracteres!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    if nova_senha != confirmar_senha:
-        conexao.close()
-        flash("As senhas não coincidem!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash_atual.encode('utf-8')):
-        conexao.close()
-        flash("Senha atual incorreta!", "danger")
-        return redirect(url_for("listar_usuarios"))
-    
-    salt = bcrypt.gensalt()
-    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
-    
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 0 WHERE id = ?", (nova_senha_hash, user_id))
-    conexao.commit()
-    conexao.close()
-    
-    flash("✅ Senha alterada com sucesso!", "success")
-    return redirect(url_for("listar_usuarios"))
-
-
-# =====================================================
-# EXECUÇÃO
-# =====================================================
-
-if __name__ == "__main__":
-    criar_banco()
-    app.run(debug=True)
+    data_entrega = request.form.get("data_entrega
