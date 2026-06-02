@@ -1,180 +1,86 @@
+# banco.py - VERSÃO PYTHONANYWHERE (MYSQL)
+import MySQLdb
 import os
-import sqlite3
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 # =====================================================
-# CONFIGURAÇÃO DA STRING DE CONEXÃO (COM DEBUG E FALLBACK)
+# CONFIGURAÇÃO DO MYSQL NO PYTHONANYWHERE
 # =====================================================
 
 def get_db_connection():
-    """Retorna conexão com o banco (SQLite local ou PostgreSQL no Supabase)"""
-    
-    # Tenta pegar a variável de ambiente
-    database_url = os.environ.get('DATABASE_URL')
-    
-    # LOG DE DIAGNÓSTICO (aparece nos logs do Render)
-    if database_url:
-        # Mostra apenas o início para não expor a senha, mas confirma que a variável EXISTE
-        print(f"🔍 [DEBUG] DATABASE_URL encontrada! (início: {database_url[:40]}...)")
-    else:
-        print("❌ [DEBUG] Variável de ambiente 'DATABASE_URL' não encontrada!")
-        print("📦 Usando SQLite como fallback.")
-        conn = sqlite3.connect('sistema.db')
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    # Tenta conectar ao PostgreSQL (caso a variável exista)
+    """Retorna conexão com MySQL do PythonAnywhere"""
     try:
-        conn = psycopg2.connect(database_url)
-        print("✅ [SUCESSO] Conectado ao Supabase com PostgreSQL!")
+        conn = MySQLdb.connect(
+            host='SEU_USUARIO.mysql.pythonanywhere-services.com',
+            user='SEU_USUARIO',
+            passwd='SUA_SENHA_MYSQL',
+            db='SEU_USUARIO$default',
+            charset='utf8mb4',
+            use_unicode=True
+        )
         return conn
     except Exception as e:
-        print(f"❌ [ERRO] Falha na conexão com Supabase: {e}")
-        print("📦 Usando SQLite como fallback.")
-        conn = sqlite3.connect('sistema.db')
-        conn.row_factory = sqlite3.Row
-        return conn
+        print(f"❌ Erro na conexão MySQL: {e}")
+        raise e
 
-
-# =====================================================
-# CRIAÇÃO DAS TABELAS (FUNCIONA COM SQLITE E POSTGRESQL)
-# =====================================================
 
 def criar_banco():
-    """Cria as tabelas se não existirem (funciona para SQLite e PostgreSQL)"""
-    database_url = os.environ.get('DATABASE_URL')
-    
-    # Verifica se deve usar PostgreSQL ou SQLite
-    usar_postgres = False
-    
-    if database_url:
-        try:
-            # Testa a conexão antes de prosseguir
-            conn_test = psycopg2.connect(database_url)
-            conn_test.close()
-            usar_postgres = True
-            print("🐘 Usando PostgreSQL para criar tabelas")
-        except Exception as e:
-            print(f"⚠️ PostgreSQL indisponível: {e}")
-            print("📦 Usando SQLite como fallback")
-            usar_postgres = False
-    else:
-        print("📦 DATABASE_URL não encontrada. Usando SQLite para criar tabelas")
-    
-    if usar_postgres:
-        # =============================================
-        # POSTGRESQL (SUPABASE)
-        # =============================================
-        conn = psycopg2.connect(database_url)
-        conn.autocommit = True
+    """Cria as tabelas se não existirem"""
+    try:
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Tabela de usuários
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                usuario TEXT UNIQUE NOT NULL,
-                nome TEXT NOT NULL,
-                senha TEXT NOT NULL,
-                perfil TEXT NOT NULL,
-                cras TEXT,
-                primeiro_acesso INTEGER DEFAULT 1
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                usuario VARCHAR(50) UNIQUE NOT NULL,
+                nome VARCHAR(100) NOT NULL,
+                senha VARCHAR(255) NOT NULL,
+                perfil VARCHAR(20) NOT NULL,
+                cras VARCHAR(50),
+                primeiro_acesso TINYINT DEFAULT 1
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         ''')
         
         # Tabela de solicitações
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (
-                id SERIAL PRIMARY KEY,
-                tecnico TEXT,
-                cpf TEXT,
-                nome TEXT,
-                data_nascimento TEXT,
-                telefone TEXT,
-                email TEXT,
-                endereco TEXT,
-                numero TEXT,
-                complemento TEXT,
-                bairro TEXT,
-                cep TEXT,
-                referencia TEXT,
-                cras TEXT,
-                data_escuta TEXT,
-                total_pessoas INTEGER,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tecnico VARCHAR(50),
+                cpf VARCHAR(20),
+                nome VARCHAR(100),
+                data_nascimento VARCHAR(20),
+                telefone VARCHAR(20),
+                email VARCHAR(100),
+                endereco VARCHAR(200),
+                numero VARCHAR(10),
+                complemento VARCHAR(100),
+                bairro VARCHAR(100),
+                cep VARCHAR(20),
+                referencia VARCHAR(200),
+                cras VARCHAR(50),
+                data_escuta VARCHAR(20),
+                total_pessoas INT,
                 composicao_familiar TEXT,
-                renda_bruta REAL,
-                renda_per_capita REAL,
+                renda_bruta DECIMAL(10,2),
+                renda_per_capita DECIMAL(10,2),
                 beneficios TEXT,
                 vulnerabilidade TEXT,
                 servicos_suas TEXT,
                 parecer TEXT,
-                status TEXT DEFAULT 'Cadastrada',
-                data_solicitacao TEXT,
-                data_entrega TEXT,
-                tecnico_entrega TEXT
-            )
-        ''')
-        
-        cursor.close()
-        conn.close()
-        print("✅ Tabelas criadas/verificadas no PostgreSQL (Supabase)")
-        
-    else:
-        # =============================================
-        # SQLITE (LOCAL OU FALLBACK)
-        # =============================================
-        conn = sqlite3.connect('sistema.db')
-        cursor = conn.cursor()
-        
-        # Tabela de usuários
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                usuario TEXT UNIQUE NOT NULL,
-                nome TEXT NOT NULL,
-                senha TEXT NOT NULL,
-                perfil TEXT NOT NULL,
-                cras TEXT,
-                primeiro_acesso INTEGER DEFAULT 1
-            )
-        ''')
-        
-        # Tabela de solicitações
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS solicitacoes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tecnico TEXT,
-                cpf TEXT,
-                nome TEXT,
-                data_nascimento TEXT,
-                telefone TEXT,
-                email TEXT,
-                endereco TEXT,
-                numero TEXT,
-                complemento TEXT,
-                bairro TEXT,
-                cep TEXT,
-                referencia TEXT,
-                cras TEXT,
-                data_escuta TEXT,
-                total_pessoas INTEGER,
-                composicao_familiar TEXT,
-                renda_bruta REAL,
-                renda_per_capita REAL,
-                beneficios TEXT,
-                vulnerabilidade TEXT,
-                servicos_suas TEXT,
-                parecer TEXT,
-                status TEXT DEFAULT 'Cadastrada',
-                data_solicitacao TEXT,
-                data_entrega TEXT,
-                tecnico_entrega TEXT
-            )
+                status VARCHAR(20) DEFAULT 'Cadastrada',
+                data_solicitacao VARCHAR(30),
+                data_entrega VARCHAR(30),
+                tecnico_entrega VARCHAR(50)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         ''')
         
         conn.commit()
+        cursor.close()
         conn.close()
-        print("✅ Tabelas criadas/verificadas no SQLite")
-    
-    print("🎉 Banco de dados pronto para uso!")
+        print("✅ Tabelas criadas/verificadas no MySQL (PythonAnywhere)")
+        print("🎉 Banco de dados pronto para uso!")
+        
+    except Exception as e:
+        print(f"❌ Erro ao criar tabelas: {e}")
+        raise e
