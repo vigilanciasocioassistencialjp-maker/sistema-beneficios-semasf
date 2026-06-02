@@ -3,23 +3,25 @@ import sqlite3
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-
 def get_db_connection():
-    """Retorna conexão com o banco (SQLite local ou PostgreSQL no Render)"""
-    database_url = os.environ.get('postgresql://sistema_user:rUL4zd6RfSOJ6YEV6tQx6P6kfnv141qe@dpg-d8a3ka3eo5us739d9o30-a.oregon-postgres.render.com/sistema_cestas')
+    """Retorna conexão com o banco (SQLite local ou PostgreSQL no Supabase)"""
+    # Procura uma variável de ambiente chamada DATABASE_URL na Render
+    database_url = os.environ.get('DATABASE_URL')
 
     if database_url:
-        # PostgreSQL no Render
+        # PostgreSQL no Supabase (Produção)
         conn = psycopg2.connect(database_url)
         return conn
     else:
-        # SQLite local
-        return sqlite3.connect('sistema.db')
+        # SQLite local (Para testes no seu computador)
+        conn = sqlite3.connect('sistema.db')
+        conn.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome
+        return conn
 
 
 def criar_banco():
     """Cria as tabelas se não existirem (funciona para SQLite e PostgreSQL)"""
-    database_url = os.environ.get('postgresql://sistema_user:rUL4zd6RfSOJ6YEV6tQx6P6kfnv141qe@dpg-d8a3ka3eo5us739d9o30-a.oregon-postgres.render.com/sistema_cestas')
+    database_url = os.environ.get('DATABASE_URL')
 
     if database_url:
         # PostgreSQL
