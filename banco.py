@@ -3,32 +3,73 @@ import sqlite3
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+# =====================================================
+# CONFIGURAÇÃO DA STRING DE CONEXÃO (COM DEBUG E FALLBACK)
+# =====================================================
+
 def get_db_connection():
     """Retorna conexão com o banco (SQLite local ou PostgreSQL no Supabase)"""
-    # Procura uma variável de ambiente chamada DATABASE_URL na Render
+    
+    # Tenta pegar a variável de ambiente
     database_url = os.environ.get('DATABASE_URL')
-
+    
+    # LOG DE DIAGNÓSTICO (aparece nos logs do Render)
     if database_url:
-        # PostgreSQL no Supabase (Produção)
-        conn = psycopg2.connect(database_url)
-        return conn
+        # Mostra apenas o início para não expor a senha, mas confirma que a variável EXISTE
+        print(f"🔍 [DEBUG] DATABASE_URL encontrada! (início: {database_url[:40]}...)")
     else:
-        # SQLite local (Para testes no seu computador)
+        print("❌ [DEBUG] Variável de ambiente 'DATABASE_URL' não encontrada!")
+        print("📦 Usando SQLite como fallback.")
         conn = sqlite3.connect('sistema.db')
-        conn.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome
+        conn.row_factory = sqlite3.Row
         return conn
 
+    # Tenta conectar ao PostgreSQL (caso a variável exista)
+    try:
+        conn = psycopg2.connect(database_url)
+        print("✅ [SUCESSO] Conectado ao Supabase com PostgreSQL!")
+        return conn
+    except Exception as e:
+        print(f"❌ [ERRO] Falha na conexão com Supabase: {e}")
+        print("📦 Usando SQLite como fallback.")
+        conn = sqlite3.connect('sistema.db')
+        conn.row_factory = sqlite3.Row
+        return conn
+
+
+# =====================================================
+# CRIAÇÃO DAS TABELAS (FUNCIONA COM SQLITE E POSTGRESQL)
+# =====================================================
 
 def criar_banco():
     """Cria as tabelas se não existirem (funciona para SQLite e PostgreSQL)"""
     database_url = os.environ.get('DATABASE_URL')
-
+    
+    # Verifica se deve usar PostgreSQL ou SQLite
+    usar_postgres = False
+    
     if database_url:
-        # PostgreSQL
+        try:
+            # Testa a conexão antes de prosseguir
+            conn_test = psycopg2.connect(database_url)
+            conn_test.close()
+            usar_postgres = True
+            print("🐘 Usando PostgreSQL para criar tabelas")
+        except Exception as e:
+            print(f"⚠️ PostgreSQL indisponível: {e}")
+            print("📦 Usando SQLite como fallback")
+            usar_postgres = False
+    else:
+        print("📦 DATABASE_URL não encontrada. Usando SQLite para criar tabelas")
+    
+    if usar_postgres:
+        # =============================================
+        # POSTGRESQL (SUPABASE)
+        # =============================================
         conn = psycopg2.connect(database_url)
         conn.autocommit = True
         cursor = conn.cursor()
-
+        
         # Tabela de usuários
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -41,7 +82,7 @@ def criar_banco():
                 primeiro_acesso INTEGER DEFAULT 1
             )
         ''')
-
+        
         # Tabela de solicitações
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (
@@ -74,15 +115,19 @@ def criar_banco():
                 tecnico_entrega TEXT
             )
         ''')
-
+        
         cursor.close()
         conn.close()
-
+        print("✅ Tabelas criadas/verificadas no PostgreSQL (Supabase)")
+        
     else:
-        # SQLite
+        # =============================================
+        # SQLITE (LOCAL OU FALLBACK)
+        # =============================================
         conn = sqlite3.connect('sistema.db')
         cursor = conn.cursor()
-
+        
+        # Tabela de usuários
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +139,8 @@ def criar_banco():
                 primeiro_acesso INTEGER DEFAULT 1
             )
         ''')
-
+        
+        # Tabela de solicitações
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,8 +172,9 @@ def criar_banco():
                 tecnico_entrega TEXT
             )
         ''')
-
+        
         conn.commit()
         conn.close()
-
-    print("✅ Banco de dados criado/verificado com sucesso!")
+        print("✅ Tabelas criadas/verificadas no SQLite")
+    
+    print("🎉 Banco de dados pronto para uso!")
