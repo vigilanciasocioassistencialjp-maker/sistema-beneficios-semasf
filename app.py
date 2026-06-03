@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
-from banco import criar_banco
+from banco import criar_banco, get_db_connection
 import os
 import json
 from datetime import datetime
@@ -14,28 +14,62 @@ import io
 import qrcode
 
 # =====================================================
-# APP
+# CONFIGURAÇÃO DO APP
 # =====================================================
 
 app = Flask(__name__)
 app.secret_key = "sistema_cestas"
 
+# 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
+criar_banco()
+
 # =====================================================
-# FUNÇÃO DE CONEXÃO COM BANCO (SQLite local ou MySQL produção)
+# CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (Se não houver usuários)
+# =====================================================
+
+def criar_admin_automatico():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verificar se existe algum usuário na tabela
+        cursor.execute("SELECT COUNT(*) FROM usuarios")
+        
+        resultado = cursor.fetchone()
+        count = resultado[0] if resultado else 0
+
+        if count == 0:
+            # Criar admin com senha 'admin123'
+            senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
+            
+            sql = """
+                INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            
+            cursor.execute(sql, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
+            conn.commit()
+                
+            print("✅ Usuário admin criado automaticamente no banco!")
+            print("Usuário: admin | Senha: admin123")
+        else:
+            print(f"✅ Banco já possui {count} usuário(s)")
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Erro ao criar admin automático: {e}")
+
+# Executa a função uma única vez após a criação das tabelas
+criar_admin_automatico()
+
+# =====================================================
+# FUNÇÃO DE CONEXÃO COM BANCO 
 # =====================================================
 
 def get_db():
-    import sqlite3
-    
-    if os.environ.get('PYTHONANYWHERE_DOMAIN'):
-        # PythonAnywhere - salvar na pasta home
-        user = os.environ.get('USER', 'seu_usuario')
-        db_path = f'/home/{user}/sistema.db'
-    else:
-        # Local
-        db_path = "sistema.db"
-    
-    return sqlite3.connect(db_path)
+    """Retorna conexão com o banco - usa a função do banco.py"""
+    return get_db_connection()
 
 # =====================================================
 # LOGIN MANAGER
@@ -95,10 +129,11 @@ def login():
         cursor.execute("""
             SELECT usuario, senha, perfil, primeiro_acesso, cras, nome
             FROM usuarios
-            WHERE usuario = ?
+            WHERE usuario = %s
         """, (usuario,))
 
         dados = cursor.fetchone()
+        cursor.close()
         conexao.close()
 
         if dados:
@@ -117,7 +152,6 @@ def login():
                     if primeiro_acesso == 1:
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
-                    # Admin e Gestor vão para dashboard, Técnico para solicitações
                     if perfil_banco in ['admin', 'gestor']:
                         return redirect(url_for("dashboard"))
                     else:
@@ -158,12 +192,19 @@ def trocar_senha():
             if not primeiro_acesso:
                 conexao = get_db()
                 cursor = conexao.cursor()
-                cursor.execute("SELECT senha FROM usuarios WHERE usuario = ?", (current_user.id,))
-                senha_hash = cursor.fetchone()[0]
-                conexao.close()
-                
-                if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash.encode('utf-8')):
-                    erro = "Senha atual incorreta!"
+                cursor.execute("SELECT senha FROM usuarios WHERE usuario = %s", (current_user.id,))
+                resultado = cursor.fetchone()
+                if resultado:
+                    senha_hash = resultado[0]
+                    cursor.close()
+                    conexao.close()
+                    
+                    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash.encode('utf-8')):
+                        erro = "Senha atual incorreta!"
+                else:
+                    cursor.close()
+                    conexao.close()
+                    erro = "Usuário não encontrado!"
             
             if not erro:
                 salt = bcrypt.gensalt()
@@ -173,10 +214,11 @@ def trocar_senha():
                 cursor = conexao.cursor()
                 cursor.execute("""
                     UPDATE usuarios 
-                    SET senha = ?, primeiro_acesso = 0 
-                    WHERE usuario = ?
+                    SET senha = %s, primeiro_acesso = 0 
+                    WHERE usuario = %s
                 """, (nova_senha_hash, current_user.id))
                 conexao.commit()
+                cursor.close()
                 conexao.close()
                 
                 sucesso = "✅ Senha alterada com sucesso!"
@@ -277,7 +319,7 @@ def inicio():
                 renda_bruta, renda_per_capita, beneficios, vulnerabilidade,
                 servicos_suas, parecer, status, data_solicitacao
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             tecnico, cpf, nome, data_nascimento, telefone, email,
             endereco, numero, complemento, bairro, cep, referencia,
@@ -318,20 +360,20 @@ def solicitacoes(pagina=1):
                 id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status
             FROM solicitacoes
             ORDER BY id DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (registros_por_pagina, offset))
     else:
         # Técnico vê apenas solicitações do seu CRAS
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ?", (current_user.cras,))
+        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = %s", (current_user.cras,))
         total_registros = cursor.fetchone()[0]
         
         cursor.execute("""
             SELECT 
                 id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status
             FROM solicitacoes
-            WHERE cras = ?
+            WHERE cras = %s
             ORDER BY id DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (current_user.cras, registros_por_pagina, offset))
     
     total_paginas = (total_registros + registros_por_pagina - 1) // registros_por_pagina
@@ -371,7 +413,7 @@ def ver_solicitacao(id):
         FROM solicitacoes s
         LEFT JOIN usuarios u_tecnico ON s.tecnico = u_tecnico.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
-        WHERE s.id = ?
+        WHERE s.id = %s
     """, (id,))
     
     solicitacao = cursor.fetchone()
@@ -408,7 +450,7 @@ def gerar_pdf_assinatura(id):
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
-        WHERE s.id = ?
+        WHERE s.id = %s
     """, (id,))
    
     solicitacao = cursor.fetchone()
@@ -652,50 +694,71 @@ def registrar_entrega(id):
     status_entrega = request.form.get("status_entrega", "")
     data_entrega = request.form.get("data_entrega", "")
     observacoes = request.form.get("observacoes", "")
-    
+
     if not status_entrega or status_entrega not in ['Entregue', 'Ausente']:
-        return "Status de entrega inválido!", 400
-    
+        flash("Status de entrega inválido!", "danger")
+        return redirect(url_for("solicitacoes"))
+
     if not data_entrega:
-        return "Data de entrega é obrigatória!", 400
-    
+        flash("Data de entrega é obrigatória!", "danger")
+        return redirect(url_for("solicitacoes"))
+
     conexao = get_db()
     cursor = conexao.cursor()
-    
+
+    # VERIFICAR se a solicitação já foi entregue ou está ausente
+    cursor.execute("SELECT status FROM solicitacoes WHERE id = %s", (id,))
+    resultado = cursor.fetchone()
+
+    if not resultado:
+        conexao.close()
+        flash("Solicitação não encontrada!", "danger")
+        return redirect(url_for("solicitacoes"))
+
+    status_atual = resultado[0]
+
+    # Se já está Entregue ou Ausente, não permite nova alteração
+    if status_atual in ['Entregue', 'Ausente']:
+        conexao.close()
+        flash(f"Esta solicitação já está com status '{status_atual}' e não pode ser alterada!", "warning")
+        return redirect(url_for("solicitacoes"))
+
     # Admin e Gestor podem registrar entrega para qualquer CRAS
     if current_user.perfil not in ['admin', 'gestor']:
-        cursor.execute("SELECT cras FROM solicitacoes WHERE id = ?", (id,))
+        cursor.execute("SELECT cras FROM solicitacoes WHERE id = %s", (id,))
         result = cursor.fetchone()
         if not result or result[0] != current_user.cras:
             conexao.close()
-            return "Você não tem permissão para registrar entrega desta solicitação!", 403
-    
-    cursor.execute("SELECT status FROM solicitacoes WHERE id = ?", (id,))
-    status_atual = cursor.fetchone()
-    
-    if status_atual and status_atual[0] == 'Entregue':
-        conexao.close()
-        return "Esta solicitação já foi entregue!", 400
-    
+            flash("Você não tem permissão para registrar entrega desta solicitação!", "danger")
+            return redirect(url_for("solicitacoes"))
+
+    # Atualizar a solicitação
     cursor.execute("""
         UPDATE solicitacoes 
-        SET status = ?,
-            data_entrega = ?,
-            tecnico_entrega = ?
-        WHERE id = ?
+        SET status = %s,
+            data_entrega = %s,
+            tecnico_entrega = %s
+        WHERE id = %s
     """, (status_entrega, data_entrega, current_user.id, id))
-    
+
     if observacoes:
+        # PostgreSQL usa || para concatenar
         cursor.execute("""
             UPDATE solicitacoes 
-            SET parecer = parecer || '\n\n--- OBSERVAÇÕES DA ENTREGA ---\n' || ?
-            WHERE id = ?
+            SET parecer = parecer || '\n\n--- OBSERVAÇÕES DA ENTREGA ---\n' || %s
+            WHERE id = %s
         """, (observacoes, id))
-    
+
     conexao.commit()
     conexao.close()
-    
-    flash(f'Entrega registrada com sucesso! Status: {status_entrega}', 'success')
+
+    if status_entrega == 'Entregue':
+        flash(f'✅ Entrega registrada com sucesso! Cesta entregue para a família.', 'success')
+    else:
+        flash(
+            f'❌ Ausência registrada. O beneficiário perdeu o direito a esta cesta e precisará fazer uma nova solicitação.',
+            'warning')
+
     return redirect(url_for("solicitacoes"))
 
 # =====================================================
@@ -705,35 +768,24 @@ def registrar_entrega(id):
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    # Apenas Admin e Gestor podem ver o dashboard
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for("solicitacoes"))
+    
     conexao = get_db()
     cursor = conexao.cursor()
     
-    # Se for técnico, mostra apenas dados do seu CRAS
-    if current_user.perfil == 'tecnico':
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ?", (current_user.cras,))
-        total_solicitacoes = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Entregue'", (current_user.cras,))
-        total_entregues = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Ausente'", (current_user.cras,))
-        total_ausentes = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Cadastrada'", (current_user.cras,))
-        total_pendentes = cursor.fetchone()[0]
-    else:
-        # Admin e Gestor veem todos
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes")
-        total_solicitacoes = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Entregue'")
-        total_entregues = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Ausente'")
-        total_ausentes = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Cadastrada'")
-        total_pendentes = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes")
+    total_solicitacoes = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Entregue'")
+    total_entregues = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Ausente'")
+    total_ausentes = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Cadastrada'")
+    total_pendentes = cursor.fetchone()[0]
     
     conexao.close()
     
@@ -757,256 +809,118 @@ def relatorio():
     mes = request.args.get('mes', datetime.now().strftime('%Y-%m'))
     ano = mes[:4]
     mes_num = mes[5:7]
-    
+
     meses = {
         '01': 'Janeiro', '02': 'Fevereiro', '03': 'Março', '04': 'Abril',
         '05': 'Maio', '06': 'Junho', '07': 'Julho', '08': 'Agosto',
         '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
     }
     nome_mes = meses.get(mes_num, mes_num)
-    
+
     conexao = get_db()
     cursor = conexao.cursor()
-    
-    # Determinar se o usuário tem visão completa (admin/gestor) ou restrita (técnico)
-    visao_completa = current_user.perfil in ['admin', 'gestor']
-    
-    if visao_completa:
-        # Admin/Gestor: vê todos os CRAS
-        if mes:
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE strftime('%Y-%m', data_solicitacao) = ?
-            """, (mes,))
-            total_solicitacoes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE status = 'Entregue' AND strftime('%Y-%m', data_entrega) = ?
-            """, (mes,))
-            total_entregues = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE status = 'Ausente' AND strftime('%Y-%m', data_entrega) = ?
-            """, (mes,))
-            total_ausentes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE status = 'Cadastrada' AND strftime('%Y-%m', data_solicitacao) = ?
-            """, (mes,))
-            total_pendentes = cursor.fetchone()[0]
-            
-            # Por CRAS
-            cursor.execute("""
-                SELECT cras, 
-                       COUNT(*) as total,
-                       SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes 
-                WHERE strftime('%Y-%m', data_solicitacao) = ?
-                GROUP BY cras
-                ORDER BY entregues DESC
-            """, (mes,))
-            por_cras = cursor.fetchall()
-            
-            # Últimas entregas
-            cursor.execute("""
-                SELECT s.nome, s.cpf, s.bairro, s.cras, s.status, s.data_entrega, 
-                       COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.status IN ('Entregue', 'Ausente') 
-                AND strftime('%Y-%m', s.data_entrega) = ?
-                ORDER BY s.data_entrega DESC
-                LIMIT 20
-            """, (mes,))
-            ultimas_entregas = cursor.fetchall()
-            
-            # Por técnico
-            cursor.execute("""
-                SELECT COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome,
-                       COUNT(*) as total,
-                       SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.status IN ('Entregue', 'Ausente')
-                AND strftime('%Y-%m', s.data_entrega) = ?
-                GROUP BY s.tecnico_entrega
-                ORDER BY entregues DESC
-            """, (mes,))
-            por_tecnico = cursor.fetchall()
-        else:
-            # Sem filtro de mês - todos os dados
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes")
-            total_solicitacoes = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Entregue'")
-            total_entregues = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Ausente'")
-            total_ausentes = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status = 'Cadastrada'")
-            total_pendentes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT cras, 
-                       COUNT(*) as total,
-                       SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes 
-                GROUP BY cras
-                ORDER BY entregues DESC
-            """)
-            por_cras = cursor.fetchall()
-            
-            cursor.execute("""
-                SELECT s.nome, s.cpf, s.bairro, s.cras, s.status, s.data_entrega, 
-                       COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.status IN ('Entregue', 'Ausente')
-                ORDER BY s.data_entrega DESC
-                LIMIT 20
-            """)
-            ultimas_entregas = cursor.fetchall()
-            
-            cursor.execute("""
-                SELECT COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome,
-                       COUNT(*) as total,
-                       SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.status IN ('Entregue', 'Ausente')
-                GROUP BY s.tecnico_entrega
-                ORDER BY entregues DESC
-            """)
-            por_tecnico = cursor.fetchall()
-    
-    else:
-        # Técnico: vê apenas dados do seu CRAS
-        cras_tecnico = current_user.cras
-        
-        if mes:
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE cras = ? AND strftime('%Y-%m', data_solicitacao) = ?
-            """, (cras_tecnico, mes))
-            total_solicitacoes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE cras = ? AND status = 'Entregue' AND strftime('%Y-%m', data_entrega) = ?
-            """, (cras_tecnico, mes))
-            total_entregues = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE cras = ? AND status = 'Ausente' AND strftime('%Y-%m', data_entrega) = ?
-            """, (cras_tecnico, mes))
-            total_ausentes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM solicitacoes 
-                WHERE cras = ? AND status = 'Cadastrada' AND strftime('%Y-%m', data_solicitacao) = ?
-            """, (cras_tecnico, mes))
-            total_pendentes = cursor.fetchone()[0]
-            
-            # Por CRAS (apenas o do técnico)
-            cursor.execute("""
-                SELECT cras, 
-                       COUNT(*) as total,
-                       SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes 
-                WHERE cras = ? AND strftime('%Y-%m', data_solicitacao) = ?
-                GROUP BY cras
-            """, (cras_tecnico, mes))
-            por_cras = cursor.fetchall()
-            
-            # Últimas entregas do CRAS
-            cursor.execute("""
-                SELECT s.nome, s.cpf, s.bairro, s.cras, s.status, s.data_entrega, 
-                       COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.cras = ? AND s.status IN ('Entregue', 'Ausente') 
-                AND strftime('%Y-%m', s.data_entrega) = ?
-                ORDER BY s.data_entrega DESC
-                LIMIT 20
-            """, (cras_tecnico, mes))
-            ultimas_entregas = cursor.fetchall()
-            
-            # Por técnico (apenas do CRAS)
-            cursor.execute("""
-                SELECT COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome,
-                       COUNT(*) as total,
-                       SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.cras = ? AND s.status IN ('Entregue', 'Ausente')
-                AND strftime('%Y-%m', s.data_entrega) = ?
-                GROUP BY s.tecnico_entrega
-                ORDER BY entregues DESC
-            """, (cras_tecnico, mes))
-            por_tecnico = cursor.fetchall()
-        else:
-            # Sem filtro de mês - todos os dados do CRAS
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ?", (cras_tecnico,))
-            total_solicitacoes = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Entregue'", (cras_tecnico,))
-            total_entregues = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Ausente'", (cras_tecnico,))
-            total_ausentes = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = ? AND status = 'Cadastrada'", (cras_tecnico,))
-            total_pendentes = cursor.fetchone()[0]
-            
-            cursor.execute("""
-                SELECT cras, 
-                       COUNT(*) as total,
-                       SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes 
-                WHERE cras = ?
-                GROUP BY cras
-            """, (cras_tecnico,))
-            por_cras = cursor.fetchall()
-            
-            cursor.execute("""
-                SELECT s.nome, s.cpf, s.bairro, s.cras, s.status, s.data_entrega, 
-                       COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.cras = ? AND s.status IN ('Entregue', 'Ausente')
-                ORDER BY s.data_entrega DESC
-                LIMIT 20
-            """, (cras_tecnico,))
-            ultimas_entregas = cursor.fetchall()
-            
-            cursor.execute("""
-                SELECT COALESCE(u.nome, s.tecnico_entrega) as tecnico_nome,
-                       COUNT(*) as total,
-                       SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-                       SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-                FROM solicitacoes s
-                LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
-                WHERE s.cras = ? AND s.status IN ('Entregue', 'Ausente')
-                GROUP BY s.tecnico_entrega
-                ORDER BY entregues DESC
-            """, (cras_tecnico,))
-            por_tecnico = cursor.fetchall()
-    
-    conexao.close()
-    
-    # Lista de meses para o select
+
+    # 1. TOTAL DE SOLICITAÇÕES no mês (formato brasileiro)
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes 
+        WHERE data_solicitacao IS NOT NULL
+        AND SUBSTR(data_solicitacao, 7, 4) = %s
+        AND SUBSTR(data_solicitacao, 4, 2) = %s
+    """, (ano, mes_num))
+    total_solicitacoes = cursor.fetchone()[0] or 0
+
+    # 2. ENTREGUES - Verificando múltiplos formatos
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes 
+        WHERE status = 'Entregue' 
+        AND data_entrega IS NOT NULL
+        AND (
+            (SUBSTR(data_entrega, 7, 4) = %s AND SUBSTR(data_entrega, 4, 2) = %s)
+            OR (SUBSTR(data_entrega, 1, 4) = %s AND SUBSTR(data_entrega, 6, 2) = %s)
+        )
+    """, (ano, mes_num, ano, mes_num))
+    total_entregues = cursor.fetchone()[0] or 0
+
+    # 3. AUSENTES
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes 
+        WHERE status = 'Ausente' 
+        AND data_entrega IS NOT NULL
+        AND (
+            (SUBSTR(data_entrega, 7, 4) = %s AND SUBSTR(data_entrega, 4, 2) = %s)
+            OR (SUBSTR(data_entrega, 1, 4) = %s AND SUBSTR(data_entrega, 6, 2) = %s)
+        )
+    """, (ano, mes_num, ano, mes_num))
+    total_ausentes = cursor.fetchone()[0] or 0
+
+    # 4. PENDENTES
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes 
+        WHERE status = 'Cadastrada'
+        AND data_solicitacao IS NOT NULL
+        AND SUBSTR(data_solicitacao, 7, 4) = %s
+        AND SUBSTR(data_solicitacao, 4, 2) = %s
+    """, (ano, mes_num))
+    total_pendentes = cursor.fetchone()[0] or 0
+
+    # 5. Por CRAS
+    cursor.execute("""
+        SELECT 
+            cras, 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
+            SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
+        FROM solicitacoes 
+        WHERE data_solicitacao IS NOT NULL
+        AND SUBSTR(data_solicitacao, 7, 4) = %s
+        AND SUBSTR(data_solicitacao, 4, 2) = %s
+        GROUP BY cras
+    """, (ano, mes_num))
+    por_cras = cursor.fetchall()
+
+    # 6. Por técnico
+    cursor.execute("""
+        SELECT 
+            COALESCE(u.nome, 'Técnico não identificado') as nome_tecnico,
+            COUNT(*) as total,
+            SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
+            SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+        WHERE s.status IN ('Entregue', 'Ausente')
+        AND s.data_entrega IS NOT NULL
+        AND (
+            (SUBSTR(s.data_entrega, 7, 4) = %s AND SUBSTR(s.data_entrega, 4, 2) = %s)
+            OR (SUBSTR(s.data_entrega, 1, 4) = %s AND SUBSTR(s.data_entrega, 6, 2) = %s)
+        )
+        GROUP BY s.tecnico_entrega, u.nome
+    """, (ano, mes_num, ano, mes_num))
+    por_tecnico = cursor.fetchall()
+
+    # 7. Últimas entregas
+    cursor.execute("""
+        SELECT 
+            s.nome, 
+            s.cpf, 
+            s.bairro, 
+            s.cras, 
+            s.status, 
+            s.data_entrega,
+            COALESCE(u.nome, 'Não informado') as tecnico_nome
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+        WHERE s.status IN ('Entregue', 'Ausente') 
+        AND s.data_entrega IS NOT NULL
+        AND (
+            (SUBSTR(s.data_entrega, 7, 4) = %s AND SUBSTR(s.data_entrega, 4, 2) = %s)
+            OR (SUBSTR(s.data_entrega, 1, 4) = %s AND SUBSTR(s.data_entrega, 6, 2) = %s)
+        )
+        ORDER BY s.data_entrega DESC
+        LIMIT 20
+    """, (ano, mes_num, ano, mes_num))
+    ultimas_entregas = cursor.fetchall()
+
+    # 8. Lista de meses
     lista_meses = []
     for i in range(12):
         data = datetime.now().replace(day=1)
@@ -1015,11 +929,16 @@ def relatorio():
                 data = data.replace(month=data.month - 1)
             else:
                 data = data.replace(year=data.year - 1, month=12)
+
+        valor = data.strftime('%Y-%m')
+        nome_mes_calc = meses.get(data.strftime('%m'), data.strftime('%m'))
         lista_meses.append({
-            'valor': data.strftime('%Y-%m'),
-            'nome': f"{meses.get(data.strftime('%m'), data.strftime('%m'))} de {data.strftime('%Y')}"
+            'valor': valor,
+            'nome': f"{nome_mes_calc} de {data.strftime('%Y')}"
         })
-    
+
+    conexao.close()
+
     return render_template(
         "relatorio.html",
         mes=mes,
@@ -1034,8 +953,7 @@ def relatorio():
         por_tecnico=por_tecnico,
         lista_meses=lista_meses,
         datetime=datetime,
-        current_user=current_user,
-        visao_completa=visao_completa  # Adicionado para o template saber se mostrar todos ou só o CRAS
+        current_user=current_user
     )
 
 # =====================================================
@@ -1067,7 +985,6 @@ def novo_usuario():
             erro = "A senha deve ter no mínimo 4 caracteres!"
         elif perfil not in ['tecnico', 'gestor', 'admin']:
             erro = "Perfil inválido!"
-        # Se for técnico, precisa de CRAS
         elif perfil == 'tecnico' and not cras:
             erro = "Técnico deve ter um CRAS de referência!"
         else:
@@ -1080,12 +997,12 @@ def novo_usuario():
             try:
                 cursor.execute("""
                     INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso)
-                    VALUES (?, ?, ?, ?, ?, 1)
+                    VALUES (%s, %s, %s, %s, %s, 1)
                 """, (usuario, nome, senha_hash, perfil, cras if perfil == 'tecnico' else None))
                 conexao.commit()
                 sucesso = f"Usuário {usuario} criado com sucesso!"
             except Exception as e:
-                if "UNIQUE" in str(e) or "Duplicate" in str(e):
+                if "duplicate" in str(e).lower() or "unique" in str(e).lower():
                     erro = f"Usuário {usuario} já existe!"
                 else:
                     erro = f"Erro ao criar usuário: {e}"
@@ -1098,10 +1015,10 @@ def novo_usuario():
 @app.route("/usuarios")
 @login_required
 def listar_usuarios():
-    # Admin e Gestor podem ver lista de usuários
-    if current_user.perfil not in ['admin', 'gestor']:
-        return redirect(url_for("solicitacoes"))
-    
+    # Apenas ADMIN pode ver lista de usuários
+    if current_user.perfil != 'admin':
+        flash("Acesso negado! Apenas administradores podem acessar esta página.", "danger")
+        return redirect(url_for("dashboard"))
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios ORDER BY id")
@@ -1119,10 +1036,9 @@ def excluir_usuario(id):
         flash("Acesso negado! Apenas administradores podem excluir usuários.", "danger")
         return redirect(url_for("listar_usuarios"))
     
-    # Não permitir excluir o próprio usuário
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT usuario, perfil FROM usuarios WHERE id = ?", (id,))
+    cursor.execute("SELECT usuario, perfil FROM usuarios WHERE id = %s", (id,))
     usuario = cursor.fetchone()
     
     if not usuario:
@@ -1134,13 +1050,12 @@ def excluir_usuario(id):
         flash("Você não pode excluir seu próprio usuário!", "danger")
         return redirect(url_for("listar_usuarios"))
     
-    # Impedir excluir outro admin (opcional - apenas se quiser proteger)
     if usuario[1] == 'admin':
         conexao.close()
         flash("Não é possível excluir outro administrador!", "danger")
         return redirect(url_for("listar_usuarios"))
     
-    cursor.execute("DELETE FROM usuarios WHERE id = ?", (id,))
+    cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
     conexao.commit()
     conexao.close()
     
@@ -1151,7 +1066,6 @@ def excluir_usuario(id):
 @app.route("/usuario/editar/<int:id>", methods=["POST"])
 @login_required
 def editar_usuario(id):
-    # Admin e Gestor podem editar nomes
     if current_user.perfil not in ['admin', 'gestor']:
         return redirect(url_for("solicitacoes"))
     
@@ -1162,16 +1076,16 @@ def editar_usuario(id):
     
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET nome = ? WHERE id = ?", (novo_nome, id))
+    cursor.execute("UPDATE usuarios SET nome = %s WHERE id = %s", (novo_nome, id))
     conexao.commit()
     conexao.close()
     
     return redirect(url_for("listar_usuarios"))
 
+
 @app.route("/usuario/editar_cras/<int:id>", methods=["POST"])
 @login_required
 def editar_cras_usuario(id):
-    # Admin e Gestor podem editar CRAS
     if current_user.perfil not in ['admin', 'gestor']:
         return redirect(url_for("solicitacoes"))
     
@@ -1179,23 +1093,23 @@ def editar_cras_usuario(id):
     
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET cras = ? WHERE id = ?", (novo_cras, id))
+    cursor.execute("UPDATE usuarios SET cras = %s WHERE id = %s", (novo_cras, id))
     conexao.commit()
     conexao.close()
     
     return redirect(url_for("listar_usuarios"))
 
+
 @app.route("/usuario/editar_perfil/<int:id>", methods=["POST"])
 @login_required
 def editar_perfil_usuario(id):
-    # Apenas ADMIN pode editar perfis
     if current_user.perfil != 'admin':
         flash("Acesso negado! Apenas administradores podem alterar perfis.", "danger")
         return redirect(url_for("listar_usuarios"))
     
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT usuario FROM usuarios WHERE id = ?", (id,))
+    cursor.execute("SELECT usuario FROM usuarios WHERE id = %s", (id,))
     usuario = cursor.fetchone()
     
     if usuario and usuario[0] == current_user.id:
@@ -1209,7 +1123,7 @@ def editar_perfil_usuario(id):
         conexao.close()
         return redirect(url_for("listar_usuarios"))
     
-    cursor.execute("UPDATE usuarios SET perfil = ? WHERE id = ?", (novo_perfil, id))
+    cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (novo_perfil, id))
     conexao.commit()
     conexao.close()
     
@@ -1220,12 +1134,10 @@ def editar_perfil_usuario(id):
 @app.route("/usuario/alterar_senha/<int:id>", methods=["POST"])
 @login_required
 def alterar_senha_usuario(id):
-    # Buscar o usuário pelo ID numérico
     conexao = get_db()
     cursor = conexao.cursor()
     
-    # Primeiro, obter o login do usuário pelo ID
-    cursor.execute("SELECT usuario FROM usuarios WHERE id = ?", (id,))
+    cursor.execute("SELECT usuario FROM usuarios WHERE id = %s", (id,))
     usuario_logado = cursor.fetchone()
     
     if not usuario_logado:
@@ -1233,7 +1145,6 @@ def alterar_senha_usuario(id):
         flash("Usuário não encontrado!", "danger")
         return redirect(url_for("listar_usuarios"))
     
-    # Verificar se o usuário logado é o mesmo (comparando os logins)
     if current_user.id != usuario_logado[0]:
         conexao.close()
         flash("Você só pode alterar sua própria senha!", "danger")
@@ -1253,7 +1164,7 @@ def alterar_senha_usuario(id):
         flash("As senhas não coincidem!", "danger")
         return redirect(url_for("listar_usuarios"))
     
-    cursor.execute("SELECT senha FROM usuarios WHERE id = ?", (id,))
+    cursor.execute("SELECT senha FROM usuarios WHERE id = %s", (id,))
     result = cursor.fetchone()
     if not result:
         conexao.close()
@@ -1270,7 +1181,7 @@ def alterar_senha_usuario(id):
     salt = bcrypt.gensalt()
     nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
     
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 0 WHERE id = ?", (nova_senha_hash, id))
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 0 WHERE id = %s", (nova_senha_hash, id))
     conexao.commit()
     conexao.close()
     
@@ -1281,7 +1192,6 @@ def alterar_senha_usuario(id):
 @app.route("/usuario/resetar_senha/<int:id>", methods=["POST"])
 @login_required
 def resetar_senha_usuario(id):
-    # Apenas ADMIN pode resetar senhas
     if current_user.perfil != 'admin':
         flash("Acesso negado! Apenas administradores podem resetar senhas.", "danger")
         return redirect(url_for("listar_usuarios"))
@@ -1296,7 +1206,7 @@ def resetar_senha_usuario(id):
     
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 1 WHERE id = ?", (nova_senha_hash, id))
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 1 WHERE id = %s", (nova_senha_hash, id))
     conexao.commit()
     conexao.close()
     
@@ -1307,11 +1217,10 @@ def resetar_senha_usuario(id):
 @app.route("/usuario/alterar_senha", methods=["POST"])
 @login_required
 def alterar_senha_simples():
-    # Buscar o ID do usuário pelo login
     conexao = get_db()
     cursor = conexao.cursor()
     
-    cursor.execute("SELECT id, senha FROM usuarios WHERE usuario = ?", (current_user.id,))
+    cursor.execute("SELECT id, senha FROM usuarios WHERE usuario = %s", (current_user.id,))
     result = cursor.fetchone()
     
     if not result:
@@ -1344,7 +1253,7 @@ def alterar_senha_simples():
     salt = bcrypt.gensalt()
     nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
     
-    cursor.execute("UPDATE usuarios SET senha = ?, primeiro_acesso = 0 WHERE id = ?", (nova_senha_hash, user_id))
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 0 WHERE id = %s", (nova_senha_hash, user_id))
     conexao.commit()
     conexao.close()
     
