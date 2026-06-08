@@ -1227,11 +1227,318 @@ def relatorio():
     )
 
 # =====================================================
-# GERENCIAR USUÁRIOS (mantido igual)
+# GERENCIAR USUÁRIOS
 # =====================================================
-# [TODO O CÓDIGO DE USUÁRIOS PERMANECE O MESMO]
-# [Copie da versão anterior - rotas /usuario/*]
-# Por brevidade, não repeti aqui, mas MANTENHA no seu arquivo!
+
+@app.route("/usuario/novo", methods=["GET", "POST"])
+@login_required
+def novo_usuario():
+    if current_user.perfil != 'admin':
+        logger.warning(f"Tentativa de acesso não autorizado: {current_user.id} tentou criar usuário")
+        flash("Acesso negado! Apenas administradores podem criar usuários.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    erro = None
+    sucesso = None
+    
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        nome = request.form.get("nome", "").strip()
+        perfil = request.form.get("perfil", "")
+        senha = request.form.get("senha", "")
+        cras = request.form.get("cras", "")
+        
+        if not usuario or not nome or not perfil or not senha:
+            erro = "Todos os campos são obrigatórios!"
+        elif len(senha) < 6:
+            erro = "A senha deve ter no mínimo 6 caracteres!"
+        elif perfil not in ['tecnico', 'gestor', 'admin']:
+            erro = "Perfil inválido!"
+        elif perfil == 'tecnico' and not cras:
+            erro = "Técnico deve ter um CRAS de referência!"
+        elif not any(c.isupper() for c in senha):
+            erro = "A senha deve conter pelo menos uma letra maiúscula!"
+        elif not any(c.isdigit() for c in senha):
+            erro = "A senha deve conter pelo menos um número!"
+        else:
+            salt = bcrypt.gensalt()
+            senha_hash = bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
+            
+            conexao = get_db()
+            cursor = conexao.cursor()
+            
+            try:
+                cursor.execute("""
+                    INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso)
+                    VALUES (%s, %s, %s, %s, %s, 1)
+                """, (usuario, nome, senha_hash, perfil, cras if perfil == 'tecnico' else None))
+                conexao.commit()
+                logger.info(f"Usuário criado: {usuario} por {current_user.id}")
+                sucesso = f"Usuário {usuario} criado com sucesso!"
+            except Exception as e:
+                if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+                    erro = f"Usuário {usuario} já existe!"
+                else:
+                    logger.error(f"Erro ao criar usuário: {e}")
+                    erro = f"Erro ao criar usuário: {e}"
+            finally:
+                conexao.close()
+    
+    return render_template("novo_usuario.html", erro=erro, sucesso=sucesso)
+
+
+@app.route("/usuarios")
+@login_required
+def listar_usuarios():
+    if current_user.perfil != 'admin':
+        flash("Acesso negado! Apenas administradores podem acessar esta página.", "danger")
+        return redirect(url_for("dashboard"))
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios ORDER BY id")
+    usuarios = cursor.fetchall()
+    conexao.close()
+    
+    return render_template("usuarios.html", usuarios=usuarios, current_user=current_user)
+
+
+@app.route("/usuario/excluir/<int:id>")
+@login_required
+def excluir_usuario(id):
+    if current_user.perfil != 'admin':
+        logger.warning(f"Tentativa de exclusão não autorizada por {current_user.id}")
+        flash("Acesso negado! Apenas administradores podem excluir usuários.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT usuario, perfil FROM usuarios WHERE id = %s", (id,))
+    usuario = cursor.fetchone()
+    
+    if not usuario:
+        conexao.close()
+        return redirect(url_for("listar_usuarios"))
+    
+    if usuario[0] == current_user.id:
+        conexao.close()
+        flash("Você não pode excluir seu próprio usuário!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if usuario[1] == 'admin':
+        conexao.close()
+        flash("Não é possível excluir outro administrador!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
+    conexao.commit()
+    conexao.close()
+    
+    logger.warning(f"Usuário excluído: {usuario[0]} por {current_user.id}")
+    flash(f"Usuário {usuario[0]} excluído com sucesso!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/editar/<int:id>", methods=["POST"])
+@login_required
+def editar_usuario(id):
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for("solicitacoes"))
+    
+    novo_nome = request.form.get("nome", "").strip()
+    
+    if not novo_nome:
+        return redirect(url_for("listar_usuarios"))
+    
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET nome = %s WHERE id = %s", (novo_nome, id))
+    conexao.commit()
+    conexao.close()
+    
+    logger.info(f"Usuário ID={id} atualizado por {current_user.id}")
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/editar_cras/<int:id>", methods=["POST"])
+@login_required
+def editar_cras_usuario(id):
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for("solicitacoes"))
+    
+    novo_cras = request.form.get("cras", "").strip()
+    
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET cras = %s WHERE id = %s", (novo_cras, id))
+    conexao.commit()
+    conexao.close()
+    
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/editar_perfil/<int:id>", methods=["POST"])
+@login_required
+def editar_perfil_usuario(id):
+    if current_user.perfil != 'admin':
+        flash("Acesso negado! Apenas administradores podem alterar perfis.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT usuario FROM usuarios WHERE id = %s", (id,))
+    usuario = cursor.fetchone()
+    
+    if usuario and usuario[0] == current_user.id:
+        conexao.close()
+        flash("Você não pode alterar seu próprio perfil!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    novo_perfil = request.form.get("perfil", "").strip()
+    
+    if novo_perfil not in ['tecnico', 'gestor', 'admin']:
+        conexao.close()
+        return redirect(url_for("listar_usuarios"))
+    
+    cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (novo_perfil, id))
+    conexao.commit()
+    conexao.close()
+    
+    logger.warning(f"Perfil do usuário ID={id} alterado para {novo_perfil} por {current_user.id}")
+    flash(f"Perfil do usuário alterado para {novo_perfil}!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/alterar_senha/<int:id>", methods=["POST"])
+@login_required
+def alterar_senha_usuario(id):
+    conexao = get_db()
+    cursor = conexao.cursor()
+    
+    cursor.execute("SELECT usuario FROM usuarios WHERE id = %s", (id,))
+    usuario_logado = cursor.fetchone()
+    
+    if not usuario_logado:
+        conexao.close()
+        flash("Usuário não encontrado!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if current_user.id != usuario_logado[0]:
+        conexao.close()
+        flash("Você só pode alterar sua própria senha!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    senha_atual = request.form.get("senha_atual", "")
+    nova_senha = request.form.get("nova_senha", "")
+    confirmar_senha = request.form.get("confirmar_senha", "")
+    
+    if not nova_senha or len(nova_senha) < 6:
+        conexao.close()
+        flash("A nova senha deve ter no mínimo 6 caracteres!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if nova_senha != confirmar_senha:
+        conexao.close()
+        flash("As senhas não coincidem!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    cursor.execute("SELECT senha FROM usuarios WHERE id = %s", (id,))
+    result = cursor.fetchone()
+    if not result:
+        conexao.close()
+        flash("Usuário não encontrado!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    senha_hash_atual = result[0]
+    
+    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash_atual.encode('utf-8')):
+        conexao.close()
+        flash("Senha atual incorreta!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    salt = bcrypt.gensalt()
+    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
+    
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 0 WHERE id = %s", (nova_senha_hash, id))
+    conexao.commit()
+    conexao.close()
+    
+    logger.info(f"Senha alterada para usuário ID={id}")
+    flash("✅ Senha alterada com sucesso!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/resetar_senha/<int:id>", methods=["POST"])
+@login_required
+def resetar_senha_usuario(id):
+    if current_user.perfil != 'admin':
+        flash("Acesso negado! Apenas administradores podem resetar senhas.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if current_user.id == id:
+        flash("Use a opção 'Alterar Senha' para modificar sua própria senha.", "warning")
+        return redirect(url_for("listar_usuarios"))
+    
+    nova_senha = secrets.token_urlsafe(8)
+    salt = bcrypt.gensalt()
+    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
+    
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 1 WHERE id = %s", (nova_senha_hash, id))
+    conexao.commit()
+    conexao.close()
+    
+    logger.warning(f"Senha resetada para usuário ID={id} por {current_user.id}")
+    flash(f"✅ Senha resetada! Nova senha temporária: {nova_senha}", "success")
+    return redirect(url_for("listar_usuarios"))
+
+
+@app.route("/usuario/alterar_senha", methods=["POST"])
+@login_required
+def alterar_senha_simples():
+    conexao = get_db()
+    cursor = conexao.cursor()
+    
+    cursor.execute("SELECT id, senha FROM usuarios WHERE usuario = %s", (current_user.id,))
+    result = cursor.fetchone()
+    
+    if not result:
+        conexao.close()
+        flash("Usuário não encontrado!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    user_id = result[0]
+    senha_hash_atual = result[1]
+    
+    senha_atual = request.form.get("senha_atual", "")
+    nova_senha = request.form.get("nova_senha", "")
+    confirmar_senha = request.form.get("confirmar_senha", "")
+    
+    if not nova_senha or len(nova_senha) < 6:
+        conexao.close()
+        flash("A nova senha deve ter no mínimo 6 caracteres!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if nova_senha != confirmar_senha:
+        conexao.close()
+        flash("As senhas não coincidem!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    if not bcrypt.checkpw(senha_atual.encode('utf-8'), senha_hash_atual.encode('utf-8')):
+        conexao.close()
+        flash("Senha atual incorreta!", "danger")
+        return redirect(url_for("listar_usuarios"))
+    
+    salt = bcrypt.gensalt()
+    nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
+    
+    cursor.execute("UPDATE usuarios SET senha = %s, primeiro_acesso = 0 WHERE id = %s", (nova_senha_hash, user_id))
+    conexao.commit()
+    conexao.close()
+    
+    logger.info(f"Senha alterada pelo próprio usuário {current_user.id}")
+    flash("✅ Senha alterada com sucesso!", "success")
+    return redirect(url_for("listar_usuarios"))
 
 # =====================================================
 # ROTA DE BACKUP
