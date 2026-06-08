@@ -1415,10 +1415,16 @@ def alterar_senha_simples():
 # =====================================================
 
 @app.route("/api/backup")
+@app.route("/api/backup/download")
+@login_required
 def backup_automatico():
     """
-    Gera backup completo do banco de dados.
+    Gera backup e faz download. Apenas admin pode baixar.
     """
+    # Verificar se é download (requer admin)
+    if 'download' in request.path and current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -1433,19 +1439,14 @@ def backup_automatico():
         
         conn.close()
         
-        # Converter tuplas para dicionários manualmente
+        # Converter para dicionários
         usuarios = []
         for u in usuarios_raw:
             usuarios.append({
-                'id': u[0],
-                'usuario': u[1],
-                'nome': u[2],
-                'perfil': u[3],
-                'cras': u[4],
-                'primeiro_acesso': u[5]
+                'id': u[0], 'usuario': u[1], 'nome': u[2],
+                'perfil': u[3], 'cras': u[4], 'primeiro_acesso': u[5]
             })
         
-        # Pegar nomes das colunas da tabela solicitacoes
         colunas = ['id', 'tecnico', 'cpf', 'nome', 'data_nascimento', 'telefone', 
                    'email', 'endereco', 'numero', 'complemento', 'bairro', 'cep', 
                    'referencia', 'cras', 'data_escuta', 'total_pessoas', 
@@ -1460,7 +1461,6 @@ def backup_automatico():
                 item[coluna] = s[i] if i < len(s) else None
             solicitacoes.append(item)
         
-        # Criar backup
         backup = {
             'data': datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S'),
             'total_usuarios': len(usuarios),
@@ -1480,11 +1480,21 @@ def backup_automatico():
             json.dump(backup, f, ensure_ascii=False, indent=2)
         
         # Manter apenas os últimos 7 backups
-        arquivos = sorted(os.listdir(backup_dir), reverse=True)
+        arquivos = sorted([f for f in os.listdir(backup_dir) if f.endswith('.json')], reverse=True)
         for arquivo_antigo in arquivos[7:]:
             os.remove(os.path.join(backup_dir, arquivo_antigo))
         
-        logger.info(f"✅ Backup automático gerado: {nome_arquivo}")
+        logger.info(f"✅ Backup gerado: {nome_arquivo}")
+        
+        # Se for rota de download, enviar arquivo
+        if 'download' in request.path:
+            return send_file(
+                caminho_completo,
+                as_attachment=True,
+                download_name=nome_arquivo,
+                mimetype='application/json'
+            )
+        
         return f"✅ Backup gerado com sucesso: {nome_arquivo}", 200
         
     except Exception as e:
