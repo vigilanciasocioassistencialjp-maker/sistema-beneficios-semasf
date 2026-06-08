@@ -1194,6 +1194,45 @@ def relatorio():
     """, (ano, mes_num, ano, mes_num))
     ultimas_entregas = cursor.fetchall()
 
+    # 9. Recorrência - Beneficiários com mais de 1 cesta
+cursor.execute("""
+    SELECT 
+        cpf,
+        COUNT(*) as total_recebido,
+        MAX(data_entrega) as ultima_entrega
+    FROM solicitacoes 
+    WHERE status = 'Entregue' 
+    AND cpf IS NOT NULL
+    GROUP BY cpf
+    HAVING COUNT(*) > 1
+    ORDER BY total_recebido DESC
+    LIMIT 20
+""")
+recorrencia_raw = cursor.fetchall()
+
+# Descriptografar CPFs
+recorrencia = []
+for r in recorrencia_raw:
+    cpf_cripto = r[0]
+    total = r[1]
+    ultima = r[2]
+    
+    # Buscar nome do beneficiário
+    cursor.execute("""
+        SELECT nome FROM solicitacoes 
+        WHERE cpf = %s 
+        ORDER BY id DESC LIMIT 1
+    """, (cpf_cripto,))
+    nome_row = cursor.fetchone()
+    nome = nome_row[0] if nome_row else 'Não informado'
+    
+    recorrencia.append({
+        'cpf': formatar_cpf(descriptografar_cpf(cpf_cripto)),
+        'nome': nome,
+        'total_recebido': total,
+        'ultima_entrega': str(ultima) if ultima else 'N/A'
+    })
+
     lista_meses = []
     for i in range(12):
         data = datetime.now(FUSO_RONDONIA).replace(day=1)
