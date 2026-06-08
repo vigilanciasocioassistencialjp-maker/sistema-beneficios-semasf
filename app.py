@@ -737,7 +737,7 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     max_width = width - 5*cm
     palavras = parecer_texto.split()
     linha = ""
-    
+
     for palavra in palavras:
         linha_teste = linha + " " + palavra if linha else palavra
         if c.stringWidth(linha_teste, "Helvetica", 10) <= max_width:
@@ -745,7 +745,8 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
         else:
             if linha:
                 text_object.textLine(linha)
-            linha = palavra    if linha:
+            linha = palavra
+    if linha:
         text_object.textLine(linha)
     
     c.drawText(text_object)
