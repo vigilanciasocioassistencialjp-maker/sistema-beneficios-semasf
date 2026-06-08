@@ -1410,6 +1410,81 @@ def alterar_senha_simples():
 # EXECUÇÃO
 # =====================================================
 
+# =====================================================
+# ROTA DE BACKUP AUTOMÁTICO
+# =====================================================
+
+@app.route("/api/backup")
+def backup_automatico():
+    """
+    Gera backup completo do banco de dados.
+    Esta rota será chamada automaticamente pelo Cron Job do Render.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Exportar usuários
+        cursor.execute("SELECT * FROM usuarios")
+        usuarios = cursor.fetchall()
+        
+        # Exportar solicitações
+        cursor.execute("SELECT * FROM solicitacoes")
+        solicitacoes = cursor.fetchall()
+        
+        conn.close()
+        
+        # Criar backup
+        backup = {
+            'data': datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S'),
+            'total_usuarios': len(usuarios),
+            'total_solicitacoes': len(solicitacoes),
+            'usuarios': [dict(row) for row in usuarios],
+            'solicitacoes': [dict(row) for row in solicitacoes]
+        }
+        
+        # Salvar no disco do Render (persiste entre deploys!)
+        backup_dir = '/opt/render/.data/backups'
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        nome_arquivo = f"backup_{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d_%H%M%S')}.json"
+        caminho_completo = os.path.join(backup_dir, nome_arquivo)
+        
+        with open(caminho_completo, 'w', encoding='utf-8') as f:
+            json.dump(backup, f, ensure_ascii=False, indent=2)
+        
+        # Manter apenas os últimos 7 backups (economizar espaço)
+        arquivos = sorted(os.listdir(backup_dir), reverse=True)
+        for arquivo_antigo in arquivos[7:]:
+            os.remove(os.path.join(backup_dir, arquivo_antigo))
+        
+        logger.info(f"✅ Backup automático gerado: {nome_arquivo}")
+        return f"✅ Backup gerado com sucesso: {nome_arquivo}", 200
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no backup: {e}")
+        return f"❌ Erro no backup: {e}", 500
+
+
+@app.route("/api/backup/download")
+@login_required
+def download_backup():
+    """Rota para baixar o backup mais recente (admin apenas)"""
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    
+    backup_dir = '/opt/render/.data/backups'
+    os.makedirs(backup_dir, exist_ok=True)
+    
+    arquivos = sorted(os.listdir(backup_dir), reverse=True)
+    
+    if not arquivos:
+        return "Nenhum backup encontrado", 404
+    
+    caminho_arquivo = os.path.join(backup_dir, arquivos[0])
+    return send_file(caminho_arquivo, as_attachment=True, download_name=arquivos[0])
+    
+
 if __name__ == "__main__":
     criar_banco()
     app.run(debug=True)
