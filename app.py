@@ -223,7 +223,6 @@ def login():
                     logger.info(f"Login bem-sucedido: {usuario_banco} | IP: {ip} | Perfil: {perfil_banco}")
                     
                     if primeiro_acesso == 1:
-                        flash("🔒 Primeiro acesso! Você precisa alterar sua senha.", "warning")
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
                     if perfil_banco in ['admin', 'gestor']:
