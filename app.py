@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, flash
+from flask import Flask, render_template, request, redirect, url_for, send_file, flash, get_flashed_messages
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
 from banco import criar_banco, get_db_connection
@@ -223,6 +223,8 @@ def login():
                     logger.info(f"Login bem-sucedido: {usuario_banco} | IP: {ip} | Perfil: {perfil_banco}")
                     
                     if primeiro_acesso == 1:
+                        # Limpar mensagens flash pendentes
+                        get_flashed_messages()
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
                     if perfil_banco in ['admin', 'gestor']:
@@ -315,12 +317,14 @@ def trocar_senha():
                 logger.info(f"Senha alterada: {current_user.id}")
                 sucesso = "✅ Senha alterada com sucesso!"
                 
-                if primeiro_acesso:
-                    flash("Senha alterada com sucesso! Bem-vindo ao sistema.", "success")
-                    if current_user.perfil in ['admin', 'gestor']:
-                        return redirect(url_for("dashboard"))
-                    else:
-                        return redirect(url_for("solicitacoes"))
+            if primeiro_acesso:
+                # Limpar todas as mensagens flash pendentes
+                session.pop('_flashes', None) if hasattr(__builtins__, 'session') else None
+                
+                if current_user.perfil in ['admin', 'gestor']:
+                    return redirect(url_for("dashboard"))
+                else:
+                    return redirect(url_for("solicitacoes"))
     
     return render_template("trocar_senha.html", 
                          erro=erro, 
@@ -336,7 +340,6 @@ def trocar_senha():
 def logout():
     logger.info(f"Logout: {current_user.id}")
     logout_user()
-    flash("Você saiu do sistema.", "info")
     return redirect(url_for("login"))
 
 # =====================================================
