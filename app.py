@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, flash, get_flashed_messages
+from flask import Flask, render_template, request, redirect, url_for, send_file, flash, get_flashed_messages, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
 from banco import criar_banco, get_db_connection
@@ -16,6 +16,7 @@ import qrcode
 import secrets
 import logging
 from logging.handlers import RotatingFileHandler
+from cryptography.fernet import Fernet
 
 # =====================================================
 # CONFIGURAÇÃO DO APP
@@ -28,6 +29,46 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
+
+# 🔐 Configurar criptografia para CPF
+CHAVE_CRIPTO = os.environ.get('CHAVE_CRIPTO')
+if not CHAVE_CRIPTO:
+    CHAVE_CRIPTO = Fernet.generate_key().decode()
+    print("=" * 60)
+    print("⚠️  CHAVE DE CRIPTOGRAFIA GERADA!")
+    print(f"🔑 Chave: {CHAVE_CRIPTO}")
+    print("⚠️  ADICIONE ESTA CHAVE COMO VARIÁVEL DE AMBIENTE NO RENDER!")
+    print("⚠️  Nome da variável: CHAVE_CRIPTO")
+    print("=" * 60)
+
+fernet = Fernet(CHAVE_CRIPTO.encode() if isinstance(CHAVE_CRIPTO, str) else CHAVE_CRIPTO)
+
+def criptografar_cpf(cpf):
+    """Criptografa o CPF para salvar no banco"""
+    if not cpf:
+        return cpf
+    # Limpar formatação
+    cpf_limpo = str(cpf).replace('.', '').replace('-', '').strip()
+    if len(cpf_limpo) == 11:
+        return fernet.encrypt(cpf_limpo.encode()).decode()
+    return cpf
+
+def descriptografar_cpf(cpf_cripto):
+    """Descriptografa o CPF para mostrar na tela"""
+    if not cpf_cripto:
+        return cpf_cripto
+    try:
+        return fernet.decrypt(cpf_cripto.encode()).decode()
+    except:
+        # Se não conseguir descriptografar, retorna como está (CPF antigo não criptografado)
+        return cpf_cripto
+
+def formatar_cpf(cpf):
+    """Formata CPF: 12345678901 → 123.456.789-01"""
+    cpf = str(cpf).replace('.', '').replace('-', '').strip()
+    if len(cpf) == 11:
+        return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    return cpf
 
 # 🛡️ Configurar logs de segurança
 if not os.path.exists('logs'):
@@ -76,14 +117,12 @@ def criar_admin_automatico():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Verificar se existe algum usuário na tabela
         cursor.execute("SELECT COUNT(*) FROM usuarios")
         
         resultado = cursor.fetchone()
         count = resultado[0] if resultado else 0
 
         if count == 0:
-            # Criar admin com senha aleatória segura
             senha_temporaria = secrets.token_urlsafe(8)
             senha_hash = bcrypt.hashpw(senha_temporaria.encode('utf-8'), bcrypt.gensalt())
             
@@ -112,7 +151,6 @@ def criar_admin_automatico():
         print(f"⚠️ Erro ao criar admin automático: {e}")
         logger.error(f"Erro ao criar admin: {e}")
 
-# Executa a função uma única vez após a criação das tabelas
 criar_admin_automatico()
 
 # =====================================================
@@ -150,7 +188,6 @@ def fromjson_filter(value):
 
 @app.template_filter('formatar_data')
 def formatar_data(data):
-    """Converte data ISO (YYYY-MM-DD) para formato brasileiro (DD/MM/YYYY)"""
     if not data:
         return ''
     try:
@@ -175,10 +212,8 @@ def login():
     ip = request.remote_addr
     agora = datetime.now(FUSO_RONDONIA)
     
-    # 🛡️ Limpar tentativas antigas (mais de 15 minutos)
     tentativas_login[ip] = [t for t in tentativas_login[ip] if t > agora - timedelta(minutes=BLOQUEIO_MINUTOS)]
     
-    # 🛡️ Verificar se IP está bloqueado
     if len(tentativas_login[ip]) >= MAX_TENTATIVAS:
         minutos_restantes = BLOQUEIO_MINUTOS - int((agora - tentativas_login[ip][0]).total_seconds() / 60)
         logger.warning(f"IP bloqueado por excesso de tentativas: {ip}")
@@ -216,14 +251,12 @@ def login():
                     user = Usuario(usuario_banco, perfil_banco, cras_banco, nome_usuario)
                     login_user(user)
                     
-                    # 🛡️ Limpar tentativas do IP após login bem-sucedido
                     if ip in tentativas_login:
                         del tentativas_login[ip]
                     
                     logger.info(f"Login bem-sucedido: {usuario_banco} | IP: {ip} | Perfil: {perfil_banco}")
                     
                     if primeiro_acesso == 1:
-                        # Limpar mensagens flash pendentes
                         get_flashed_messages()
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
@@ -234,7 +267,7 @@ def login():
                 else:
                     tentativas_login[ip].append(agora)
                     tentativas_restantes = MAX_TENTATIVAS - len(tentativas_login[ip])
-                    logger.warning(f"Senha incorreta: {usuario} | IP: {ip} | Tentativas restantes: {tentativas_restantes}")
+                    logger.warning(f"Senha incorreta: {usuario} | IP: {ip}")
                     
                     if tentativas_restantes > 0:
                         erro = f"❌ Senha incorreta! Tentativas restantes: {tentativas_restantes}"
@@ -318,9 +351,6 @@ def trocar_senha():
                 sucesso = "✅ Senha alterada com sucesso!"
                 
             if primeiro_acesso:
-                # Limpar todas as mensagens flash pendentes
-                session.pop('_flashes', None) if hasattr(__builtins__, 'session') else None
-                
                 if current_user.perfil in ['admin', 'gestor']:
                     return redirect(url_for("dashboard"))
                 else:
@@ -343,7 +373,7 @@ def logout():
     return redirect(url_for("login"))
 
 # =====================================================
-# PÁGINA PRINCIPAL (Nova Solicitação)
+# PÁGINA PRINCIPAL (Nova Solicitação) - COM CRIPTOGRAFIA
 # =====================================================
 
 @app.route("/", methods=["GET", "POST"])
@@ -353,7 +383,6 @@ def inicio():
         bairro = request.form["bairro"]
         cras_solicitacao = request.form["cras"]
         
-        # Admin e Gestor podem cadastrar para qualquer CRAS
         if current_user.perfil not in ['admin', 'gestor']:
             if current_user.cras != cras_solicitacao:
                 logger.warning(f"Tentativa de acesso não autorizado: {current_user.id} para CRAS {cras_solicitacao}")
@@ -407,6 +436,9 @@ def inicio():
         tecnico = current_user.id
         data_solicitacao = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
         
+        # 🔐 Criptografar CPF antes de salvar
+        cpf_criptografado = criptografar_cpf(cpf)
+        
         conexao = get_db()
         cursor = conexao.cursor()
         
@@ -420,7 +452,7 @@ def inicio():
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            tecnico, cpf, nome, data_nascimento, telefone, email,
+            tecnico, cpf_criptografado, nome, data_nascimento, telefone, email,
             endereco, numero, complemento, bairro, cep, referencia,
             cras, data_escuta, total_pessoas, composicao_json,
             renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text,
@@ -437,7 +469,7 @@ def inicio():
     return render_template("index.html", sucesso=False)
 
 # =====================================================
-# LISTAR SOLICITAÇÕES
+# LISTAR SOLICITAÇÕES - CPF DESCRIPTOGRAFADO
 # =====================================================
 
 @app.route("/solicitacoes")
@@ -450,7 +482,6 @@ def solicitacoes(pagina=1):
     conexao = get_db()
     cursor = conexao.cursor()
     
-    # Admin e Gestor veem todas as solicitações
     if current_user.perfil in ['admin', 'gestor']:
         cursor.execute("SELECT COUNT(*) FROM solicitacoes")
         total_registros = cursor.fetchone()[0]
@@ -463,7 +494,6 @@ def solicitacoes(pagina=1):
             LIMIT %s OFFSET %s
         """, (registros_por_pagina, offset))
     else:
-        # Técnico vê apenas solicitações do seu CRAS
         cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = %s", (current_user.cras,))
         total_registros = cursor.fetchone()[0]
         
@@ -480,9 +510,17 @@ def solicitacoes(pagina=1):
     dados = cursor.fetchall()
     conexao.close()
     
+    # 🔐 Descriptografar CPF para mostrar na lista
+    dados_descripto = []
+    for row in dados:
+        row = list(row)
+        if row[3]:  # CPF está no índice 3
+            row[3] = formatar_cpf(descriptografar_cpf(row[3]))
+        dados_descripto.append(tuple(row))
+    
     return render_template(
         "solicitacoes.html",
-        solicitacoes=dados,
+        solicitacoes=dados_descripto,
         user_perfil=current_user.perfil,
         datetime=datetime,
         pagina_atual=pagina,
@@ -492,7 +530,7 @@ def solicitacoes(pagina=1):
     )
 
 # =====================================================
-# DETALHES DA SOLICITAÇÃO
+# DETALHES DA SOLICITAÇÃO - CPF DESCRIPTOGRAFADO
 # =====================================================
 
 @app.route("/ver_solicitacao/<int:id>")
@@ -524,8 +562,12 @@ def ver_solicitacao(id):
     
     solicitacao = list(solicitacao)
     
-    # 📅 Formatar data de nascimento para padrão brasileiro (DD/MM/YYYY)
-    if solicitacao[3]:  # data_nascimento está no índice 3
+    # 🔐 Descriptografar CPF para visualização
+    if solicitacao[2]:
+        solicitacao[2] = formatar_cpf(descriptografar_cpf(solicitacao[2]))
+    
+    # 📅 Formatar data de nascimento para padrão brasileiro
+    if solicitacao[3]:
         try:
             if '-' in str(solicitacao[3]):
                 partes = str(solicitacao[3]).split('-')
@@ -543,7 +585,7 @@ def ver_solicitacao(id):
                          current_user=current_user)
 
 # =====================================================
-# GERAR PDF
+# GERAR PDF - CPF DESCRIPTOGRAFADO
 # =====================================================
 
 @app.route("/gerar_pdf/<int:id>")
@@ -571,9 +613,13 @@ def gerar_pdf_assinatura(id):
     if not solicitacao:
         return "Solicitação não encontrada", 404
     
+    # 🔐 Descriptografar CPF para o PDF
+    solicitacao = list(solicitacao)
+    cpf_pdf = formatar_cpf(descriptografar_cpf(solicitacao[3])) if solicitacao[3] else 'Não informado'
+    solicitacao[3] = cpf_pdf
+    
     logger.info(f"PDF gerado para solicitação ID={id} por {current_user.id}")
     
-    # 🕐 Usando horário de Rondônia
     numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{solicitacao[0]:04d}"
     
     qr_data = f"""Solicitação: {numero_controle}
@@ -608,7 +654,6 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     
     c.setFont("Helvetica", 9)
     c.drawString(2*cm, y_position - 1.3*cm, f"Nº de Controle: {numero_controle}")
-    # 🕐 Data de Emissão com horário de Rondônia
     c.drawString(2*cm, y_position - 1.8*cm, f"Data de Emissão: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
     
     qr_path = io.BytesIO()
@@ -631,7 +676,6 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     c.drawString(2*cm, y_position, f"CPF: {solicitacao[3]}")
     y_position -= 0.5*cm
     
-    # 📅 Formatar data de nascimento no PDF para padrão brasileiro
     data_nascimento_pdf = solicitacao[4] if solicitacao[4] else 'Não informado'
     if data_nascimento_pdf != 'Não informado' and '-' in str(data_nascimento_pdf):
         try:
@@ -798,7 +842,6 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     
     c.setFont("Helvetica", 8)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    # 🕐 Rodapé com horário de Rondônia
     c.drawString(2*cm, 1*cm, f"Documento gerado em {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y às %H:%M:%S')}")
     c.drawString(2*cm, 0.5*cm, "Este documento deve ser assinado pelo beneficiário e pelo técnico responsável pela entrega.")
     
@@ -834,7 +877,6 @@ def registrar_entrega(id):
     conexao = get_db()
     cursor = conexao.cursor()
 
-    # VERIFICAR se a solicitação já foi entregue ou está ausente
     cursor.execute("SELECT status FROM solicitacoes WHERE id = %s", (id,))
     resultado = cursor.fetchone()
 
@@ -845,13 +887,11 @@ def registrar_entrega(id):
 
     status_atual = resultado[0]
 
-    # Se já está Entregue ou Ausente, não permite nova alteração
     if status_atual in ['Entregue', 'Ausente']:
         conexao.close()
         flash(f"Esta solicitação já está com status '{status_atual}' e não pode ser alterada!", "warning")
         return redirect(url_for("solicitacoes"))
 
-    # Admin e Gestor podem registrar entrega para qualquer CRAS
     if current_user.perfil not in ['admin', 'gestor']:
         cursor.execute("SELECT cras FROM solicitacoes WHERE id = %s", (id,))
         result = cursor.fetchone()
@@ -860,7 +900,6 @@ def registrar_entrega(id):
             flash("Você não tem permissão para registrar entrega desta solicitação!", "danger")
             return redirect(url_for("solicitacoes"))
 
-    # Atualizar a solicitação
     cursor.execute("""
         UPDATE solicitacoes 
         SET status = %s,
@@ -884,9 +923,7 @@ def registrar_entrega(id):
     if status_entrega == 'Entregue':
         flash(f'✅ Entrega registrada com sucesso! Cesta entregue para a família.', 'success')
     else:
-        flash(
-            f'❌ Ausência registrada. O beneficiário perdeu o direito a esta cesta e precisará fazer uma nova solicitação.',
-            'warning')
+        flash(f'❌ Ausência registrada. O beneficiário perdeu o direito a esta cesta e precisará fazer uma nova solicitação.', 'warning')
 
     return redirect(url_for("solicitacoes"))
 
@@ -897,7 +934,6 @@ def registrar_entrega(id):
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # Apenas Admin e Gestor podem ver o dashboard
     if current_user.perfil not in ['admin', 'gestor']:
         return redirect(url_for("solicitacoes"))
     
@@ -935,7 +971,6 @@ def dashboard():
 @app.route("/relatorio")
 @login_required
 def relatorio():
-    # 🕐 Usando horário de Rondônia
     mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
     ano = mes[:4]
     mes_num = mes[5:7]
@@ -950,7 +985,6 @@ def relatorio():
     conexao = get_db()
     cursor = conexao.cursor()
 
-    # 1. TOTAL DE SOLICITAÇÕES no mês (formato brasileiro)
     cursor.execute("""
         SELECT COUNT(*) FROM solicitacoes 
         WHERE data_solicitacao IS NOT NULL
@@ -959,7 +993,6 @@ def relatorio():
     """, (ano, mes_num))
     total_solicitacoes = cursor.fetchone()[0] or 0
 
-    # 2. ENTREGUES - Verificando múltiplos formatos
     cursor.execute("""
         SELECT COUNT(*) FROM solicitacoes 
         WHERE status = 'Entregue' 
@@ -971,7 +1004,6 @@ def relatorio():
     """, (ano, mes_num, ano, mes_num))
     total_entregues = cursor.fetchone()[0] or 0
 
-    # 3. AUSENTES
     cursor.execute("""
         SELECT COUNT(*) FROM solicitacoes 
         WHERE status = 'Ausente' 
@@ -983,7 +1015,6 @@ def relatorio():
     """, (ano, mes_num, ano, mes_num))
     total_ausentes = cursor.fetchone()[0] or 0
 
-    # 4. PENDENTES
     cursor.execute("""
         SELECT COUNT(*) FROM solicitacoes 
         WHERE status = 'Cadastrada'
@@ -993,7 +1024,6 @@ def relatorio():
     """, (ano, mes_num))
     total_pendentes = cursor.fetchone()[0] or 0
 
-    # 5. Por CRAS
     cursor.execute("""
         SELECT 
             cras, 
@@ -1008,7 +1038,6 @@ def relatorio():
     """, (ano, mes_num))
     por_cras = cursor.fetchall()
 
-    # 6. Por técnico
     cursor.execute("""
         SELECT 
             COALESCE(u.nome, 'Técnico não identificado') as nome_tecnico,
@@ -1027,7 +1056,6 @@ def relatorio():
     """, (ano, mes_num, ano, mes_num))
     por_tecnico = cursor.fetchall()
 
-    # 7. Últimas entregas
     cursor.execute("""
         SELECT 
             s.nome, 
@@ -1050,10 +1078,8 @@ def relatorio():
     """, (ano, mes_num, ano, mes_num))
     ultimas_entregas = cursor.fetchall()
 
-    # 8. Lista de meses
     lista_meses = []
     for i in range(12):
-        # 🕐 Usando horário de Rondônia
         data = datetime.now(FUSO_RONDONIA).replace(day=1)
         if i > 0:
             if data.month > 1:
@@ -1094,7 +1120,6 @@ def relatorio():
 @app.route("/usuario/novo", methods=["GET", "POST"])
 @login_required
 def novo_usuario():
-    # Apenas ADMIN pode criar usuários
     if current_user.perfil != 'admin':
         logger.warning(f"Tentativa de acesso não autorizado: {current_user.id} tentou criar usuário")
         flash("Acesso negado! Apenas administradores podem criar usuários.", "danger")
@@ -1110,7 +1135,6 @@ def novo_usuario():
         senha = request.form.get("senha", "")
         cras = request.form.get("cras", "")
         
-        # Validações básicas
         if not usuario or not nome or not perfil or not senha:
             erro = "Todos os campos são obrigatórios!"
         elif len(senha) < 6:
@@ -1153,7 +1177,6 @@ def novo_usuario():
 @app.route("/usuarios")
 @login_required
 def listar_usuarios():
-    # Apenas ADMIN pode ver lista de usuários
     if current_user.perfil != 'admin':
         flash("Acesso negado! Apenas administradores podem acessar esta página.", "danger")
         return redirect(url_for("dashboard"))
@@ -1169,7 +1192,6 @@ def listar_usuarios():
 @app.route("/usuario/excluir/<int:id>")
 @login_required
 def excluir_usuario(id):
-    # Apenas ADMIN pode excluir usuários
     if current_user.perfil != 'admin':
         logger.warning(f"Tentativa de exclusão não autorizada por {current_user.id}")
         flash("Acesso negado! Apenas administradores podem excluir usuários.", "danger")
@@ -1407,21 +1429,13 @@ def alterar_senha_simples():
 
 
 # =====================================================
-# EXECUÇÃO
-# =====================================================
-
-# =====================================================
-# ROTA DE BACKUP AUTOMÁTICO
+# ROTA DE BACKUP
 # =====================================================
 
 @app.route("/api/backup")
 @app.route("/api/backup/download")
 @login_required
 def backup_automatico():
-    """
-    Gera backup e faz download. Apenas admin pode baixar.
-    """
-    # Verificar se é download (requer admin)
     if 'download' in request.path and current_user.perfil != 'admin':
         return "Acesso negado", 403
     
@@ -1429,17 +1443,14 @@ def backup_automatico():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Exportar usuários
         cursor.execute("SELECT id, usuario, nome, perfil, cras, primeiro_acesso FROM usuarios")
         usuarios_raw = cursor.fetchall()
         
-        # Exportar solicitações
         cursor.execute("SELECT * FROM solicitacoes")
         solicitacoes_raw = cursor.fetchall()
         
         conn.close()
         
-        # Converter para dicionários
         usuarios = []
         for u in usuarios_raw:
             usuarios.append({
@@ -1469,7 +1480,6 @@ def backup_automatico():
             'solicitacoes': solicitacoes
         }
         
-        # Salvar no disco
         backup_dir = '/opt/render/.data/backups'
         os.makedirs(backup_dir, exist_ok=True)
         
@@ -1479,14 +1489,12 @@ def backup_automatico():
         with open(caminho_completo, 'w', encoding='utf-8') as f:
             json.dump(backup, f, ensure_ascii=False, indent=2)
         
-        # Manter apenas os últimos 7 backups
         arquivos = sorted([f for f in os.listdir(backup_dir) if f.endswith('.json')], reverse=True)
         for arquivo_antigo in arquivos[7:]:
             os.remove(os.path.join(backup_dir, arquivo_antigo))
         
         logger.info(f"✅ Backup gerado: {nome_arquivo}")
         
-        # Se for rota de download, enviar arquivo
         if 'download' in request.path:
             return send_file(
                 caminho_completo,
@@ -1500,6 +1508,7 @@ def backup_automatico():
     except Exception as e:
         logger.error(f"❌ Erro no backup: {e}")
         return f"❌ Erro no backup: {e}", 500
+
 
 if __name__ == "__main__":
     criar_banco()
