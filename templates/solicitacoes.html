@@ -222,19 +222,11 @@ function filtrarTabela() {
 }
 
 // =============================================
-// MODAL DE ENTREGA - VERSÃO CORRIGIDA
+// MODAL DE ENTREGA
 // =============================================
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Página carregada - Sistema de entregas ativo");
-
-    // Verificar se os elementos do modal existem
-    const modalElement = document.getElementById('modalEntrega');
-    if (modalElement) {
-        console.log("Modal encontrado com sucesso");
-    } else {
-        console.error("ERRO: Modal não encontrado!");
-    }
 
     // Adicionar evento a todos os botões de registrar entrega
     const botoes = document.querySelectorAll('.btn-registrar-entrega');
@@ -324,7 +316,10 @@ if (modalElement) {
     });
 }
 
-// Validação do formulário
+// =============================================
+// VALIDAÇÃO E ENVIO DO FORMULÁRIO (CORRIGIDO)
+// =============================================
+
 const formEntrega = document.getElementById('formEntrega');
 if (formEntrega) {
     formEntrega.addEventListener('submit', function(e) {
@@ -348,7 +343,25 @@ if (formEntrega) {
             return false;
         }
 
+        // 🔧 FECHAR O MODAL ANTES DE ENVIAR
+        const modalElement = document.getElementById('modalEntrega');
+        if (modalElement) {
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.hide();
+            }
+        }
+        
+        // Remover backdrop e classe modal-open do body
+        setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            backdrops.forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+        }, 300);
+
         console.log("Formulário enviado para:", formEntrega.action);
+        // O formulário continuará o envio normalmente
     });
 }
 </script>
