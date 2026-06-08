@@ -277,6 +277,7 @@
     <small>Sistema de Controle de Entrega de Cestas Básicas</small>
 </footer>
 
+<!-- Modal Alterar Senha -->
 <div class="modal fade" id="alterarSenhaModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -286,7 +287,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('alterar_senha_simples') }}">
+            <form method="POST" action="/usuario/alterar_senha">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="senha_atual" class="form-label">Senha Atual</label>
@@ -295,7 +296,7 @@
                     <div class="mb-3">
                         <label for="nova_senha" class="form-label">Nova Senha</label>
                         <input type="password" class="form-control" id="nova_senha" name="nova_senha" required>
-                        <small class="text-muted">Mínimo de 4 caracteres</small>
+                        <small class="text-muted">Mínimo de 6 caracteres, 1 maiúscula e 1 número</small>
                     </div>
                     <div class="mb-3">
                         <label for="confirmar_senha" class="form-label">Confirmar Nova Senha</label>
