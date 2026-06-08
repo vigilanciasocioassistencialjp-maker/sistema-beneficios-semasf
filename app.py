@@ -5,6 +5,7 @@ from banco import criar_banco, get_db_connection
 import os
 import json
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 import bcrypt
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -12,19 +13,59 @@ from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 import io
 import qrcode
+import secrets
+import logging
+from logging.handlers import RotatingFileHandler
 
 # =====================================================
 # CONFIGURAÇÃO DO APP
 # =====================================================
 
 app = Flask(__name__)
-app.secret_key = "sistema_cestas"
+
+# 🔒 Secret key SEGURA (gerada automaticamente ou via variável de ambiente)
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
 
+# 🛡️ Configurar logs de segurança
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+handler = RotatingFileHandler('logs/auditoria.log', maxBytes=10000000, backupCount=5)
+handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%d/%m/%Y %H:%M:%S'
+))
+logger = logging.getLogger('auditoria')
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+# 🛡️ Dicionário para controle de tentativas de login (força bruta)
+tentativas_login = defaultdict(list)
+MAX_TENTATIVAS = 5
+BLOQUEIO_MINUTOS = 15
+
 # 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
 criar_banco()
+
+# =====================================================
+# FORÇAR HTTPS (quando no Render)
+# =====================================================
+
+@app.before_request
+def before_request():
+    """Força HTTPS e registra acessos"""
+    # Forçar HTTPS
+    if os.environ.get('RENDER') and not request.is_secure:
+        url = request.url.replace('http://', 'https://', 1)
+        return redirect(url, 301)
+    
+    # Registrar acesso para auditoria
+    if request.endpoint and request.endpoint != 'static':
+        usuario = current_user.id if current_user.is_authenticated else 'não autenticado'
+        logger.info(f"Acesso: {request.method} {request.path} | IP: {request.remote_addr} | Usuário: {usuario}")
 
 # =====================================================
 # CRIAR USUÁRIO ADMIN AUTOMATICAMENTE (Se não houver usuários)
@@ -42,8 +83,9 @@ def criar_admin_automatico():
         count = resultado[0] if resultado else 0
 
         if count == 0:
-            # Criar admin com senha 'admin123'
-            senha_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt())
+            # Criar admin com senha aleatória segura
+            senha_temporaria = secrets.token_urlsafe(8)
+            senha_hash = bcrypt.hashpw(senha_temporaria.encode('utf-8'), bcrypt.gensalt())
             
             sql = """
                 INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso)
@@ -53,8 +95,14 @@ def criar_admin_automatico():
             cursor.execute(sql, ('admin', 'Administrador', senha_hash.decode('utf-8'), 'admin', 1))
             conn.commit()
                 
-            print("✅ Usuário admin criado automaticamente no banco!")
-            print("Usuário: admin | Senha: admin123")
+            print("=" * 60)
+            print("✅ Usuário admin criado automaticamente!")
+            print(f"🔑 Usuário: admin")
+            print(f"🔑 Senha temporária: {senha_temporaria}")
+            print("⚠️  GUARDE ESTA SENHA! Ela será exigida apenas no primeiro acesso.")
+            print("=" * 60)
+            
+            logger.warning(f"Admin criado com senha temporária. Usuário: admin")
         else:
             print(f"✅ Banco já possui {count} usuário(s)")
 
@@ -62,6 +110,7 @@ def criar_admin_automatico():
         conn.close()
     except Exception as e:
         print(f"⚠️ Erro ao criar admin automático: {e}")
+        logger.error(f"Erro ao criar admin: {e}")
 
 # Executa a função uma única vez após a criação das tabelas
 criar_admin_automatico()
@@ -81,6 +130,8 @@ def get_db():
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+login_manager.login_message = "🔒 Faça login para acessar o sistema."
+login_manager.login_message_category = "warning"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -115,12 +166,25 @@ def formatar_data(data):
     return data
 
 # =====================================================
-# LOGIN
+# LOGIN (COM PROTEÇÃO CONTRA FORÇA BRUTA)
 # =====================================================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = None
+    ip = request.remote_addr
+    agora = datetime.now(FUSO_RONDONIA)
+    
+    # 🛡️ Limpar tentativas antigas (mais de 15 minutos)
+    tentativas_login[ip] = [t for t in tentativas_login[ip] if t > agora - timedelta(minutes=BLOQUEIO_MINUTOS)]
+    
+    # 🛡️ Verificar se IP está bloqueado
+    if len(tentativas_login[ip]) >= MAX_TENTATIVAS:
+        minutos_restantes = BLOQUEIO_MINUTOS - int((agora - tentativas_login[ip][0]).total_seconds() / 60)
+        logger.warning(f"IP bloqueado por excesso de tentativas: {ip}")
+        return render_template("login.html", 
+                             erro=f"⛔ Muitas tentativas! Aguarde {minutos_restantes} minutos e tente novamente.",
+                             bloqueado=True)
     
     if request.method == "POST":
         usuario = request.form["usuario"]
@@ -152,7 +216,14 @@ def login():
                     user = Usuario(usuario_banco, perfil_banco, cras_banco, nome_usuario)
                     login_user(user)
                     
+                    # 🛡️ Limpar tentativas do IP após login bem-sucedido
+                    if ip in tentativas_login:
+                        del tentativas_login[ip]
+                    
+                    logger.info(f"Login bem-sucedido: {usuario_banco} | IP: {ip} | Perfil: {perfil_banco}")
+                    
                     if primeiro_acesso == 1:
+                        flash("🔒 Primeiro acesso! Você precisa alterar sua senha.", "warning")
                         return redirect(url_for("trocar_senha", primeiro_acesso=True))
                     
                     if perfil_banco in ['admin', 'gestor']:
@@ -160,14 +231,28 @@ def login():
                     else:
                         return redirect(url_for("solicitacoes"))
                 else:
-                    erro = "❌ Senha incorreta! Tente novamente."
+                    tentativas_login[ip].append(agora)
+                    tentativas_restantes = MAX_TENTATIVAS - len(tentativas_login[ip])
+                    logger.warning(f"Senha incorreta: {usuario} | IP: {ip} | Tentativas restantes: {tentativas_restantes}")
+                    
+                    if tentativas_restantes > 0:
+                        erro = f"❌ Senha incorreta! Tentativas restantes: {tentativas_restantes}"
+                    else:
+                        erro = f"⛔ Conta bloqueada por 15 minutos. Muitas tentativas!"
             except Exception as e:
-                print(f"Erro ao verificar senha: {e}")
+                logger.error(f"Erro na autenticação: {e}")
                 erro = "❌ Erro na autenticação. Contate o administrador."
         else:
-            erro = "❌ Usuário não encontrado! Verifique seu login."
+            tentativas_login[ip].append(agora)
+            tentativas_restantes = MAX_TENTATIVAS - len(tentativas_login[ip])
+            logger.warning(f"Usuário não encontrado: {usuario} | IP: {ip}")
+            
+            if tentativas_restantes > 0:
+                erro = f"❌ Usuário não encontrado! Tentativas restantes: {tentativas_restantes}"
+            else:
+                erro = f"⛔ Conta bloqueada por 15 minutos. Muitas tentativas!"
     
-    return render_template("login.html", erro=erro)
+    return render_template("login.html", erro=erro, bloqueado=False)
 
 # =====================================================
 # TROCAR SENHA
@@ -187,10 +272,14 @@ def trocar_senha():
         
         if not nova_senha or not confirmar_senha:
             erro = "Preencha todos os campos!"
-        elif len(nova_senha) < 4:
-            erro = "A nova senha deve ter no mínimo 4 caracteres!"
+        elif len(nova_senha) < 6:
+            erro = "A nova senha deve ter no mínimo 6 caracteres!"
         elif nova_senha != confirmar_senha:
             erro = "A confirmação da senha não corresponde!"
+        elif not any(c.isupper() for c in nova_senha):
+            erro = "A senha deve conter pelo menos uma letra maiúscula!"
+        elif not any(c.isdigit() for c in nova_senha):
+            erro = "A senha deve conter pelo menos um número!"
         else:
             if not primeiro_acesso:
                 conexao = get_db()
@@ -224,9 +313,11 @@ def trocar_senha():
                 cursor.close()
                 conexao.close()
                 
+                logger.info(f"Senha alterada: {current_user.id}")
                 sucesso = "✅ Senha alterada com sucesso!"
                 
                 if primeiro_acesso:
+                    flash("Senha alterada com sucesso! Bem-vindo ao sistema.", "success")
                     if current_user.perfil in ['admin', 'gestor']:
                         return redirect(url_for("dashboard"))
                     else:
@@ -244,7 +335,9 @@ def trocar_senha():
 @app.route("/logout")
 @login_required
 def logout():
+    logger.info(f"Logout: {current_user.id}")
     logout_user()
+    flash("Você saiu do sistema.", "info")
     return redirect(url_for("login"))
 
 # =====================================================
@@ -261,6 +354,7 @@ def inicio():
         # Admin e Gestor podem cadastrar para qualquer CRAS
         if current_user.perfil not in ['admin', 'gestor']:
             if current_user.cras != cras_solicitacao:
+                logger.warning(f"Tentativa de acesso não autorizado: {current_user.id} para CRAS {cras_solicitacao}")
                 return "Você não tem permissão para cadastrar solicitações para este CRAS!", 403
         
         cpf = request.form["cpf"]
@@ -334,6 +428,7 @@ def inicio():
         conexao.commit()
         conexao.close()
         
+        logger.info(f"Solicitação cadastrada: Técnico={tecnico}, Beneficiário={nome}, CRAS={cras}")
         flash('Solicitação cadastrada com sucesso!', 'success')
         return redirect(url_for("solicitacoes"))
     
@@ -437,6 +532,8 @@ def ver_solicitacao(id):
         except:
             pass
     
+    logger.info(f"Visualização de solicitação ID={id} por {current_user.id}")
+    
     return render_template("ver_solicitacao.html", 
                          solicitacao=solicitacao, 
                          json=json, 
@@ -471,6 +568,8 @@ def gerar_pdf_assinatura(id):
     
     if not solicitacao:
         return "Solicitação não encontrada", 404
+    
+    logger.info(f"PDF gerado para solicitação ID={id} por {current_user.id}")
     
     # 🕐 Usando horário de Rondônia
     numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{solicitacao[0]:04d}"
@@ -646,8 +745,7 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
         else:
             if linha:
                 text_object.textLine(linha)
-            linha = palavra
-    if linha:
+            linha = palavra    if linha:
         text_object.textLine(linha)
     
     c.drawText(text_object)
@@ -769,7 +867,6 @@ def registrar_entrega(id):
     """, (status_entrega, data_entrega, current_user.id, id))
 
     if observacoes:
-        # PostgreSQL usa || para concatenar
         cursor.execute("""
             UPDATE solicitacoes 
             SET parecer = parecer || '\n\n--- OBSERVAÇÕES DA ENTREGA ---\n' || %s
@@ -778,6 +875,8 @@ def registrar_entrega(id):
 
     conexao.commit()
     conexao.close()
+
+    logger.info(f"Entrega registrada: ID={id}, Status={status_entrega}, Técnico={current_user.id}")
 
     if status_entrega == 'Entregue':
         flash(f'✅ Entrega registrada com sucesso! Cesta entregue para a família.', 'success')
@@ -994,6 +1093,7 @@ def relatorio():
 def novo_usuario():
     # Apenas ADMIN pode criar usuários
     if current_user.perfil != 'admin':
+        logger.warning(f"Tentativa de acesso não autorizado: {current_user.id} tentou criar usuário")
         flash("Acesso negado! Apenas administradores podem criar usuários.", "danger")
         return redirect(url_for("listar_usuarios"))
     
@@ -1010,12 +1110,16 @@ def novo_usuario():
         # Validações básicas
         if not usuario or not nome or not perfil or not senha:
             erro = "Todos os campos são obrigatórios!"
-        elif len(senha) < 4:
-            erro = "A senha deve ter no mínimo 4 caracteres!"
+        elif len(senha) < 6:
+            erro = "A senha deve ter no mínimo 6 caracteres!"
         elif perfil not in ['tecnico', 'gestor', 'admin']:
             erro = "Perfil inválido!"
         elif perfil == 'tecnico' and not cras:
             erro = "Técnico deve ter um CRAS de referência!"
+        elif not any(c.isupper() for c in senha):
+            erro = "A senha deve conter pelo menos uma letra maiúscula!"
+        elif not any(c.isdigit() for c in senha):
+            erro = "A senha deve conter pelo menos um número!"
         else:
             salt = bcrypt.gensalt()
             senha_hash = bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
@@ -1029,11 +1133,13 @@ def novo_usuario():
                     VALUES (%s, %s, %s, %s, %s, 1)
                 """, (usuario, nome, senha_hash, perfil, cras if perfil == 'tecnico' else None))
                 conexao.commit()
+                logger.info(f"Usuário criado: {usuario} por {current_user.id}")
                 sucesso = f"Usuário {usuario} criado com sucesso!"
             except Exception as e:
                 if "duplicate" in str(e).lower() or "unique" in str(e).lower():
                     erro = f"Usuário {usuario} já existe!"
                 else:
+                    logger.error(f"Erro ao criar usuário: {e}")
                     erro = f"Erro ao criar usuário: {e}"
             finally:
                 conexao.close()
@@ -1062,6 +1168,7 @@ def listar_usuarios():
 def excluir_usuario(id):
     # Apenas ADMIN pode excluir usuários
     if current_user.perfil != 'admin':
+        logger.warning(f"Tentativa de exclusão não autorizada por {current_user.id}")
         flash("Acesso negado! Apenas administradores podem excluir usuários.", "danger")
         return redirect(url_for("listar_usuarios"))
     
@@ -1088,6 +1195,7 @@ def excluir_usuario(id):
     conexao.commit()
     conexao.close()
     
+    logger.warning(f"Usuário excluído: {usuario[0]} por {current_user.id}")
     flash(f"Usuário {usuario[0]} excluído com sucesso!", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -1109,6 +1217,7 @@ def editar_usuario(id):
     conexao.commit()
     conexao.close()
     
+    logger.info(f"Usuário ID={id} atualizado por {current_user.id}")
     return redirect(url_for("listar_usuarios"))
 
 
@@ -1156,6 +1265,7 @@ def editar_perfil_usuario(id):
     conexao.commit()
     conexao.close()
     
+    logger.warning(f"Perfil do usuário ID={id} alterado para {novo_perfil} por {current_user.id}")
     flash(f"Perfil do usuário alterado para {novo_perfil}!", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -1183,9 +1293,9 @@ def alterar_senha_usuario(id):
     nova_senha = request.form.get("nova_senha", "")
     confirmar_senha = request.form.get("confirmar_senha", "")
     
-    if not nova_senha or len(nova_senha) < 4:
+    if not nova_senha or len(nova_senha) < 6:
         conexao.close()
-        flash("A nova senha deve ter no mínimo 4 caracteres!", "danger")
+        flash("A nova senha deve ter no mínimo 6 caracteres!", "danger")
         return redirect(url_for("listar_usuarios"))
     
     if nova_senha != confirmar_senha:
@@ -1214,6 +1324,7 @@ def alterar_senha_usuario(id):
     conexao.commit()
     conexao.close()
     
+    logger.info(f"Senha alterada para usuário ID={id}")
     flash("✅ Senha alterada com sucesso!", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -1229,7 +1340,7 @@ def resetar_senha_usuario(id):
         flash("Use a opção 'Alterar Senha' para modificar sua própria senha.", "warning")
         return redirect(url_for("listar_usuarios"))
     
-    nova_senha = "123456"
+    nova_senha = secrets.token_urlsafe(8)
     salt = bcrypt.gensalt()
     nova_senha_hash = bcrypt.hashpw(nova_senha.encode('utf-8'), salt).decode('utf-8')
     
@@ -1239,7 +1350,8 @@ def resetar_senha_usuario(id):
     conexao.commit()
     conexao.close()
     
-    flash(f"✅ Senha do usuário resetada para: 123456. O usuário deverá trocar a senha no próximo acesso.", "success")
+    logger.warning(f"Senha resetada para usuário ID={id} por {current_user.id}")
+    flash(f"✅ Senha resetada! Nova senha temporária: {nova_senha}", "success")
     return redirect(url_for("listar_usuarios"))
 
 
@@ -1264,9 +1376,9 @@ def alterar_senha_simples():
     nova_senha = request.form.get("nova_senha", "")
     confirmar_senha = request.form.get("confirmar_senha", "")
     
-    if not nova_senha or len(nova_senha) < 4:
+    if not nova_senha or len(nova_senha) < 6:
         conexao.close()
-        flash("A nova senha deve ter no mínimo 4 caracteres!", "danger")
+        flash("A nova senha deve ter no mínimo 6 caracteres!", "danger")
         return redirect(url_for("listar_usuarios"))
     
     if nova_senha != confirmar_senha:
@@ -1286,6 +1398,7 @@ def alterar_senha_simples():
     conexao.commit()
     conexao.close()
     
+    logger.info(f"Senha alterada pelo próprio usuário {current_user.id}")
     flash("✅ Senha alterada com sucesso!", "success")
     return redirect(url_for("listar_usuarios"))
 
