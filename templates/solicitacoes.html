@@ -317,51 +317,71 @@ if (modalElement) {
 }
 
 // =============================================
-// VALIDAÇÃO E ENVIO DO FORMULÁRIO (CORRIGIDO)
+// VALIDAÇÃO E ENVIO DO FORMULÁRIO (VIA AJAX)
 // =============================================
 
 const formEntrega = document.getElementById('formEntrega');
 if (formEntrega) {
     formEntrega.addEventListener('submit', function(e) {
+        e.preventDefault(); // IMPEDE o envio tradicional (recarregar página)
+        
         const status = document.getElementById('status_entrega').value;
         const data = document.getElementById('data_entrega').value;
+        const observacoes = document.getElementById('observacoes').value;
 
         if (!status) {
-            e.preventDefault();
             alert('Selecione o status da entrega!');
             return false;
         }
 
         if (!data) {
-            e.preventDefault();
             alert('Selecione a data da entrega!');
             return false;
         }
 
         if (!confirm('Confirmar registro da entrega? Esta ação não pode ser desfeita.')) {
-            e.preventDefault();
             return false;
         }
 
-        // 🔧 FECHAR O MODAL ANTES DE ENVIAR
+        // 🔧 FECHAR O MODAL IMEDIATAMENTE
         const modalElement = document.getElementById('modalEntrega');
-        if (modalElement) {
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) {
-                modal.hide();
-            }
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
         }
         
-        // Remover backdrop e classe modal-open do body
+        // Remover backdrop
         setTimeout(() => {
             const backdrops = document.querySelectorAll('.modal-backdrop');
             backdrops.forEach(backdrop => backdrop.remove());
             document.body.classList.remove('modal-open');
             document.body.style.overflow = '';
-        }, 300);
+        }, 150);
 
-        console.log("Formulário enviado para:", formEntrega.action);
-        // O formulário continuará o envio normalmente
+        // Enviar via AJAX
+        const formData = new FormData();
+        formData.append('status_entrega', status);
+        formData.append('data_entrega', data);
+        formData.append('observacoes', observacoes);
+
+        fetch(formEntrega.action, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.ok) {
+                // Recarregar a página após 500ms
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                alert('Erro ao registrar entrega. Tente novamente.');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            alert('Erro ao registrar entrega. Tente novamente.');
+        });
     });
 }
 </script>
