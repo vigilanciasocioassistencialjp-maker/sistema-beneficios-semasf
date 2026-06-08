@@ -31,6 +31,7 @@
                         <label class="form-label required">CPF</label>
                         <input type="text" name="cpf" class="form-control" id="cpf" required maxlength="14" minlength="14">
                         <small class="text-muted">Formato: 000.000.000-00</small>
+                        <div id="alertaCpf"></div>
                     </div>
 
                     <div class="col-md-3 mb-3">
@@ -469,6 +470,7 @@
         </form>
     </div>
 </div>
+{% endblock %}
 
 {% block extra_js %}
 <script>
@@ -479,13 +481,11 @@
         const nomeBeneficiario = document.querySelector('input[name="nome"]').value;
         const dataNascimento = document.getElementById('data_nascimento').value;
 
-        // Calcular idade
         let idade = '';
         if (dataNascimento) {
             const nascimento = new Date(dataNascimento);
             const hoje = new Date();
             idade = hoje.getFullYear() - nascimento.getFullYear();
-            // Ajusta se ainda não fez aniversário este ano
             const mesAniversario = nascimento.getMonth();
             const mesAtual = hoje.getMonth();
             if (mesAtual < mesAniversario || (mesAtual === mesAniversario && hoje.getDate() < nascimento.getDate())) {
@@ -493,7 +493,6 @@
             }
         }
 
-        // Atualizar o primeiro membro da família
         const primeiroNome = document.getElementById('membro_nome_0');
         const primeiraIdade = document.getElementById('membro_idade_0');
 
@@ -506,7 +505,6 @@
         }
     }
 
-    // Observar mudanças no nome e data de nascimento
     document.querySelector('input[name="nome"]').addEventListener('input', atualizarMembroPrincipal);
     document.getElementById('data_nascimento').addEventListener('change', atualizarMembroPrincipal);
     document.getElementById('data_nascimento').addEventListener('input', atualizarMembroPrincipal);
@@ -593,14 +591,12 @@
         "OUTRO MUNICÍPIO": "EQUIPE VOLANTE"
     };
 
-    // PREENCHER CRAS AUTOMATICAMENTE
     document.getElementById('bairro').addEventListener('change', function(e) {
         const bairroSelecionado = e.target.value;
         const crasElement = document.getElementById('cras');
 
         if (mapaBairrosCRAS[bairroSelecionado]) {
             crasElement.value = mapaBairrosCRAS[bairroSelecionado];
-
             crasElement.style.backgroundColor = '#e8f5e9';
             setTimeout(() => {
                 crasElement.style.backgroundColor = '';
@@ -608,7 +604,6 @@
         }
     });
 
-    // DATA ATUAL
     document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
 
     // MÁSCARAS
@@ -619,15 +614,6 @@
             value = value.replace(/(\d{3})(\d)/, '$1.$2');
             value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
             e.target.value = value;
-        }
-    });
-
-    document.getElementById('cpf').addEventListener('blur', function(e) {
-        let numeros = e.target.value.replace(/\D/g, '');
-        if (numeros.length !== 11) {
-            alert('CPF deve ter exatamente 11 dígitos');
-            e.target.value = '';
-            e.target.focus();
         }
     });
 
@@ -725,12 +711,8 @@
         });
     });
 
-    // Botão família unipessoal
     document.getElementById('btnUnipessoal').addEventListener('click', function() {
         const container = document.getElementById('composicaoFamiliar');
-        const primeiroMembro = container.querySelector('.membro-familia');
-
-        // Remove todos os membros adicionais
         const todosMembros = container.querySelectorAll('.membro-familia');
         for (let i = 1; i < todosMembros.length; i++) {
             todosMembros[i].remove();
@@ -751,10 +733,9 @@
             }
         }
 
-        // Atualiza o primeiro membro
         const primeiroNome = document.getElementById('membro_nome_0');
         const primeiraIdade = document.getElementById('membro_idade_0');
-        const primeiroVinculo = primeiroMembro.querySelector('select[name="membro_vinculo[]"]');
+        const primeiroVinculo = container.querySelector('select[name="membro_vinculo[]"]');
 
         if (primeiroNome) primeiroNome.value = nomeBeneficiario;
         if (primeiraIdade) primeiraIdade.value = idade;
@@ -764,109 +745,95 @@
 
         alert('✓ Composição familiar ajustada para família unipessoal (apenas o beneficiário)');
     });
-</script>
 
-// Validação de CPF
-function validarCPF(cpf) {
-    cpf = cpf.replace(/\D/g, '');
+    // =============================================
+    // VALIDAÇÃO DE CPF E VERIFICAÇÃO DE HISTÓRICO
+    // =============================================
     
-    if (cpf.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(cpf)) return false;
-    
-    let soma = 0;
-    for (let i = 0; i < 9; i++) {
-        soma += parseInt(cpf.charAt(i)) * (10 - i);
-    }
-    let resto = (soma * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(9))) return false;
-    
-    soma = 0;
-    for (let i = 0; i < 10; i++) {
-        soma += parseInt(cpf.charAt(i)) * (11 - i);
-    }
-    resto = (soma * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(10))) return false;
-    
-    return true;
-}
-
-// Verificar CPF ao perder o foco
-document.getElementById('cpf').addEventListener('blur', function() {
-    const cpf = this.value;
-    const alertaDiv = document.getElementById('alertaCpf');
-    
-    if (cpf.replace(/\D/g, '').length === 11) {
-        if (!validarCPF(cpf)) {
-            alertaDiv.innerHTML = `
-                <div class="alert alert-danger mt-2">
-                    ❌ CPF inválido! Verifique o número digitado.
-                </div>
-            `;
-            this.style.borderColor = 'red';
-        } else {
-            this.style.borderColor = 'green';
-            verificarHistoricoCPF(cpf.replace(/\D/g, ''));
+    function validarCPF(cpf) {
+        cpf = cpf.replace(/\D/g, '');
+        
+        if (cpf.length !== 11) return false;
+        if (/^(\d)\1{10}$/.test(cpf)) return false;
+        
+        let soma = 0;
+        for (let i = 0; i < 9; i++) {
+            soma += parseInt(cpf.charAt(i)) * (10 - i);
         }
+        let resto = (soma * 10) % 11;
+        if (resto === 10) resto = 0;
+        if (resto !== parseInt(cpf.charAt(9))) return false;
+        
+        soma = 0;
+        for (let i = 0; i < 10; i++) {
+            soma += parseInt(cpf.charAt(i)) * (11 - i);
+        }
+        resto = (soma * 10) % 11;
+        if (resto === 10) resto = 0;
+        if (resto !== parseInt(cpf.charAt(10))) return false;
+        
+        return true;
     }
-});
 
-// Verificar histórico do CPF
-function verificarHistoricoCPF(cpf) {
-    fetch(`/api/verificar_cpf/${cpf}`)
-        .then(response => response.json())
-        .then(data => {
-            const alertaDiv = document.getElementById('alertaCpf');
-            
-            if (data.erro) {
-                alertaDiv.innerHTML = `
-                    <div class="alert alert-danger mt-2">
-                        ❌ ${data.erro}
-                    </div>
-                `;
-                return;
-            }
-            
-            if (!data.valido) {
-                alertaDiv.innerHTML = `
-                    <div class="alert alert-danger mt-2">
-                        ❌ CPF inválido!
-                    </div>
-                `;
-                return;
-            }
-            
-            if (data.alerta === 'vermelho') {
-                alertaDiv.innerHTML = `
-                    <div class="alert alert-danger mt-2">
-                        🚨 <strong>ATENÇÃO!</strong> Este CPF já recebeu ${data.total_recebido} cesta(s).
-                        Última entrega há ${data.dias_desde_ultima} dias!
-                        ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
-                        ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
-                    </div>
-                `;
-            } else if (data.alerta === 'amarelo') {
-                alertaDiv.innerHTML = `
-                    <div class="alert alert-warning mt-2">
-                        ⚠️ Este CPF já recebeu ${data.total_recebido} cesta(s).
-                        ${data.ultima_entrega ? `Última: ${data.ultima_entrega}` : ''}
-                        ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
-                        ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
-                    </div>
-                `;
+    function verificarHistoricoCPF(cpf) {
+        fetch(`/api/verificar_cpf/${cpf}`)
+            .then(response => response.json())
+            .then(data => {
+                const alertaDiv = document.getElementById('alertaCpf');
+                
+                if (!alertaDiv) return;
+                
+                if (data.erro) {
+                    alertaDiv.innerHTML = `<div class="alert alert-danger mt-2">❌ ${data.erro}</div>`;
+                    return;
+                }
+                
+                if (!data.valido) {
+                    alertaDiv.innerHTML = `<div class="alert alert-danger mt-2">❌ CPF inválido!</div>`;
+                    document.getElementById('cpf').style.borderColor = 'red';
+                    return;
+                }
+                
+                document.getElementById('cpf').style.borderColor = 'green';
+                
+                if (data.alerta === 'vermelho') {
+                    alertaDiv.innerHTML = `
+                        <div class="alert alert-danger mt-2">
+                            🚨 <strong>ATENÇÃO!</strong> Este CPF já recebeu ${data.total_recebido} cesta(s).
+                            Última entrega há ${data.dias_desde_ultima} dias!
+                            ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
+                            ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
+                        </div>`;
+                } else if (data.alerta === 'amarelo') {
+                    alertaDiv.innerHTML = `
+                        <div class="alert alert-warning mt-2">
+                            ⚠️ Este CPF já recebeu ${data.total_recebido} cesta(s).
+                            ${data.ultima_entrega ? `Última: ${data.ultima_entrega}` : ''}
+                            ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
+                            ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
+                        </div>`;
+                } else {
+                    alertaDiv.innerHTML = `<div class="alert alert-success mt-2">✅ Primeira solicitação para este CPF.</div>`;
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+            });
+    }
+
+    // Evento de validação ao sair do campo CPF
+    document.getElementById('cpf').addEventListener('blur', function() {
+        const cpfLimpo = this.value.replace(/\D/g, '');
+        
+        if (cpfLimpo.length === 11) {
+            if (!validarCPF(this.value)) {
+                document.getElementById('alertaCpf').innerHTML = `
+                    <div class="alert alert-danger mt-2">❌ CPF inválido! Verifique o número digitado.</div>`;
+                this.style.borderColor = 'red';
             } else {
-                alertaDiv.innerHTML = `
-                    <div class="alert alert-success mt-2">
-                        ✅ Primeira solicitação para este CPF.
-                    </div>
-                `;
+                verificarHistoricoCPF(cpfLimpo);
             }
-        })
-        .catch(error => {
-            console.error('Erro:', error);
-        });
-}
-
-{% endblock %}
+        }
+    });
+</script>
 {% endblock %}
