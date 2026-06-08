@@ -4,7 +4,7 @@ from usuarios import Usuario, carregar_usuario
 from banco import criar_banco, get_db_connection
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import bcrypt
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -19,6 +19,9 @@ import qrcode
 
 app = Flask(__name__)
 app.secret_key = "sistema_cestas"
+
+# 🕐 Fuso horário de Brasília (UTC-3)
+FUSO_BRASILIA = timezone(timedelta(hours=-3))
 
 # 🔧 CRIAR BANCO DE DADOS SE NÃO EXISTIR
 criar_banco()
@@ -306,7 +309,7 @@ def inicio():
         parecer = request.form.get("parecer", "")
         
         tecnico = current_user.id
-        data_solicitacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        data_solicitacao = datetime.now(FUSO_BRASILIA).strftime("%d/%m/%Y %H:%M:%S")
         
         conexao = get_db()
         cursor = conexao.cursor()
@@ -459,7 +462,8 @@ def gerar_pdf_assinatura(id):
     if not solicitacao:
         return "Solicitação não encontrada", 404
     
-    numero_controle = f"CB-{datetime.now().strftime('%Y%m%d')}-{solicitacao[0]:04d}"
+    # 🕐 Usando horário de Brasília
+    numero_controle = f"CB-{datetime.now(FUSO_BRASILIA).strftime('%Y%m%d')}-{solicitacao[0]:04d}"
     
     qr_data = f"""Solicitação: {numero_controle}
 Beneficiário: {solicitacao[2]}
@@ -493,7 +497,8 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     
     c.setFont("Helvetica", 9)
     c.drawString(2*cm, y_position - 1.3*cm, f"Nº de Controle: {numero_controle}")
-    c.drawString(2*cm, y_position - 1.8*cm, f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    # 🕐 Data de Emissão com horário de Brasília
+    c.drawString(2*cm, y_position - 1.8*cm, f"Data de Emissão: {datetime.now(FUSO_BRASILIA).strftime('%d/%m/%Y %H:%M')}")
     
     qr_path = io.BytesIO()
     qr_img.save(qr_path, 'PNG')
@@ -671,7 +676,8 @@ Técnico Entrega: {solicitacao[19] if solicitacao[19] else solicitacao[18]}"""
     
     c.setFont("Helvetica", 8)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(2*cm, 1*cm, f"Documento gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}")
+    # 🕐 Rodapé com horário de Brasília
+    c.drawString(2*cm, 1*cm, f"Documento gerado em {datetime.now(FUSO_BRASILIA).strftime('%d/%m/%Y às %H:%M:%S')}")
     c.drawString(2*cm, 0.5*cm, "Este documento deve ser assinado pelo beneficiário e pelo técnico responsável pela entrega.")
     
     c.save()
@@ -806,7 +812,8 @@ def dashboard():
 @app.route("/relatorio")
 @login_required
 def relatorio():
-    mes = request.args.get('mes', datetime.now().strftime('%Y-%m'))
+    # 🕐 Usando horário de Brasília
+    mes = request.args.get('mes', datetime.now(FUSO_BRASILIA).strftime('%Y-%m'))
     ano = mes[:4]
     mes_num = mes[5:7]
 
@@ -923,7 +930,8 @@ def relatorio():
     # 8. Lista de meses
     lista_meses = []
     for i in range(12):
-        data = datetime.now().replace(day=1)
+        # 🕐 Usando horário de Brasília
+        data = datetime.now(FUSO_BRASILIA).replace(day=1)
         if i > 0:
             if data.month > 1:
                 data = data.replace(month=data.month - 1)
