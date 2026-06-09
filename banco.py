@@ -84,10 +84,24 @@ def criar_banco():
                 status TEXT DEFAULT 'Cadastrada',
                 data_solicitacao TEXT,
                 data_entrega TEXT,
-                tecnico_entrega TEXT
+                tecnico_entrega TEXT,
+                excecao_art64 BOOLEAN DEFAULT FALSE
             )
         ''')
         
+        # =====================================================
+        # MIGRAÇÃO: Adiciona excecao_art64 se a tabela já existe
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'solicitacoes' AND column_name = 'excecao_art64'
+        """)
+        if not cursor.fetchone():
+            print("⚠️  Coluna excecao_art64 não encontrada. Adicionando...")
+            cursor.execute("ALTER TABLE solicitacoes ADD COLUMN excecao_art64 BOOLEAN DEFAULT FALSE")
+            print("✅ Coluna excecao_art64 adicionada!")
+
         # =====================================================
         # MIGRAÇÃO: Adiciona cpf_hash se a tabela já existe
         # sem a coluna (bancos criados antes da criptografia)
