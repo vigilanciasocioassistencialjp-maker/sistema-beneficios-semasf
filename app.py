@@ -414,9 +414,9 @@ def ver_solicitacao(id):
     if not s: return "Não encontrada", 404
     
     s = list(s)
-    # Descriptografar e formatar CPF (índice 2)
     if s[2]:
-        s[2] = formatar_cpf(descriptografar_cpf(s[2]))
+        cpf_real = descriptografar_cpf(s[2])
+        s[2] = formatar_cpf(cpf_real)
     
     return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
 
