@@ -216,7 +216,9 @@ def enviar_backup_email():
         parte.add_header('Content-Disposition', f'attachment; filename="{nome_arquivo}"')
         msg.attach(parte)
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as servidor:
+        with smtplib.SMTP('smtp.gmail.com', 587) as servidor:
+            servidor.ehlo()
+            servidor.starttls()
             servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
             servidor.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
 
