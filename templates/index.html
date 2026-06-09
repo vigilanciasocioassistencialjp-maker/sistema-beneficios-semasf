@@ -835,5 +835,15 @@
             }
         }
     });
+
+// CORREÇÃO: Impedir loop no submit
+document.getElementById('solicitacaoForm').addEventListener('submit', function(e) {
+    // Garantir que data_escuta tenha um valor
+    if (!document.getElementById('data_escuta').value) {
+        document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
+    }
+    // Permitir envio normalmente
+    return true;
+});
 </script>
 {% endblock %}
