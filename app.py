@@ -53,16 +53,22 @@ def descriptografar_cpf(cpf_cripto):
     """Descriptografa o CPF para mostrar na tela"""
     if not cpf_cripto:
         return cpf_cripto
+    
+    # Se já for um CPF em texto plano (11 dígitos), retorna ele mesmo
+    cpf_limpo = ''.join(filter(str.isdigit, str(cpf_cripto)))
+    if len(cpf_limpo) == 11:
+        return cpf_limpo
+    
+    # Tenta descriptografar
     try:
-        # Tenta descriptografar
-        valor = fernet.decrypt(cpf_cripto.encode()).decode()
-        # Se conseguiu e parece um CPF (11 dígitos), retorna
+        valor = fernet.decrypt(str(cpf_cripto).encode()).decode()
+        # Verifica se o resultado parece um CPF
         if len(valor) == 11 and valor.isdigit():
             return valor
-        # Se não parece CPF, retorna o original
         return cpf_cripto
-    except:
-        # Se falhar (CPF antigo não criptografado), retorna como está
+    except Exception as e:
+        # Se falhar, retorna como está
+        print(f"Erro ao descriptografar: {e}")
         return cpf_cripto
 
 def formatar_cpf(cpf):
