@@ -115,7 +115,26 @@ def criar_banco():
             print("⚠️  Coluna cpf_hash não encontrada. Adicionando...")
             cursor.execute("ALTER TABLE solicitacoes ADD COLUMN cpf_hash TEXT")
             print("✅ Coluna cpf_hash adicionada!")
-        
+
+        # Tabela de configurações do sistema
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS configuracoes (
+                chave TEXT PRIMARY KEY,
+                valor TEXT NOT NULL,
+                descricao TEXT,
+                atualizado_em TEXT
+            )
+        ''')
+
+        # Inserir salário mínimo padrão se ainda não existir
+        cursor.execute("""
+            INSERT INTO configuracoes (chave, valor, descricao, atualizado_em)
+            VALUES ('salario_minimo', '1621.00', 'Salário mínimo nacional vigente (R$)', NOW()::text)
+            ON CONFLICT (chave) DO UPDATE
+                SET valor = '1621.00', atualizado_em = NOW()::text
+                WHERE configuracoes.valor = '1518.00'
+        """)
+
         conn.commit()
         cursor.close()
         conn.close()
