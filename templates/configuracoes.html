@@ -114,6 +114,34 @@
             </div>
         </div>
 
+        <!-- Backup -->
+        <div class="card border-success mt-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-database"></i> Backup dos Dados</h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <p class="mb-1">O backup automático é enviado por e-mail <strong>todo dia à meia-noite</strong> (horário de Rondônia).</p>
+                        <p class="mb-1 text-muted small">
+                            <i class="fas fa-envelope"></i>
+                            Enviado de <strong>sistema.cestas.semasf@gmail.com</strong> para o mesmo endereço.
+                        </p>
+                        <p class="mb-0 text-muted small">
+                            <i class="fas fa-info-circle"></i>
+                            O arquivo é compactado (.json.gz). Para abrir, descompacte e abra com qualquer editor de texto.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="/api/backup" class="btn btn-success"
+                           onclick="return confirm('Enviar backup agora por e-mail?')">
+                            <i class="fas fa-paper-plane"></i> Enviar Backup Agora
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
