@@ -412,7 +412,7 @@ def solicitacoes(pagina=1):
     offset = (pagina - 1) * registros_por_pagina
     conexao = get_db()
     cursor = conexao.cursor()
-    if current_user.perfil in ['admin', 'gestor']:
+    if current_user.perfil in ['admin', 'gestor', 'creas']:
         cursor.execute("SELECT COUNT(*) FROM solicitacoes")
         total_registros = cursor.fetchone()[0]
         cursor.execute("SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status FROM solicitacoes ORDER BY id DESC LIMIT %s OFFSET %s", (registros_por_pagina, offset))
@@ -1162,6 +1162,9 @@ def listar_usuarios():
 def novo_usuario():
     if request.method == "POST":
         senha = request.form.get("senha", "")
+        perfil = request.form.get("perfil", "")
+        # CRAS só faz sentido para técnico de CRAS; demais perfis ficam NULL
+        cras = request.form.get("cras") if perfil == "tecnico" else None
         if len(senha) < 6:
             flash("Mínimo 6 caracteres!", "danger")
         else:
@@ -1169,7 +1172,10 @@ def novo_usuario():
             conexao = get_db()
             cursor = conexao.cursor()
             try:
-                cursor.execute("INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso) VALUES (%s,%s,%s,%s,%s,1)", (request.form.get("usuario"), request.form.get("nome"), hash_senha, request.form.get("perfil"), request.form.get("cras")))
+                cursor.execute(
+                    "INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso) VALUES (%s,%s,%s,%s,%s,1)",
+                    (request.form.get("usuario"), request.form.get("nome"), hash_senha, perfil, cras)
+                )
                 conexao.commit()
                 flash("✅ Usuário criado!", 'success')
             except:
