@@ -385,6 +385,13 @@ def inicio():
         
         # Exceção Art. 64 - concessão fora dos critérios ordinários
         excecao_art64 = request.form.get("excecao_art64") == "1"
+
+        # Validação server-side: renda per capita vs critério legal
+        salario_minimo = get_salario_minimo()
+        limite_rpc = salario_minimo / 4
+        if renda_per_capita > limite_rpc and not excecao_art64:
+            flash(f'❌ Renda per capita (R$ {renda_per_capita:.2f}) ultrapassa o limite legal de R$ {limite_rpc:.2f} (1/4 do salário mínimo). Marque a exceção do Art. 64 para prosseguir.', 'danger')
+            return render_template("index.html", sucesso=False)
         
         tecnico = current_user.id
         data_solic = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
@@ -1234,6 +1241,70 @@ def alterar_senha_simples():
     conexao.close()
     flash("✅ Senha alterada!", 'success')
     return redirect(url_for("listar_usuarios"))
+
+# =====================================================
+# CONFIGURAÇÕES DO SISTEMA
+# =====================================================
+
+def get_salario_minimo():
+    """Busca o salário mínimo vigente do banco de dados"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT valor FROM configuracoes WHERE chave = 'salario_minimo'")
+        row = cursor.fetchone()
+        conn.close()
+        return float(row[0]) if row else 1621.00
+    except:
+        return 1518.00
+
+@app.route("/api/configuracoes")
+@login_required
+def api_configuracoes():
+    """Retorna configurações públicas para uso no frontend"""
+    salario = get_salario_minimo()
+    return jsonify({
+        'salario_minimo': salario,
+        'limite_renda_per_capita': round(salario / 4, 2)
+    })
+
+@app.route("/configuracoes", methods=["GET", "POST"])
+@login_required
+def configuracoes():
+    if current_user.perfil != 'admin':
+        return redirect(url_for("dashboard"))
+    conn = get_db()
+    cursor = conn.cursor()
+    erro = sucesso = None
+    if request.method == "POST":
+        novo_salario = request.form.get("salario_minimo", "").strip().replace(",", ".")
+        try:
+            valor = float(novo_salario)
+            if valor <= 0:
+                raise ValueError
+            from datetime import datetime
+            cursor.execute("""
+                INSERT INTO configuracoes (chave, valor, descricao, atualizado_em)
+                VALUES ('salario_minimo', %s, 'Salário mínimo nacional vigente (R$)', %s)
+                ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = EXCLUDED.atualizado_em
+            """, (str(valor), datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')))
+            conn.commit()
+            logger.info(f"Salário mínimo atualizado para R$ {valor} por {current_user.id}")
+            sucesso = f"✅ Salário mínimo atualizado para R$ {valor:.2f}! Novo limite de renda per capita: R$ {valor/4:.2f}"
+        except ValueError:
+            erro = "❌ Valor inválido. Digite um número positivo (ex: 1518.00)"
+    cursor.execute("SELECT chave, valor, descricao, atualizado_em FROM configuracoes ORDER BY chave")
+    configs = cursor.fetchall()
+    conn.close()
+    salario = get_salario_minimo()
+    return render_template("configuracoes.html",
+        configs=configs,
+        salario_minimo=salario,
+        limite_rpc=round(salario / 4, 2),
+        erro=erro,
+        sucesso=sucesso,
+        current_user=current_user
+    )
 
 # =====================================================
 # BACKUP
