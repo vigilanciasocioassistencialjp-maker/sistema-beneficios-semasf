@@ -488,13 +488,35 @@ def gerar_pdf_assinatura(id):
     cursor = conexao.cursor()
     cursor.execute("""
         SELECT 
-            s.id, s.tecnico, s.nome, s.cpf, s.data_nascimento, s.telefone,
-            s.endereco, s.numero, s.bairro, s.cras, s.renda_bruta,
-            s.renda_per_capita, s.parecer, s.status, s.data_escuta,
-            s.data_solicitacao, u_escuta.nome as tecnico_nome,
-            s.data_entrega, s.tecnico_entrega, u_entrega.nome as tecnico_entrega_nome,
-            s.composicao_familiar, s.beneficios, s.vulnerabilidade, s.servicos_suas,
-            s.total_pessoas
+            s.id,                       
+            s.tecnico,                  
+            s.nome,                     
+            s.cpf,                      
+            s.data_nascimento,          
+            s.telefone,                 
+            s.endereco,                 
+            s.numero,                   
+            s.bairro,                   
+            s.cras,                     
+            s.renda_bruta,              
+            s.renda_per_capita,         
+            s.parecer,                  
+            s.status,                   
+            s.data_escuta,              
+            s.data_solicitacao,         
+            u_escuta.nome as tecnico_nome,          
+            s.data_entrega,             
+            s.tecnico_entrega,          
+            u_entrega.nome as tecnico_entrega_nome,
+            s.composicao_familiar,      
+            s.beneficios,               
+            s.vulnerabilidade,          
+            s.servicos_suas,            
+            s.total_pessoas,            
+            s.cep,                      -- ÍNDICE 25
+            s.referencia,               -- ÍNDICE 26
+            s.complemento,              -- ÍNDICE 27
+            s.email                     -- ÍNDICE 28
         FROM solicitacoes s
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
@@ -507,11 +529,42 @@ def gerar_pdf_assinatura(id):
     if not s:
         return "Solicitação não encontrada", 404
     
+    # Mapeamento claro dos índices (DOCUMENTAÇÃO)
+    ID = 0
+    TECNICO = 1
+    NOME = 2
+    CPF = 3
+    DATA_NASC = 4
+    TELEFONE = 5
+    ENDERECO = 6
+    NUMERO = 7
+    BAIRRO = 8
+    CRAS = 9
+    RENDA_BRUTA = 10
+    RENDA_PER_CAPITA = 11
+    PARECER = 12
+    STATUS = 13
+    DATA_ESCUTA = 14
+    DATA_SOLICITACAO = 15
+    TECNICO_NOME = 16
+    DATA_ENTREGA = 17
+    TECNICO_ENTREGA = 18
+    TECNICO_ENTREGA_NOME = 19
+    COMPOSICAO_FAMILIAR = 20
+    BENEFICIOS = 21
+    VULNERABILIDADE = 22
+    SERVICOS_SUAS = 23
+    TOTAL_PESSOAS = 24
+    CEP = 25
+    REFERENCIA = 26
+    COMPLEMENTO = 27
+    EMAIL = 28
+    
     # Descriptografar CPF
-    cpf_pdf = formatar_cpf(descriptografar_cpf(s[3])) if s[3] else 'N/A'
+    cpf_pdf = formatar_cpf(descriptografar_cpf(s[CPF])) if s[CPF] else 'N/A'
     
     # Formatar data de nascimento
-    data_nasc = s[4] if s[4] else 'N/A'
+    data_nasc = s[DATA_NASC] if s[DATA_NASC] else 'N/A'
     if data_nasc != 'N/A' and '-' in str(data_nasc):
         try:
             partes = str(data_nasc).split('-')
@@ -521,7 +574,7 @@ def gerar_pdf_assinatura(id):
             pass
     
     # Formatar data da escuta
-    data_escuta = s[14] if s[14] else 'N/A'
+    data_escuta = s[DATA_ESCUTA] if s[DATA_ESCUTA] else 'N/A'
     if data_escuta != 'N/A' and '-' in str(data_escuta):
         try:
             partes = str(data_escuta).split('-')
@@ -530,10 +583,10 @@ def gerar_pdf_assinatura(id):
         except:
             pass
     
-    # Formatar data da entrega (se existir)
+    # Formatar data da entrega
     data_entrega_pdf = '___/___/_______'
-    if s[17]:
-        data_entrega_pdf = str(s[17])
+    if s[DATA_ENTREGA]:
+        data_entrega_pdf = str(s[DATA_ENTREGA])
         if '-' in data_entrega_pdf:
             try:
                 partes = data_entrega_pdf.split('-')
@@ -542,13 +595,19 @@ def gerar_pdf_assinatura(id):
             except:
                 pass
     
-    numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{s[0]:04d}"
+    # Formatar CEP
+    cep_valor = s[CEP] if s[CEP] else ''
+    if cep_valor and len(str(cep_valor)) == 8:
+        cep_formatado = f"{str(cep_valor)[:5]}-{str(cep_valor)[5:]}"
+    else:
+        cep_formatado = 'N/A'
+    
+    numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{s[ID]:04d}"
     
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     
-    # Função auxiliar para verificar espaço na página
     def check_space(needed, current_y, c_obj, margin_bottom=2*cm):
         if current_y - needed < margin_bottom:
             c_obj.showPage()
@@ -557,9 +616,7 @@ def gerar_pdf_assinatura(id):
     
     y = height - 2*cm
     
-    # =============================================
     # CABEÇALHO
-    # =============================================
     c.setFont("Helvetica-Bold", 14)
     c.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
     y -= 0.6*cm
@@ -572,15 +629,12 @@ def gerar_pdf_assinatura(id):
     c.line(2*cm, y, width - 2*cm, y)
     y -= 0.6*cm
     
-    # Nº Controle e Data
     c.setFont("Helvetica-Bold", 10)
     c.drawString(2*cm, y, f"Nº de Controle: {numero_controle}")
     c.drawString(10*cm, y, f"Data de Emissão: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
     y -= 0.8*cm
     
-    # =============================================
     # 1. DADOS DO BENEFICIÁRIO
-    # =============================================
     y = check_space(5*cm, y, c)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.4, 0)
@@ -590,19 +644,18 @@ def gerar_pdf_assinatura(id):
     
     c.setFont("Helvetica", 10)
     dados = [
-        ("Nome:", s[2] if s[2] else 'N/A'),
+        ("Nome:", s[NOME] if s[NOME] else 'N/A'),
         ("CPF:", cpf_pdf),
         ("Data de Nascimento:", data_nasc),
-        ("Telefone:", s[5] if s[5] else 'N/A'),
+        ("Telefone:", s[TELEFONE] if s[TELEFONE] else 'N/A'),
+        ("Email:", s[EMAIL] if s[EMAIL] else 'N/A'),
     ]
     for label, valor in dados:
         c.drawString(2.5*cm, y, f"{label} {valor}")
         y -= 0.45*cm
     y -= 0.2*cm
     
-    # =============================================
     # 2. COMPOSIÇÃO FAMILIAR
-    # =============================================
     y = check_space(8*cm, y, c)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.4, 0)
@@ -611,43 +664,38 @@ def gerar_pdf_assinatura(id):
     y -= 0.6*cm
     
     c.setFont("Helvetica", 10)
-    total_pessoas = s[24] if s[24] and s[24] > 0 else 1
+    total_pessoas = s[TOTAL_PESSOAS] if s[TOTAL_PESSOAS] and s[TOTAL_PESSOAS] > 0 else 1
     c.drawString(2.5*cm, y, f"Total de pessoas: {total_pessoas}")
     y -= 0.5*cm
     
-    # Listar membros da família
-    comp_familiar = s[20] if s[20] else '[]'
+    comp_familiar = s[COMPOSICAO_FAMILIAR] if s[COMPOSICAO_FAMILIAR] else '[]'
     try:
         membros = json.loads(comp_familiar)
         if membros:
-            # Cabeçalho da tabela
             c.setFont("Helvetica-Bold", 9)
             c.drawString(3*cm, y, "Nome")
             c.drawString(9*cm, y, "Idade")
             c.drawString(13*cm, y, "Vínculo")
             y -= 0.4*cm
             c.setFont("Helvetica", 9)
-            for membro in membros[:8]:  # Limitar a 8 membros para não estourar página
+            for membro in membros[:8]:
                 if y < 5*cm:
                     c.showPage()
                     y = height - 2*cm
-                c.drawString(3*cm, y, (membro.get('nome', '')[:25]))  # Limitar tamanho
+                c.drawString(3*cm, y, (membro.get('nome', '')[:25]))
                 c.drawString(9*cm, y, str(membro.get('idade', '')))
                 c.drawString(13*cm, y, (membro.get('vinculo', '')[:15]))
                 y -= 0.35*cm
         else:
             c.drawString(2.5*cm, y, "Família unipessoal")
             y -= 0.35*cm
-    except Exception as e:
-        print(f"Erro ao parsear JSON: {e}")
+    except:
         c.drawString(2.5*cm, y, "Não informado")
         y -= 0.35*cm
     y -= 0.2*cm
     
-    # =============================================
-    # 3. ENDEREÇO
-    # =============================================
-    y = check_space(5*cm, y, c)
+    # 3. ENDEREÇO - CORRIGIDO!
+    y = check_space(7*cm, y, c)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.4, 0)
     c.drawString(2*cm, y, "3. ENDEREÇO")
@@ -655,23 +703,28 @@ def gerar_pdf_assinatura(id):
     y -= 0.6*cm
     
     c.setFont("Helvetica", 10)
-    endereco_completo = f"{s[6] if s[6] else ''}, {s[7] if s[7] else 'S/N'}"
-    if s[8]: endereco_completo += f" - {s[8]}"
+    
+    endereco = s[ENDERECO] if s[ENDERECO] else ''
+    numero = s[NUMERO] if s[NUMERO] else 'S/N'
+    complemento = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
+    endereco_completo = f"{endereco}, {numero}"
+    if complemento:
+        endereco_completo += f" - {complemento}"
+    
+    # CORRIGIDO: Usando a variável cep_formatado
     endereco_dados = [
-        ("Endereço:", endereco_completo[:60]),  # Limitar tamanho
-        ("Bairro:", s[8] if s[8] else 'N/A'),
-        ("CEP:", s[11] if s[11] else 'N/A'),
-        ("Referência:", (s[12] if s[12] else 'N/A')[:50]),
-        ("CRAS:", s[9] if s[9] else 'N/A'),
+        ("Endereço:", endereco_completo[:60]),
+        ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
+        ("CEP:", cep_formatado),  # AGORA CORRETO!
+        ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),  # AGORA CORRETO!
+        ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
     ]
     for label, valor in endereco_dados:
         c.drawString(2.5*cm, y, f"{label} {valor}")
         y -= 0.45*cm
     y -= 0.2*cm
     
-    # =============================================
     # 4. INFORMAÇÕES SOCIOECONÔMICAS
-    # =============================================
     y = check_space(6*cm, y, c)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.4, 0)
@@ -680,24 +733,27 @@ def gerar_pdf_assinatura(id):
     y -= 0.6*cm
     
     c.setFont("Helvetica", 10)
-    renda_bruta = f"R$ {float(s[10]):.2f}" if s[10] and float(s[10]) > 0 else 'N/A'
-    renda_per_capita = f"R$ {float(s[11]):.2f}" if s[11] and float(s[11]) > 0 else 'N/A'
+    
+    renda_bruta_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
+    renda_per_capita_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
+    
+    renda_bruta = f"R$ {float(renda_bruta_val):.2f}" if renda_bruta_val > 0 else 'N/A'
+    renda_per_capita = f"R$ {float(renda_per_capita_val):.2f}" if renda_per_capita_val > 0 else 'N/A'
+    
     socio_dados = [
         ("Renda Bruta Familiar:", renda_bruta),
         ("Renda Per Capita:", renda_per_capita),
-        ("Benefícios:", (s[21] if s[21] else 'Nenhum')[:50]),
-        ("Vulnerabilidades:", (s[22] if s[22] else 'Não informado')[:50]),
-        ("Serviços SUAS:", (s[23] if s[23] else 'Não informado')[:50]),
+        ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
+        ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
+        ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
     ]
     for label, valor in socio_dados:
         c.drawString(2.5*cm, y, f"{label} {valor}")
         y -= 0.45*cm
     y -= 0.2*cm
     
-    # =============================================
     # 5. REGISTRO DE ATENDIMENTO
-    # =============================================
-    y = check_space(5*cm, y, c)
+    y = check_space(4*cm, y, c)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.4, 0)
     c.drawString(2*cm, y, "5. REGISTRO DE ATENDIMENTO")
@@ -705,21 +761,18 @@ def gerar_pdf_assinatura(id):
     y -= 0.6*cm
     
     c.setFont("Helvetica", 10)
-    tecnico_escuta = s[16] if s[16] else s[1]
+    tecnico_escuta = s[TECNICO_NOME] if s[TECNICO_NOME] else s[TECNICO]
     atd_dados = [
         ("Técnico que realizou a Escuta:", tecnico_escuta),
         ("Data da Escuta Técnica:", data_escuta),
-        ("Data da Solicitação:", s[15] if s[15] else 'N/A'),
-        ("Status:", s[13] if s[13] else 'N/A'),
+        ("Status:", s[STATUS] if s[STATUS] else 'N/A'),
     ]
     for label, valor in atd_dados:
         c.drawString(2.5*cm, y, f"{label} {valor}")
         y -= 0.45*cm
     y -= 0.2*cm
     
-    # =============================================
     # 6. PARECER TÉCNICO
-    # =============================================
     y = check_space(5*cm, y, c)
     
     c.setFont("Helvetica-Bold", 11)
@@ -729,14 +782,12 @@ def gerar_pdf_assinatura(id):
     y -= 0.6*cm
     
     c.setFont("Helvetica", 9)
-    parecer = s[12] if s[12] else 'Sem parecer técnico registrado.'
+    parecer = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
     
-    # Desenhar texto com quebra automática
     text_object = c.beginText(2.5*cm, y)
     text_object.setFont("Helvetica", 9)
     max_width = width - 5*cm
     
-    # Dividir o texto em linhas
     palavras = parecer.split()
     linha = ""
     for palavra in palavras:
@@ -746,7 +797,6 @@ def gerar_pdf_assinatura(id):
         else:
             text_object.textLine(linha)
             linha = palavra
-            # Verificar espaço na página
             if text_object.getY() < 4*cm:
                 c.drawText(text_object)
                 c.showPage()
@@ -757,9 +807,7 @@ def gerar_pdf_assinatura(id):
     c.drawText(text_object)
     y = text_object.getY() - 1*cm
     
-    # =============================================
     # 7. ASSINATURAS
-    # =============================================
     if y < 8*cm:
         c.showPage()
         y = height - 2*cm
@@ -772,32 +820,26 @@ def gerar_pdf_assinatura(id):
     c.setFillColorRGB(0, 0, 0)
     y -= 0.8*cm
     
-    # Data da entrega
     c.setFont("Helvetica-Bold", 10)
     c.drawString(2*cm, y, f"Data da Entrega: {data_entrega_pdf}")
     y -= 1.2*cm
     
-    # Linha de assinatura do beneficiário
     c.setFont("Helvetica", 10)
     c.line(2*cm, y, 9.5*cm, y)
     c.drawString(2*cm, y - 0.4*cm, "Assinatura do Beneficiário")
     
-    # Linha de assinatura do técnico
     c.line(10.5*cm, y, 19*cm, y)
     c.drawString(10.5*cm, y - 0.4*cm, "Técnico Responsável pela Entrega")
     
     y -= 2.5*cm
     
-    # Carimbo do CRAS
     if y > 3*cm:
         c.rect(2*cm, y - 1.5*cm, 6*cm, 2*cm)
         c.setFont("Helvetica", 8)
         c.drawString(2.3*cm, y - 0.5*cm, "CARIMBO DO CRAS")
-        c.drawString(2.3*cm, y - 0.9*cm, s[9] if s[9] else '')
+        c.drawString(2.3*cm, y - 0.9*cm, s[CRAS] if s[CRAS] else '')
     
-    # =============================================
     # RODAPÉ
-    # =============================================
     c.setFont("Helvetica", 6.5)
     c.setFillColorRGB(0.3, 0.3, 0.3)
     c.drawString(2*cm, 1.5*cm, f"Documento gerado em {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y às %H:%M:%S')}")
