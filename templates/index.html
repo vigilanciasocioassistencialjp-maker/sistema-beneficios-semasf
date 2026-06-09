@@ -714,7 +714,10 @@
         verificarRendaPerCapita();
     }
 
-    // verificarRendaPerCapita precisa ler o valor desmascarado
+    function formatarMoeda(valor) {
+        return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     function verificarRendaPerCapita() {
         const rpcInput = document.getElementById('renda_per_capita');
         const excecaoCheck = document.getElementById('excecao_art64');
@@ -726,7 +729,7 @@
             if (avisoRPC) {
                 avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1">
                     <i class="fas fa-exclamation-triangle"></i>
-                    Renda per capita (R$ ${rpc.toFixed(2).replace('.', ',')}) ultrapassa o limite legal de <strong>R$ ${limiteRPC.toFixed(2).replace('.', ',')}</strong>
+                    Renda per capita (R$ ${formatarMoeda(rpc)}) ultrapassa o limite legal de <strong>R$ ${formatarMoeda(limiteRPC)}</strong>
                     (1/4 do salário mínimo). A exceção do <strong>Art. 64</strong> é obrigatória.
                 </div>`;
             }
@@ -739,7 +742,7 @@
             if (avisoRPC) {
                 avisoRPC.innerHTML = `<div class="text-success mt-1">
                     <i class="fas fa-check-circle"></i>
-                    Dentro do critério legal (limite: R$ ${limiteRPC.toFixed(2).replace('.', ',')}).
+                    Dentro do critério legal (limite: R$ ${formatarMoeda(limiteRPC)}).
                 </div>`;
             }
             rpcInput.classList.remove('is-invalid');
