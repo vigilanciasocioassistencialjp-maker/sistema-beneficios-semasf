@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-sliders-h text-primary"></i> Configurações do Sistema
+            </h2>
+        </div>
+
+        {% if erro %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ erro }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if sucesso %}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            {{ sucesso }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Card Salário Mínimo -->
+        <div class="card border-primary mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-dollar-sign"></i> Salário Mínimo Nacional
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center mb-3">
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="text-muted small">Valor Atual</div>
+                            <div class="fs-3 fw-bold text-primary">R$ {{ "%.2f"|format(salario_minimo) }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="text-muted small">Limite Renda Per Capita (1/4)</div>
+                            <div class="fs-3 fw-bold text-success">R$ {{ "%.2f"|format(limite_rpc) }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-warning bg-opacity-10 border border-warning rounded">
+                            <div class="text-muted small">Base Legal</div>
+                            <div class="fw-bold text-warning">Art. 34, §2º</div>
+                            <div class="small text-muted">Lei Municipal nº 3.603/2022</div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <form method="POST">
+                    <div class="row align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-edit"></i> Novo Valor do Salário Mínimo (R$)
+                            </label>
+                            <input type="number" step="0.01" min="0.01" name="salario_minimo"
+                                   class="form-control form-control-lg"
+                                   value="{{ "%.2f"|format(salario_minimo) }}"
+                                   placeholder="ex: 1518.00" required>
+                            <small class="text-muted">Atualize sempre que houver reajuste do salário mínimo federal.</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded text-center" id="previewLimite">
+                                <div class="text-muted small">Novo limite RPC será</div>
+                                <div class="fw-bold text-success fs-5" id="previewValor">R$ {{ "%.2f"|format(limite_rpc) }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="fas fa-save"></i> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Histórico de configurações -->
+        <div class="card border-secondary">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="fas fa-history"></i> Configurações Registradas</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Chave</th>
+                                <th>Valor</th>
+                                <th>Descrição</th>
+                                <th>Última atualização</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in configs %}
+                            <tr>
+                                <td><code>{{ c[0] }}</code></td>
+                                <td><strong>{{ c[1] }}</strong></td>
+                                <td>{{ c[2] or '—' }}</td>
+                                <td>{{ c[3] or '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Preview do novo limite em tempo real
+    document.querySelector('input[name="salario_minimo"]').addEventListener('input', function() {
+        const val = parseFloat(this.value) || 0;
+        const limite = val / 4;
+        document.getElementById('previewValor').textContent = 'R$ ' + limite.toFixed(2);
+    });
+</script>
+{% endblock %}
+{% endblock %}
