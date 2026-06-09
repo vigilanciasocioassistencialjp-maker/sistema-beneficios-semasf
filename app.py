@@ -357,6 +357,38 @@ def inicio():
 # LISTAR SOLICITAÇÕES (CPF DESCRIPTOGRAFADO)
 # =====================================================
 
+@app.route("/solicitacoes")
+@app.route("/solicitacoes/<int:pagina>")
+@login_required
+def solicitacoes(pagina=1):
+    registros_por_pagina = 20
+    offset = (pagina - 1) * registros_por_pagina
+    conexao = get_db()
+    cursor = conexao.cursor()
+    if current_user.perfil in ['admin', 'gestor']:
+        cursor.execute("SELECT COUNT(*) FROM solicitacoes")
+        total_registros = cursor.fetchone()[0]
+        cursor.execute("SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status FROM solicitacoes ORDER BY id DESC LIMIT %s OFFSET %s", (registros_por_pagina, offset))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = %s", (current_user.cras,))
+        total_registros = cursor.fetchone()[0]
+        cursor.execute("SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status FROM solicitacoes WHERE cras = %s ORDER BY id DESC LIMIT %s OFFSET %s", (current_user.cras, registros_por_pagina, offset))
+    total_paginas = (total_registros + registros_por_pagina - 1) // registros_por_pagina
+    dados = cursor.fetchall()
+    conexao.close()
+    dados_formatados = []
+    for row in dados:
+        row = list(row)
+        if row[3]:
+            cpf_real = descriptografar_cpf(row[3])
+            row[3] = formatar_cpf(cpf_real)
+        dados_formatados.append(tuple(row))
+    return render_template("solicitacoes.html", solicitacoes=dados_formatados, user_perfil=current_user.perfil, datetime=datetime, pagina_atual=pagina, total_paginas=total_paginas, total_registros=total_registros, current_user=current_user)
+
+# =====================================================
+# VER SOLICITAÇÕES
+# =====================================================
+
 @app.route("/ver_solicitacao/<int:id>")
 @login_required
 def ver_solicitacao(id):
@@ -386,24 +418,6 @@ def ver_solicitacao(id):
     if s[2]:
         s[2] = formatar_cpf(descriptografar_cpf(s[2]))
     
-    return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
-
-# =====================================================
-# DETALHES
-# =====================================================
-
-@app.route("/ver_solicitacao/<int:id>")
-@login_required
-def ver_solicitacao(id):
-    conexao = get_db()
-    cursor = conexao.cursor()
-    cursor.execute("SELECT s.*, u.nome as tecnico_nome FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico = u.usuario WHERE s.id = %s", (id,))
-    s = cursor.fetchone()
-    conexao.close()
-    if not s: return "Não encontrada", 404
-    s = list(s)
-    if s[2]:
-        s[2] = formatar_cpf(descriptografar_cpf(s[2]))
     return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
 
 # =====================================================
