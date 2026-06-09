@@ -49,29 +49,31 @@ def hash_cpf(cpf):
     cpf_limpo = str(cpf).replace('.', '').replace('-', '').strip()
     return hashlib.sha256(cpf_limpo.encode()).hexdigest()
 
-def criptografar_cpf(cpf):
-    """Criptografa o CPF para salvar no banco"""
-    if not cpf:
-        return cpf
-    cpf_limpo = str(cpf).replace('.', '').replace('-', '').strip()
-    if len(cpf_limpo) == 11:
-        return fernet.encrypt(cpf_limpo.encode()).decode()
-    return cpf
-
 def descriptografar_cpf(cpf_cripto):
     """Descriptografa o CPF para mostrar na tela"""
     if not cpf_cripto:
         return cpf_cripto
     try:
-        return fernet.decrypt(cpf_cripto.encode()).decode()
+        # Tenta descriptografar
+        valor = fernet.decrypt(cpf_cripto.encode()).decode()
+        # Se conseguiu e parece um CPF (11 dígitos), retorna
+        if len(valor) == 11 and valor.isdigit():
+            return valor
+        # Se não parece CPF, retorna o original
+        return cpf_cripto
     except:
+        # Se falhar (CPF antigo não criptografado), retorna como está
         return cpf_cripto
 
 def formatar_cpf(cpf):
     """Formata CPF: 12345678901 → 123.456.789-01"""
+    if not cpf:
+        return cpf
     cpf = str(cpf).replace('.', '').replace('-', '').strip()
-    if len(cpf) == 11:
+    # Só formata se tiver 11 dígitos numéricos
+    if len(cpf) == 11 and cpf.isdigit():
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    # Se não for um CPF válido, retorna como está (ex: CPF antigo em texto plano)
     return cpf
 
 def validar_cpf(cpf):
