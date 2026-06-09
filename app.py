@@ -335,20 +335,67 @@ def inicio():
             flash('❌ CPF inválido!', 'danger')
             return render_template("index.html", sucesso=False)
         
-        # Criptografar CPF e gerar hash
         cpf_cripto = criptografar_cpf(cpf_limpo)
         cpf_hash = hash_cpf(cpf_limpo)
+        
+        # Dados do formulário
+        nome = request.form.get("nome", "")
+        data_nasc = request.form.get("data_nascimento", "")
+        telefone = request.form.get("telefone", "")
+        email = request.form.get("email", "")
+        endereco = request.form.get("endereco", "")
+        numero = request.form.get("numero", "")
+        complemento = request.form.get("complemento", "")
+        bairro = request.form.get("bairro", "")
+        cep = request.form.get("cep", "")
+        referencia = request.form.get("referencia", "")
+        cras = request.form.get("cras", "")
+        data_escuta = request.form.get("data_escuta", "")
+        
+        # Membros da família
+        membros_nomes = request.form.getlist("membro_nome[]")
+        membros_idades = request.form.getlist("membro_idade[]")
+        membros_vinculos = request.form.getlist("membro_vinculo[]")
+        composicao = []
+        for i in range(len(membros_nomes)):
+            if membros_nomes[i].strip():
+                composicao.append({
+                    'nome': membros_nomes[i],
+                    'idade': membros_idades[i] if i < len(membros_idades) else '',
+                    'vinculo': membros_vinculos[i] if i < len(membros_vinculos) else ''
+                })
+        composicao_json = json.dumps(composicao, ensure_ascii=False)
+        total_pessoas = len(composicao)
+        
+        # Renda
+        renda_bruta = float(request.form.get("renda_bruta", 0) or 0)
+        renda_per_capita = float(request.form.get("renda_per_capita", 0) or 0)
+        beneficios = request.form.get("beneficios", "")
+        
+        # Vulnerabilidades
+        vulnerabilidades = request.form.getlist("vulnerabilidade")
+        vulnerabilidade_text = ", ".join(vulnerabilidades) if vulnerabilidades else ""
+        
+        # Serviços SUAS
+        servicos = request.form.getlist("servicos_suas")
+        servicos_text = ", ".join(servicos) if servicos else ""
+        
+        # Parecer
+        parecer = request.form.get("parecer", "")
+        
+        tecnico = current_user.id
+        data_solic = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
         
         conexao = get_db()
         cursor = conexao.cursor()
         cursor.execute("""
             INSERT INTO solicitacoes (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_familiar, renda_bruta, renda_per_capita, beneficios, vulnerabilidade, servicos_suas, parecer, status, data_solicitacao)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (current_user.id, cpf_cripto, cpf_hash, request.form["nome"], request.form.get("data_nascimento",""), request.form.get("telefone",""), request.form.get("email",""), request.form.get("endereco",""), request.form.get("numero",""), request.form.get("complemento",""), request.form["bairro"], request.form.get("cep",""), request.form.get("referencia",""), request.form["cras"], request.form.get("data_escuta",""), 1, '[]', 0, 0, '', '', '', '', 'Cadastrada', datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")))
+        """, (tecnico, cpf_cripto, cpf_hash, nome, data_nasc, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_json, renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text, servicos_text, parecer, 'Cadastrada', data_solic))
         conexao.commit()
         conexao.close()
         
-        logger.info(f"Solicitação cadastrada: {request.form['nome']}")
+        logger.info(f"Solicitação cadastrada: {nome}")
         flash('✅ Solicitação cadastrada!', 'success')
         return redirect(url_for("solicitacoes"))
     return render_template("index.html", sucesso=False)
