@@ -15,7 +15,6 @@
                         </a>
                     </div>
 
-                    <!-- Mensagens -->
                     {% if erro %}
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <i class="fas fa-exclamation-triangle"></i> {{ erro }}
@@ -55,21 +54,23 @@
                             <select name="perfil" id="perfil" class="form-select" required>
                                 <option value="">Selecione...</option>
                                 <option value="tecnico">🔵 Técnico CRAS</option>
+                                <option value="creas">🟠 Técnico CREAS</option>
                                 <option value="gestor">🔴 Gestor Secretaria</option>
                                 <option value="admin">🟣 Administrador</option>
                             </select>
                             <div class="mt-2">
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle"></i>
-                                    <strong>Técnico:</strong> só pode cadastrar e registrar entregas do seu CRAS.<br>
-                                    <strong>Gestor:</strong> tem acesso a relatórios e pode ver usuários.<br>
-                                    <strong>Admin:</strong> tem acesso total ao sistema (criar/editar usuários, tudo).
+                                    <strong>Técnico CRAS:</strong> cadastra e registra entregas apenas do seu CRAS.<br>
+                                    <strong>Técnico CREAS:</strong> cadastra e registra entregas de todos os bairros.<br>
+                                    <strong>Gestor:</strong> acesso a relatórios e visualização geral.<br>
+                                    <strong>Admin:</strong> acesso total ao sistema.
                                 </small>
                             </div>
                         </div>
 
-                        <!-- CAMPO CRAS ADICIONADO -->
-                        <div class="mb-3" id="divCras">
+                        <!-- CRAS de Referência — apenas para Técnico CRAS -->
+                        <div class="mb-3" id="divCras" style="display:none;">
                             <label class="form-label">
                                 <i class="fas fa-building"></i> CRAS de Referência
                             </label>
@@ -83,7 +84,7 @@
                             <div class="mt-2">
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle"></i>
-                                    <strong>Obrigatório para técnicos.</strong> Define quais bairros o técnico poderá atender.
+                                    <strong>Obrigatório para Técnico CRAS.</strong> Define quais bairros o técnico poderá atender.
                                 </small>
                             </div>
                         </div>
@@ -109,24 +110,21 @@
 
 {% block extra_js %}
 <script>
-    // Mostrar/esconder o campo CRAS baseado no perfil selecionado
-    document.getElementById('perfil').addEventListener('change', function() {
-        const divCras = document.getElementById('divCras');
-        if (this.value === 'gestor' || this.value === 'admin') {
-            divCras.style.display = 'none';
-            // Limpar o valor quando for gestor ou admin
-            document.querySelector('select[name="cras"]').value = '';
-        } else if (this.value === 'tecnico') {
+    const perfilSelect = document.getElementById('perfil');
+    const divCras = document.getElementById('divCras');
+    const crasSelect = document.querySelector('select[name="cras"]');
+
+    function atualizarCras() {
+        if (perfilSelect.value === 'tecnico') {
             divCras.style.display = 'block';
         } else {
             divCras.style.display = 'none';
+            crasSelect.value = '';
         }
-    });
-
-    // Inicialmente, esconder o campo se não houver seleção
-    if (document.getElementById('perfil').value !== 'tecnico') {
-        document.getElementById('divCras').style.display = 'none';
     }
+
+    perfilSelect.addEventListener('change', atualizarCras);
+    atualizarCras(); // estado inicial
 </script>
 {% endblock %}
 {% endblock %}
