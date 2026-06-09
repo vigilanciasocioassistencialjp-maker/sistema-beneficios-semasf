@@ -58,8 +58,8 @@
                         <strong>Informações Socioeconômicas</strong>
                     </div>
                     <div class="card-body">
-                        <p><strong>Renda Bruta:</strong> R$ {{ "%.2f"|format(solicitacao[14]) if solicitacao[14] else 'Não informada' }}</p>
-                        <p><strong>Renda Per Capita:</strong> R$ {{ "%.2f"|format(solicitacao[15]) if solicitacao[15] else 'Não informada' }}</p>
+                        <p><strong>Renda Bruta:</strong> R$ {{ solicitacao[14] if solicitacao[14] else 'Não informada' }}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ {{ solicitacao[15] if solicitacao[15] else 'Não informada' }}</p>
                         <p><strong>Benefícios:</strong> {{ solicitacao[16] if solicitacao[16] else 'Nenhum' }}</p>
                         <p><strong>Vulnerabilidades:</strong> {{ solicitacao[17] if solicitacao[17] else 'Não informado' }}</p>
                         <p><strong>Serviços SUAS:</strong> {{ solicitacao[24] if solicitacao[24] else 'Não informado' }}</p>
@@ -78,7 +78,7 @@
                                 <tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr>
                             </thead>
                             <tbody>
-                                {% for membro in json.loads(solicitacao[23]) %}
+                                {% for membro in solicitacao[23]|fromjson %}
                                 <tr>
                                     <td>{{ membro.nome }}</td>
                                     <td>{{ membro.idade }}</td>
