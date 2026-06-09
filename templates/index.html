@@ -356,6 +356,7 @@
                         <label class="form-label required">Renda Per Capita (R$)</label>
                         <input type="number" step="0.01" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly required>
                         <small class="text-muted">Calculado: renda bruta ÷ total de pessoas</small>
+                        <div id="avisoRPC"></div>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label required">Benefícios Recebidos</label>
@@ -673,6 +674,7 @@
         let pessoas = calcularTotalPessoas() || 1;
         let perCapita = bruta / pessoas;
         rendaPerCapita.value = perCapita.toFixed(2);
+        verificarRendaPerCapita();
     }
 
     document.getElementById('renda_bruta').addEventListener('input', calcularRendaPerCapita);
@@ -855,6 +857,61 @@
             }
         }
     });
+
+// =============================================
+// VALIDAÇÃO RENDA PER CAPITA vs CRITÉRIO LEGAL
+// =============================================
+let limiteRPC = 379.50; // valor padrão, será atualizado via API
+
+// Buscar limite atual do servidor
+fetch('/api/configuracoes')
+    .then(r => r.json())
+    .then(data => { limiteRPC = data.limite_renda_per_capita; })
+    .catch(() => {});
+
+function verificarRendaPerCapita() {
+    const rpcInput = document.getElementById('renda_per_capita');
+    const excecaoCheck = document.getElementById('excecao_art64');
+    const divExcecao = document.getElementById('divExcecao');
+    const avisoRPC = document.getElementById('avisoRPC');
+
+    if (!rpcInput || !excecaoCheck) return;
+    const rpc = parseFloat(rpcInput.value) || 0;
+
+    if (rpc > limiteRPC && rpc > 0) {
+        // Acima do limite — mostrar aviso e forçar Art. 64
+        if (avisoRPC) {
+            avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1">
+                <i class="fas fa-exclamation-triangle"></i>
+                Renda per capita (R$ ${rpc.toFixed(2)}) ultrapassa o limite legal de <strong>R$ ${limiteRPC.toFixed(2)}</strong>
+                (1/4 do salário mínimo). A exceção do <strong>Art. 64</strong> é obrigatória para prosseguir.
+            </div>`;
+        }
+        rpcInput.classList.add('is-invalid');
+        // Rolar até o checkbox e destacar
+        if (divExcecao) {
+            divExcecao.classList.remove('border-warning', 'bg-warning');
+            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+        }
+    } else if (rpc > 0) {
+        // Dentro do limite
+        if (avisoRPC) {
+            avisoRPC.innerHTML = `<div class="text-success mt-1">
+                <i class="fas fa-check-circle"></i>
+                Renda per capita dentro do critério legal (limite: R$ ${limiteRPC.toFixed(2)}).
+            </div>`;
+        }
+        rpcInput.classList.remove('is-invalid');
+        rpcInput.classList.add('is-valid');
+        if (!excecaoCheck.checked && divExcecao) {
+            divExcecao.classList.remove('border-danger', 'bg-danger');
+            divExcecao.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
+        }
+    }
+}
+
+document.getElementById('renda_per_capita') && 
+    document.getElementById('renda_per_capita').addEventListener('change', verificarRendaPerCapita);
 
 // CORREÇÃO: Impedir loop no submit
 document.getElementById('solicitacaoForm').addEventListener('submit', function(e) {
