@@ -466,7 +466,7 @@
                 <!-- Exceção Art. 64 -->
                 <div class="row">
                     <div class="col-12">
-                        <div class="alert alert-warning border-warning" id="divExcecao">
+                        <div class="border border-warning rounded p-3 bg-warning bg-opacity-10" id="divExcecao">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1">
                                 <label class="form-check-label fw-bold" for="excecao_art64">
@@ -878,18 +878,18 @@ document.getElementById('solicitacaoForm').addEventListener('submit', function(e
 
 // Destacar visualmente quando Art. 64 for marcado
 document.getElementById('excecao_art64') && document.getElementById('excecao_art64').addEventListener('change', function() {
-    const alerta = document.getElementById('divExcecao');
+    const caixa = document.getElementById('divExcecao');
     const parecer = document.getElementById('parecerTexto');
     if (this.checked) {
-        alerta.classList.remove('alert-warning');
-        alerta.classList.add('alert-danger');
+        caixa.classList.remove('border-warning', 'bg-warning', 'bg-opacity-10');
+        caixa.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
         if (parecer) {
             parecer.placeholder = 'OBRIGATÓRIO: Descreva a justificativa para a concessão excepcional com base no Art. 64 da Lei Municipal nº 3.603/2022...';
             parecer.rows = 6;
         }
     } else {
-        alerta.classList.remove('alert-danger');
-        alerta.classList.add('alert-warning');
+        caixa.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10');
+        caixa.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
         if (parecer) {
             parecer.placeholder = 'Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc.';
             parecer.rows = 5;
