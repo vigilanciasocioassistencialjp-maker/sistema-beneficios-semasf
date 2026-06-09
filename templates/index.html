@@ -78,7 +78,7 @@
                         <select name="bairro" class="form-select" id="bairro" required>
                             <option value="">Selecione o bairro</option>
 
-                            {% if current_user.perfil == 'gestor' %}
+                            {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
                                 <!-- GESTOR: vê todos os bairros -->
                                 <optgroup label="CRAS MORAR MELHOR">
                                     <option value="MORAR MELHOR">MORAR MELHOR</option>
@@ -271,7 +271,7 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label required">CRAS de Referência</label>
-                        {% if current_user.perfil == 'gestor' %}
+                        {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
                             <select name="cras" class="form-select" id="cras" required>
                                 <option value="">Selecione o CRAS</option>
                                 <option value="CRAS MORAR MELHOR">CRAS MORAR MELHOR</option>
@@ -283,7 +283,7 @@
                             <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color: #e9ecef">
                         {% endif %}
                         <small class="text-muted">
-                            {% if current_user.perfil == 'gestor' %}
+                            {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
                                 Selecione o CRAS responsável
                             {% else %}
                                 CRAS vinculado ao seu perfil (não editável)
@@ -458,8 +458,28 @@
                 <div class="row">
                     <div class="col-12 mb-3">
                         <label class="form-label required">Parecer Técnico</label>
-                        <textarea name="parecer" class="form-control" rows="5" placeholder="Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc." required></textarea>
+                        <textarea name="parecer" class="form-control" rows="5" id="parecerTexto" placeholder="Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc." required></textarea>
                         <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
+                    </div>
+                </div>
+
+                <!-- Exceção Art. 64 -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="alert alert-warning border-warning" id="divExcecao">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1">
+                                <label class="form-check-label fw-bold" for="excecao_art64">
+                                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                                    Concessão com base no <strong>Art. 64 — Lei Municipal nº 3.603/2022</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">
+                                Marque esta opção quando a família <strong>não atende integralmente os critérios ordinários</strong> da lei,
+                                mas a concessão é justificada por situação excepcional mediante parecer técnico social
+                                e autorização do gestor da SEMASF. O parecer acima torna-se <strong>obrigatório</strong> ao marcar esta opção.
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -842,8 +862,39 @@ document.getElementById('solicitacaoForm').addEventListener('submit', function(e
     if (!document.getElementById('data_escuta').value) {
         document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
     }
-    // Permitir envio normalmente
+    // Validar: se exceção Art. 64 marcada, parecer é obrigatório
+    const excecao = document.getElementById('excecao_art64');
+    const parecer = document.getElementById('parecerTexto');
+    if (excecao && excecao.checked && parecer && parecer.value.trim().length < 20) {
+        e.preventDefault();
+        parecer.focus();
+        parecer.classList.add('is-invalid');
+        alert('⚠️ Ao marcar a exceção do Art. 64, o Parecer Técnico é obrigatório e deve descrever a justificativa da concessão excepcional.');
+        return false;
+    }
+    if (parecer) parecer.classList.remove('is-invalid');
     return true;
+});
+
+// Destacar visualmente quando Art. 64 for marcado
+document.getElementById('excecao_art64') && document.getElementById('excecao_art64').addEventListener('change', function() {
+    const alerta = document.getElementById('divExcecao');
+    const parecer = document.getElementById('parecerTexto');
+    if (this.checked) {
+        alerta.classList.remove('alert-warning');
+        alerta.classList.add('alert-danger');
+        if (parecer) {
+            parecer.placeholder = 'OBRIGATÓRIO: Descreva a justificativa para a concessão excepcional com base no Art. 64 da Lei Municipal nº 3.603/2022...';
+            parecer.rows = 6;
+        }
+    } else {
+        alerta.classList.remove('alert-danger');
+        alerta.classList.add('alert-warning');
+        if (parecer) {
+            parecer.placeholder = 'Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc.';
+            parecer.rows = 5;
+        }
+    }
 });
 </script>
 {% endblock %}
