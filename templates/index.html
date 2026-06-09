@@ -349,13 +349,14 @@
                 <h5>5. RENDA FAMILIAR</h5>
                 <div class="row">
                     <div class="col-md-4 mb-3">
-                        <label class="form-label required">Renda Bruta Familiar (R$)</label>
-                        <input type="number" step="0.01" name="renda_bruta" class="form-control" id="renda_bruta" placeholder="0,00" required>
+                        <label class="form-label required">Renda Familiar (R$)</label>
+                        <input type="text" inputmode="numeric" name="renda_bruta" class="form-control" id="renda_bruta" placeholder="0,00" autocomplete="off" required>
+                        <small class="text-muted">Total de renda de todos os membros da família</small>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label required">Renda Per Capita (R$)</label>
-                        <input type="number" step="0.01" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly required>
-                        <small class="text-muted">Calculado: renda bruta ÷ total de pessoas</small>
+                        <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly required>
+                        <small class="text-muted">Calculado: renda familiar ÷ total de pessoas</small>
                         <div id="avisoRPC"></div>
                     </div>
                     <div class="col-md-4 mb-3">
@@ -667,17 +668,91 @@
         return total;
     }
 
+    // =============================================
+    // MÁSCARA MONETÁRIA E CÁLCULO RENDA PER CAPITA
+    // =============================================
+
+    function mascaraMoeda(valor) {
+        // Remove tudo que não for dígito
+        let num = valor.replace(/\D/g, '');
+        if (!num) return '';
+        // Converte para número com 2 casas decimais
+        num = (parseInt(num, 10) / 100).toFixed(2);
+        // Formata: ponto nos milhares, vírgula nos centavos
+        return num
+            .replace('.', ',')
+            .replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+    }
+
+    function desmascarar(valor) {
+        // Converte "1.621,00" → 1621.00 para cálculo
+        if (!valor) return 0;
+        return parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+
+    const rendaBrutaInput = document.getElementById('renda_bruta');
+    rendaBrutaInput.addEventListener('input', function() {
+        const pos = this.selectionStart;
+        const antes = this.value.length;
+        this.value = mascaraMoeda(this.value);
+        // Reposicionar cursor
+        const depois = this.value.length;
+        this.setSelectionRange(pos + (depois - antes), pos + (depois - antes));
+        calcularRendaPerCapita();
+    });
+
     function calcularRendaPerCapita() {
         const rendaBruta = document.getElementById('renda_bruta');
         const rendaPerCapita = document.getElementById('renda_per_capita');
-        let bruta = parseFloat(rendaBruta.value) || 0;
+        let bruta = desmascarar(rendaBruta.value);
         let pessoas = calcularTotalPessoas() || 1;
         let perCapita = bruta / pessoas;
-        rendaPerCapita.value = perCapita.toFixed(2);
+        // Formatar per capita também com máscara
+        rendaPerCapita.value = perCapita > 0
+            ? mascaraMoeda(Math.round(perCapita * 100).toString())
+            : '';
         verificarRendaPerCapita();
     }
 
-    document.getElementById('renda_bruta').addEventListener('input', calcularRendaPerCapita);
+    // verificarRendaPerCapita precisa ler o valor desmascarado
+    function verificarRendaPerCapita() {
+        const rpcInput = document.getElementById('renda_per_capita');
+        const excecaoCheck = document.getElementById('excecao_art64');
+        const divExcecao = document.getElementById('divExcecao');
+        const avisoRPC = document.getElementById('avisoRPC');
+        if (!rpcInput || !excecaoCheck) return;
+        const rpc = desmascarar(rpcInput.value);
+        if (rpc > limiteRPC && rpc > 0) {
+            if (avisoRPC) {
+                avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Renda per capita (R$ ${rpc.toFixed(2).replace('.', ',')}) ultrapassa o limite legal de <strong>R$ ${limiteRPC.toFixed(2).replace('.', ',')}</strong>
+                    (1/4 do salário mínimo). A exceção do <strong>Art. 64</strong> é obrigatória.
+                </div>`;
+            }
+            rpcInput.classList.add('is-invalid');
+            if (divExcecao) {
+                divExcecao.classList.remove('border-warning', 'bg-warning');
+                divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+            }
+        } else if (rpc > 0) {
+            if (avisoRPC) {
+                avisoRPC.innerHTML = `<div class="text-success mt-1">
+                    <i class="fas fa-check-circle"></i>
+                    Dentro do critério legal (limite: R$ ${limiteRPC.toFixed(2).replace('.', ',')}).
+                </div>`;
+            }
+            rpcInput.classList.remove('is-invalid');
+            rpcInput.classList.add('is-valid');
+            if (!excecaoCheck.checked && divExcecao) {
+                divExcecao.classList.remove('border-danger', 'bg-danger');
+                divExcecao.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
+            }
+        } else {
+            if (avisoRPC) avisoRPC.innerHTML = '';
+            rpcInput.classList.remove('is-invalid', 'is-valid');
+        }
+    }
 
     const observer = new MutationObserver(calcularRendaPerCapita);
     observer.observe(document.getElementById('composicaoFamiliar'), { childList: true, subtree: true });
@@ -861,7 +936,7 @@
 // =============================================
 // VALIDAÇÃO RENDA PER CAPITA vs CRITÉRIO LEGAL
 // =============================================
-let limiteRPC = 379.50; // valor padrão, será atualizado via API
+let limiteRPC = 405.25; // valor padrão (1621/4), será atualizado via API
 
 // Buscar limite atual do servidor
 fetch('/api/configuracoes')
@@ -869,56 +944,19 @@ fetch('/api/configuracoes')
     .then(data => { limiteRPC = data.limite_renda_per_capita; })
     .catch(() => {});
 
-function verificarRendaPerCapita() {
-    const rpcInput = document.getElementById('renda_per_capita');
-    const excecaoCheck = document.getElementById('excecao_art64');
-    const divExcecao = document.getElementById('divExcecao');
-    const avisoRPC = document.getElementById('avisoRPC');
-
-    if (!rpcInput || !excecaoCheck) return;
-    const rpc = parseFloat(rpcInput.value) || 0;
-
-    if (rpc > limiteRPC && rpc > 0) {
-        // Acima do limite — mostrar aviso e forçar Art. 64
-        if (avisoRPC) {
-            avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1">
-                <i class="fas fa-exclamation-triangle"></i>
-                Renda per capita (R$ ${rpc.toFixed(2)}) ultrapassa o limite legal de <strong>R$ ${limiteRPC.toFixed(2)}</strong>
-                (1/4 do salário mínimo). A exceção do <strong>Art. 64</strong> é obrigatória para prosseguir.
-            </div>`;
-        }
-        rpcInput.classList.add('is-invalid');
-        // Rolar até o checkbox e destacar
-        if (divExcecao) {
-            divExcecao.classList.remove('border-warning', 'bg-warning');
-            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
-        }
-    } else if (rpc > 0) {
-        // Dentro do limite
-        if (avisoRPC) {
-            avisoRPC.innerHTML = `<div class="text-success mt-1">
-                <i class="fas fa-check-circle"></i>
-                Renda per capita dentro do critério legal (limite: R$ ${limiteRPC.toFixed(2)}).
-            </div>`;
-        }
-        rpcInput.classList.remove('is-invalid');
-        rpcInput.classList.add('is-valid');
-        if (!excecaoCheck.checked && divExcecao) {
-            divExcecao.classList.remove('border-danger', 'bg-danger');
-            divExcecao.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
-        }
-    }
-}
-
-document.getElementById('renda_per_capita') && 
-    document.getElementById('renda_per_capita').addEventListener('change', verificarRendaPerCapita);
-
 // CORREÇÃO: Impedir loop no submit
 document.getElementById('solicitacaoForm').addEventListener('submit', function(e) {
     // Garantir que data_escuta tenha um valor
     if (!document.getElementById('data_escuta').value) {
         document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
     }
+
+    // Desmascarar renda antes de enviar (converter "1.621,00" → "1621.00")
+    const rb = document.getElementById('renda_bruta');
+    const rpc = document.getElementById('renda_per_capita');
+    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
+    if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+
     // Validar: se exceção Art. 64 marcada, parecer é obrigatório
     const excecao = document.getElementById('excecao_art64');
     const parecer = document.getElementById('parecerTexto');
