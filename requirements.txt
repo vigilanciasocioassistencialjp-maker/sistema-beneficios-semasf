@@ -12,3 +12,4 @@ google-auth-oauthlib
 psycopg2-binary
 python-dotenv
 cryptography
+APScheduler
