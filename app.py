@@ -993,7 +993,154 @@ def dashboard():
 @app.route("/relatorio")
 @login_required
 def relatorio():
-    return render_template("relatorio.html", mes=datetime.now(FUSO_RONDONIA).strftime('%Y-%m'), datetime=datetime, current_user=current_user)
+    # Mês selecionado (padrão: mês atual)
+    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
+
+    # Lista de meses disponíveis para o seletor (últimos 12 meses)
+    nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    lista_meses = []
+    agora = datetime.now(FUSO_RONDONIA)
+    for i in range(12):
+        data = agora - timedelta(days=30 * i)
+        valor = data.strftime('%Y-%m')
+        nome = f"{nomes_meses[data.month - 1]}/{data.year}"
+        lista_meses.append({'valor': valor, 'nome': nome})
+
+    # data_solicitacao salva como 'dd/mm/YYYY HH:MM:SS'
+    # mes vem como 'YYYY-MM', precisamos converter para '%/MM/YYYY%'
+    try:
+        ano, num_mes = mes.split('-')
+        filtro_like = f"%/{num_mes}/{ano}%"
+        filtro_like_entrega = f"{ano}-{num_mes}%"  # data_entrega pode vir em outro formato
+    except:
+        filtro_like = f"%"
+        filtro_like_entrega = f"%"
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+
+    # Totais do mês
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes
+        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    total_solicitacoes = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes
+        WHERE status = 'Entregue' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    total_entregues = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes
+        WHERE status = 'Ausente' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    total_ausentes = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes
+        WHERE status = 'Cadastrada' AND data_solicitacao LIKE %s
+    """, (filtro_like,))
+    total_pendentes = cursor.fetchone()[0]
+
+    # Por CRAS
+    cursor.execute("""
+        SELECT cras,
+               COUNT(*) as total,
+               SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
+               SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
+        FROM solicitacoes
+        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
+        GROUP BY cras
+        ORDER BY total DESC
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    por_cras = cursor.fetchall()
+
+    # Por Técnico (quem fez a escuta)
+    cursor.execute("""
+        SELECT COALESCE(u.nome, s.tecnico) as nome_tecnico,
+               COUNT(*) as total,
+               SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
+               SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
+        GROUP BY COALESCE(u.nome, s.tecnico)
+        ORDER BY total DESC
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    por_tecnico = cursor.fetchall()
+
+    # Últimas entregas do mês (máx 20)
+    cursor.execute("""
+        SELECT s.nome,
+               s.cpf,
+               s.bairro,
+               s.cras,
+               s.status,
+               s.data_entrega,
+               COALESCE(u.nome, s.tecnico_entrega) as tecnico
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+        WHERE s.status IN ('Entregue', 'Ausente')
+          AND (s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s)
+        ORDER BY s.id DESC
+        LIMIT 20
+    """, (filtro_like, filtro_like, filtro_like_entrega))
+    raw_entregas = cursor.fetchall()
+
+    # Descriptografar CPFs das últimas entregas
+    ultimas_entregas = []
+    for row in raw_entregas:
+        row = list(row)
+        if row[1]:
+            row[1] = formatar_cpf(descriptografar_cpf(row[1]))
+        ultimas_entregas.append(tuple(row))
+
+    # Recorrência: beneficiários com mais de 1 cesta entregue
+    cursor.execute("""
+        SELECT cpf_hash,
+               MAX(nome) as nome,
+               MAX(cpf) as cpf_cripto,
+               COUNT(*) as total_recebido,
+               MAX(data_entrega) as ultima_entrega
+        FROM solicitacoes
+        WHERE status = 'Entregue' AND cpf_hash IS NOT NULL
+        GROUP BY cpf_hash
+        HAVING COUNT(*) > 1
+        ORDER BY total_recebido DESC
+        LIMIT 30
+    """)
+    raw_recorrencia = cursor.fetchall()
+
+    conexao.close()
+
+    recorrencia = []
+    for row in raw_recorrencia:
+        cpf_legivel = formatar_cpf(descriptografar_cpf(row[2])) if row[2] else 'N/A'
+        recorrencia.append({
+            'cpf': cpf_legivel,
+            'nome': row[1] or 'N/A',
+            'total_recebido': row[3],
+            'ultima_entrega': str(row[4]) if row[4] else 'N/A',
+        })
+
+    return render_template(
+        "relatorio.html",
+        mes=mes,
+        lista_meses=lista_meses,
+        total_solicitacoes=total_solicitacoes,
+        total_entregues=total_entregues,
+        total_ausentes=total_ausentes,
+        total_pendentes=total_pendentes,
+        por_cras=por_cras,
+        por_tecnico=por_tecnico,
+        ultimas_entregas=ultimas_entregas,
+        recorrencia=recorrencia,
+        datetime=datetime,
+        current_user=current_user
+    )
 
 # =====================================================
 # USUÁRIOS
