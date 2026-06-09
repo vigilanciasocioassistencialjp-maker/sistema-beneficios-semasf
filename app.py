@@ -461,9 +461,19 @@ def ver_solicitacao(id):
     if not s: return "Não encontrada", 404
     
     s = list(s)
+    # Corrigir CPF
     if s[2]:
         cpf_real = descriptografar_cpf(s[2])
         s[2] = formatar_cpf(cpf_real)
+    # Corrigir data de nascimento (índice 3)
+    if s[3]:
+        try:
+            if '-' in str(s[3]):
+                partes = str(s[3]).split('-')
+                if len(partes) == 3:
+                    s[3] = f"{partes[2]}/{partes[1]}/{partes[0]}"
+        except:
+            pass
     
     return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
 
