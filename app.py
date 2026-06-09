@@ -31,19 +31,24 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
 
+#===============================================
 # 🔐 CHAVE DE CRIPTOGRAFIA - FIXA NO RENDER
+#===============================================
+
 CHAVE_CRIPTO = os.environ.get('CHAVE_CRIPTO')
-if not CHAVE_CRIPTO:
-    # Gerar uma chave NOVA e MOSTRAR para o usuário
+
+# DEBUG: Mostrar se a chave foi encontrada
+if CHAVE_CRIPTO:
+    print(f"✅ Chave ENCONTRADA no ambiente: {CHAVE_CRIPTO[:20]}...")
+else:
     CHAVE_CRIPTO = Fernet.generate_key().decode()
     print("=" * 60)
-    print("⚠️  CHAVE DE CRIPTOGRAFIA GERADA!")
-    print(f"🔑 Copie esta chave e adicione no Render:")
-    print(f"   Nome: CHAVE_CRIPTO")
-    print(f"   Valor: {CHAVE_CRIPTO}")
+    print("❌ Chave NÃO encontrada no ambiente!")
+    print(f"🔑 Nova chave gerada: {CHAVE_CRIPTO}")
+    print("⚠️  ADICIONE NO RENDER: CHAVE_CRIPTO = " + CHAVE_CRIPTO)
     print("=" * 60)
 
-# Criar o objeto Fernet com a chave
+# Criar o Fernet
 fernet = Fernet(CHAVE_CRIPTO.encode())
 
 # =====================================================
