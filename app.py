@@ -18,6 +18,15 @@ import logging
 from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 import hashlib
+import smtplib
+import gzip
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit
 
 # =====================================================
 # CONFIGURAÇÃO DO APP
@@ -143,8 +152,96 @@ BLOQUEIO_MINUTOS = 15
 criar_banco()
 
 # =====================================================
-# HTTPS
+# BACKUP AUTOMATICO POR E-MAIL
 # =====================================================
+
+EMAIL_REMETENTE    = os.environ.get('EMAIL_REMETENTE', '')
+EMAIL_SENHA_APP    = os.environ.get('EMAIL_SENHA_APP', '')
+EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', '')
+
+def gerar_backup_json():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM solicitacoes")
+    cols_sol = [d[0] for d in cursor.description]
+    solicitacoes = [dict(zip(cols_sol, row)) for row in cursor.fetchall()]
+    cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios")
+    cols_usu = [d[0] for d in cursor.description]
+    usuarios = [dict(zip(cols_usu, row)) for row in cursor.fetchall()]
+    conn.close()
+    return {
+        'gerado_em': datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S'),
+        'total_solicitacoes': len(solicitacoes),
+        'total_usuarios': len(usuarios),
+        'solicitacoes': solicitacoes,
+        'usuarios': usuarios
+    }
+
+def enviar_backup_email():
+    if not EMAIL_REMETENTE or not EMAIL_SENHA_APP or not EMAIL_DESTINATARIO:
+        print("Backup ignorado: variaveis de e-mail nao configuradas no Render.")
+        return
+    try:
+        agora = datetime.now(FUSO_RONDONIA)
+        nome_arquivo = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}.json.gz"
+
+        dados = gerar_backup_json()
+        conteudo = json.dumps(dados, ensure_ascii=False, indent=2, default=str).encode('utf-8')
+        buffer_gz = io.BytesIO()
+        with gzip.GzipFile(fileobj=buffer_gz, mode='wb') as gz:
+            gz.write(conteudo)
+        buffer_gz.seek(0)
+        tamanho_kb = round(buffer_gz.getbuffer().nbytes / 1024, 1)
+
+        msg = MIMEMultipart()
+        msg['From']    = f"Sistema SEMASF <{EMAIL_REMETENTE}>"
+        msg['To']      = EMAIL_DESTINATARIO
+        msg['Subject'] = f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}"
+
+        corpo = (
+            f"Backup automatico do Sistema de Cestas Basicas - SEMASF Ji-Parana\n\n"
+            f"Data/Hora: {agora.strftime('%d/%m/%Y as %H:%M:%S')} (horario de Rondonia)\n"
+            f"Solicitacoes: {dados['total_solicitacoes']}\n"
+            f"Usuarios: {dados['total_usuarios']}\n"
+            f"Tamanho: {tamanho_kb} KB (compactado)\n\n"
+            f"Este e-mail e gerado automaticamente todo dia a meia-noite.\n"
+            f"Guarde os ultimos 30 e-mails para manter 30 dias de historico.\n\n"
+            f"-- Sistema SEMASF"
+        )
+        msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
+
+        parte = MIMEBase('application', 'octet-stream')
+        parte.set_payload(buffer_gz.read())
+        encoders.encode_base64(parte)
+        parte.add_header('Content-Disposition', f'attachment; filename="{nome_arquivo}"')
+        msg.attach(parte)
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as servidor:
+            servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
+            servidor.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
+
+        print(f"Backup enviado: {nome_arquivo} ({tamanho_kb} KB)")
+        logger.info(f"Backup automatico enviado: {nome_arquivo} ({tamanho_kb} KB, {dados['total_solicitacoes']} solicitacoes)")
+
+    except Exception as e:
+        print(f"Erro no backup automatico: {e}")
+        logger.error(f"Erro no backup automatico: {e}")
+
+scheduler = BackgroundScheduler(timezone='America/Porto_Velho')
+scheduler.add_job(
+    func=enviar_backup_email,
+    trigger=CronTrigger(hour=0, minute=0),
+    id='backup_diario',
+    name='Backup diario por e-mail',
+    replace_existing=True
+)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
+print("Agendador de backup iniciado (todo dia a meia-noite, horario de Rondonia)")
+
+# =====================================================
+# HTTPS
+# ===================================================
 
 @app.before_request
 def before_request():
@@ -1307,26 +1404,19 @@ def configuracoes():
     )
 
 # =====================================================
-# BACKUP
+# BACKUP MANUAL (rota admin)
 # =====================================================
 
 @app.route("/api/backup")
 @login_required
 def backup():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM usuarios")
-    usuarios = [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
-    cursor.execute("SELECT * FROM solicitacoes")
-    solicitacoes = [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
-    conn.close()
-    backup = {'data': datetime.now(FUSO_RONDONIA).isoformat(), 'usuarios': usuarios, 'solicitacoes': solicitacoes}
-    backup_dir = '/opt/render/.data/backups'
-    os.makedirs(backup_dir, exist_ok=True)
-    nome = f"backup_{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d_%H%M%S')}.json"
-    with open(os.path.join(backup_dir, nome), 'w') as f:
-        json.dump(backup, f, ensure_ascii=False, indent=2)
-    return f"✅ Backup: {nome}"
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    try:
+        enviar_backup_email()
+        return "✅ Backup enviado por e-mail com sucesso!"
+    except Exception as e:
+        return f"❌ Erro ao enviar backup: {e}", 500
 
 # =====================================================
 # EXECUÇÃO
