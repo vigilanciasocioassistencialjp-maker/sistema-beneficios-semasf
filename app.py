@@ -596,9 +596,11 @@ def gerar_pdf_assinatura(id):
                 pass
     
     # Formatar CEP
-    cep_valor = s[CEP] if s[CEP] else ''
-    if cep_valor and len(str(cep_valor)) == 8:
-        cep_formatado = f"{str(cep_valor)[:5]}-{str(cep_valor)[5:]}"
+    cep_valor = ''.join(filter(str.isdigit, str(s[CEP]))) if s[CEP] else ''
+    if len(cep_valor) == 8:
+        cep_formatado = f"{cep_valor[:5]}-{cep_valor[5:]}"
+    elif cep_valor:
+        cep_formatado = cep_valor
     else:
         cep_formatado = 'N/A'
     
@@ -704,19 +706,18 @@ def gerar_pdf_assinatura(id):
     
     c.setFont("Helvetica", 10)
     
-    endereco = s[ENDERECO] if s[ENDERECO] else ''
-    numero = s[NUMERO] if s[NUMERO] else 'S/N'
-    complemento = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
-    endereco_completo = f"{endereco}, {numero}"
-    if complemento:
-        endereco_completo += f" - {complemento}"
+    endereco_val = s[ENDERECO] if s[ENDERECO] else ''
+    numero_val = s[NUMERO] if s[NUMERO] else 'S/N'
+    complemento_val = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
+    endereco_completo = f"{endereco_val}, {numero_val}"
+    if complemento_val:
+        endereco_completo += f" - {complemento_val}"
     
-    # CORRIGIDO: Usando a variável cep_formatado
     endereco_dados = [
         ("Endereço:", endereco_completo[:60]),
         ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
-        ("CEP:", cep_formatado),  # AGORA CORRETO!
-        ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),  # AGORA CORRETO!
+        ("CEP:", cep_formatado),
+        ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),
         ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
     ]
     for label, valor in endereco_dados:
@@ -737,12 +738,12 @@ def gerar_pdf_assinatura(id):
     renda_bruta_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
     renda_per_capita_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
     
-    renda_bruta = f"R$ {float(renda_bruta_val):.2f}" if renda_bruta_val > 0 else 'N/A'
-    renda_per_capita = f"R$ {float(renda_per_capita_val):.2f}" if renda_per_capita_val > 0 else 'N/A'
+    renda_bruta_fmt = f"R$ {float(renda_bruta_val):.2f}" if renda_bruta_val > 0 else 'N/A'
+    renda_per_capita_fmt = f"R$ {float(renda_per_capita_val):.2f}" if renda_per_capita_val > 0 else 'N/A'
     
     socio_dados = [
-        ("Renda Bruta Familiar:", renda_bruta),
-        ("Renda Per Capita:", renda_per_capita),
+        ("Renda Bruta Familiar:", renda_bruta_fmt),
+        ("Renda Per Capita:", renda_per_capita_fmt),
         ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
         ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
         ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
