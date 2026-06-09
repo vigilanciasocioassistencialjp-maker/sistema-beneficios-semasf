@@ -486,25 +486,280 @@ def ver_solicitacao(id):
 def gerar_pdf_assinatura(id):
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT * FROM solicitacoes WHERE id = %s", (id,))
+    cursor.execute("""
+        SELECT 
+            s.id, s.tecnico, s.nome, s.cpf, s.data_nascimento, s.telefone,
+            s.endereco, s.numero, s.bairro, s.cras, s.renda_bruta,
+            s.renda_per_capita, s.parecer, s.status, s.data_escuta,
+            s.data_solicitacao, u_escuta.nome as tecnico_nome,
+            s.data_entrega, s.tecnico_entrega, u_entrega.nome as tecnico_entrega_nome,
+            s.composicao_familiar, s.beneficios, s.vulnerabilidade, s.servicos_suas
+        FROM solicitacoes s
+        LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
+        LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
+        WHERE s.id = %s
+    """, (id,))
+   
     s = cursor.fetchone()
     conexao.close()
-    if not s: return "Não encontrada", 404
     
-    cpf_real = formatar_cpf(descriptografar_cpf(s[2])) if s[2] else 'Não informado'
-    numero = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{s[0]:04d}"
+    if not s:
+        return "Solicitação não encontrada", 404
+    
+    # Descriptografar CPF
+    cpf_pdf = formatar_cpf(descriptografar_cpf(s[3])) if s[3] else 'N/A'
+    
+    # Formatar data de nascimento
+    data_nasc = s[4] if s[4] else 'N/A'
+    if data_nasc != 'N/A' and '-' in str(data_nasc):
+        try:
+            partes = str(data_nasc).split('-')
+            if len(partes) == 3:
+                data_nasc = f"{partes[2]}/{partes[1]}/{partes[0]}"
+        except:
+            pass
+    
+    # Formatar data da escuta
+    data_escuta = s[14] if s[14] else 'N/A'
+    if data_escuta != 'N/A' and '-' in str(data_escuta):
+        try:
+            partes = str(data_escuta).split('-')
+            if len(partes) == 3:
+                data_escuta = f"{partes[2]}/{partes[1]}/{partes[0]}"
+        except:
+            pass
+    
+    numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{s[0]:04d}"
     
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(2*cm, 28*cm, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+    width, height = A4
+    y = height - 2*cm
+    
+    # =============================================
+    # CABEÇALHO
+    # =============================================
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+    y -= 0.6*cm
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
+    y -= 0.6*cm
+    c.setFont("Helvetica", 9)
+    c.drawString(2*cm, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
+    y -= 0.4*cm
+    c.line(2*cm, y, width - 2*cm, y)
+    y -= 0.6*cm
+    
+    # Nº Controle e Data
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(2*cm, y, f"Nº de Controle: {numero_controle}")
+    c.drawString(10*cm, y, f"Data: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
+    y -= 0.8*cm
+    
+    # =============================================
+    # DADOS DO BENEFICIÁRIO
+    # =============================================
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, "1. DADOS DO BENEFICIÁRIO")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.6*cm
+    
     c.setFont("Helvetica", 10)
-    c.drawString(2*cm, 26*cm, f"Nº: {numero} | Data: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
-    c.drawString(2*cm, 25*cm, f"Beneficiário: {s[3]}")
-    c.drawString(2*cm, 24.5*cm, f"CPF: {cpf_real}")
+    dados = [
+        ("Nome:", s[2]),
+        ("CPF:", cpf_pdf),
+        ("Data de Nascimento:", data_nasc),
+        ("Telefone:", s[5] if s[5] else 'N/A'),
+    ]
+    for label, valor in dados:
+        c.drawString(2.5*cm, y, f"{label} {valor}")
+        y -= 0.45*cm
+    
+    y -= 0.3*cm
+    
+    # =============================================
+    # ENDEREÇO
+    # =============================================
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, "2. ENDEREÇO")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.6*cm
+    
+    c.setFont("Helvetica", 10)
+    endereco_completo = f"{s[6] if s[6] else ''}, {s[7] if s[7] else 'S/N'}"
+    if s[8]: endereco_completo += f" - {s[8]}"
+    endereco_dados = [
+        ("Endereço:", endereco_completo),
+        ("Bairro:", s[8] if s[8] else 'N/A'),
+        ("CEP:", s[11] if s[11] else 'N/A'),
+        ("Referência:", s[12] if s[12] else 'N/A'),
+        ("CRAS:", s[9] if s[9] else 'N/A'),
+    ]
+    for label, valor in endereco_dados:
+        c.drawString(2.5*cm, y, f"{label} {valor}")
+        y -= 0.45*cm
+    
+    y -= 0.3*cm
+    
+    # =============================================
+    # INFORMAÇÕES SOCIOECONÔMICAS
+    # =============================================
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, "3. INFORMAÇÕES SOCIOECONÔMICAS")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.6*cm
+    
+    c.setFont("Helvetica", 10)
+    renda_bruta = f"R$ {float(s[10]):.2f}" if s[10] else 'N/A'
+    renda_per_capita = f"R$ {float(s[11]):.2f}" if s[11] else 'N/A'
+    socio_dados = [
+        ("Renda Bruta Familiar:", renda_bruta),
+        ("Renda Per Capita:", renda_per_capita),
+        ("Benefícios:", s[21] if s[21] else 'Nenhum'),
+        ("Vulnerabilidades:", s[22] if s[22] else 'Não informado'),
+        ("Serviços SUAS:", s[23] if s[23] else 'Não informado'),
+    ]
+    for label, valor in socio_dados:
+        c.drawString(2.5*cm, y, f"{label} {valor}")
+        y -= 0.45*cm
+    
+    y -= 0.3*cm
+    
+    # =============================================
+    # REGISTRO DE ATENDIMENTO
+    # =============================================
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, "4. REGISTRO DE ATENDIMENTO")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.6*cm
+    
+    c.setFont("Helvetica", 10)
+    tecnico_escuta = s[16] if s[16] else s[1]
+    atd_dados = [
+        ("Técnico que realizou a Escuta:", tecnico_escuta),
+        ("Data da Escuta Técnica:", data_escuta),
+        ("Data da Solicitação:", s[15] if s[15] else 'N/A'),
+        ("Status:", s[13] if s[13] else 'N/A'),
+    ]
+    for label, valor in atd_dados:
+        c.drawString(2.5*cm, y, f"{label} {valor}")
+        y -= 0.45*cm
+    
+    y -= 0.3*cm
+    
+    # =============================================
+    # REGISTRO DE ENTREGA
+    # =============================================
+    if s[17]:
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0, 0.4, 0)
+        c.drawString(2*cm, y, "5. REGISTRO DE ENTREGA")
+        c.setFillColorRGB(0, 0, 0)
+        y -= 0.6*cm
+        
+        c.setFont("Helvetica", 10)
+        data_entrega = s[17]
+        if '-' in str(data_entrega):
+            try:
+                partes = str(data_entrega).split('-')
+                if len(partes) == 3:
+                    data_entrega = f"{partes[2]}/{partes[1]}/{partes[0]}"
+            except:
+                pass
+        tecnico_entrega = s[19] if s[19] else s[18]
+        entrega_dados = [
+            ("Status da Entrega:", s[13]),
+            ("Data da Entrega:", data_entrega),
+            ("Técnico que entregou:", tecnico_entrega),
+        ]
+        for label, valor in entrega_dados:
+            c.drawString(2.5*cm, y, f"{label} {valor}")
+            y -= 0.45*cm
+        y -= 0.3*cm
+        secao_assinaturas = 6
+    else:
+        secao_assinaturas = 5
+    
+    # =============================================
+    # PARECER TÉCNICO
+    # =============================================
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, f"{secao_assinaturas}. PARECER TÉCNICO")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.6*cm
+    
+    c.setFont("Helvetica", 9)
+    parecer = s[12] if s[12] else 'Sem parecer técnico registrado.'
+    
+    # Quebrar texto do parecer em linhas
+    text_object = c.beginText(2.5*cm, y)
+    text_object.setFont("Helvetica", 9)
+    max_width = width - 5*cm
+    palavras = parecer.split()
+    linha = ""
+    for palavra in palavras:
+        teste = linha + " " + palavra if linha else palavra
+        if c.stringWidth(teste, "Helvetica", 9) <= max_width:
+            linha = teste
+        else:
+            text_object.textLine(linha)
+            linha = palavra
+    if linha:
+        text_object.textLine(linha)
+    c.drawText(text_object)
+    y = text_object.getY() - 1.5*cm
+    
+    # =============================================
+    # ASSINATURAS
+    # =============================================
+    # Verificar se precisa de nova página
+    if y < 7*cm:
+        c.showPage()
+        y = height - 2*cm
+    
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.4, 0)
+    c.drawString(2*cm, y, f"{secao_assinaturas + 1}. ASSINATURAS")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 1*cm
+    
+    # Linha de assinatura do beneficiário
+    c.setFont("Helvetica", 10)
+    c.line(2*cm, y, 9*cm, y)
+    c.drawString(2*cm, y - 0.4*cm, "Assinatura do Beneficiário")
+    c.drawString(2*cm, y - 0.8*cm, f"Data: ___/___/_______")
+    
+    # Linha de assinatura do técnico
+    c.line(11*cm, y, 19*cm, y)
+    c.drawString(11*cm, y - 0.4*cm, "Técnico Responsável pela Entrega")
+    c.drawString(11*cm, y - 0.8*cm, f"Data: ___/___/_______")
+    
+    y -= 2.5*cm
+    
+    # Carimbo
+    c.rect(2*cm, y, 6*cm, 2*cm)
+    c.setFont("Helvetica", 8)
+    c.drawString(2.3*cm, y + 1.3*cm, "CARIMBO DO CRAS")
+    c.drawString(2.3*cm, y + 0.9*cm, f"{s[9] if s[9] else ''}")
+    
+    # =============================================
+    # RODAPÉ
+    # =============================================
+    c.setFont("Helvetica", 7)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.drawString(2*cm, 1*cm, f"Documento gerado em {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y às %H:%M:%S')}")
+    c.drawString(2*cm, 0.6*cm, "Este documento deve ser assinado pelo beneficiário e pelo técnico responsável pela entrega.")
+    
     c.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"termo_{numero}.pdf", mimetype='application/pdf')
+    
+    return send_file(buffer, as_attachment=True, download_name=f"termo_entrega_{numero_controle}.pdf", mimetype='application/pdf')
 
 # =====================================================
 # REGISTRAR ENTREGA
