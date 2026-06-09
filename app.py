@@ -605,251 +605,344 @@ def gerar_pdf_assinatura(id):
         cep_formatado = 'N/A'
     
     numero_controle = f"CB-{datetime.now(FUSO_RONDONIA).strftime('%Y%m%d')}-{s[ID]:04d}"
-    
+    data_geracao = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y às %H:%M:%S')
+    tecnico_escuta = s[TECNICO_NOME] if s[TECNICO_NOME] else s[TECNICO]
+
+    # ─── Gerar QR Code ────────────────────────────────────────────
+    base_url = os.environ.get('BASE_URL', request.host_url.rstrip('/'))
+    qr_conteudo = (
+        f"Sistema SEMASF - Ji-Paraná\n"
+        f"Controle: {numero_controle}\n"
+        f"Técnico: {tecnico_escuta}\n"
+        f"Gerado em: {data_geracao}\n"
+        f"URL: {base_url}/ver_solicitacao/{s[ID]}"
+    )
+    qr_img = qrcode.make(qr_conteudo)
+    qr_buffer = io.BytesIO()
+    qr_img.save(qr_buffer, format='PNG')
+    qr_buffer.seek(0)
+    qr_reader = ImageReader(qr_buffer)
+
+    # ─── Estrutura de duas passagens para "Página X de Y" ─────────
+    # Passagem 1: contar páginas
+    # Passagem 2: desenhar com total de páginas conhecido
+    # Usamos uma classe auxiliar que desenha o rodapé no onPage
+
+    MARGEM_RODAPE = 3.8*cm   # altura reservada para rodapé (QR + textos)
+    MARGEM_TOP    = 2*cm
+    LIMITE_Y      = MARGEM_RODAPE  # conteúdo não desce abaixo disso
+
+    def desenhar_rodape(canvas_obj, pagina_atual, total_paginas):
+        """Desenha rodapé padronizado em qualquer página."""
+        canvas_obj.saveState()
+        w, h = A4
+
+        # Linha separadora
+        canvas_obj.setStrokeColorRGB(0.5, 0.5, 0.5)
+        canvas_obj.setLineWidth(0.5)
+        canvas_obj.line(2*cm, MARGEM_RODAPE - 0.1*cm, w - 2*cm, MARGEM_RODAPE - 0.1*cm)
+
+        # QR Code (canto direito do rodapé)
+        qr_size = 3.0*cm
+        qr_x = w - 2*cm - qr_size
+        qr_y = 0.5*cm
+        canvas_obj.drawImage(qr_reader, qr_x, qr_y, width=qr_size, height=qr_size)
+        canvas_obj.setFont("Helvetica", 5.5)
+        canvas_obj.setFillColorRGB(0.4, 0.4, 0.4)
+        canvas_obj.drawCentredString(qr_x + qr_size/2, qr_y - 0.3*cm, "Assinatura Digital")
+
+        # Textos do rodapé (à esquerda do QR)
+        tx = 2*cm
+        canvas_obj.setFont("Helvetica-Bold", 7.5)
+        canvas_obj.setFillColorRGB(0.15, 0.15, 0.15)
+        canvas_obj.drawString(tx, MARGEM_RODAPE - 0.55*cm,
+            "⚠  Este documento deve ser assinado pelo beneficiário e pelo técnico responsável pela entrega.")
+
+        canvas_obj.setFont("Helvetica", 7.5)
+        canvas_obj.setFillColorRGB(0.2, 0.2, 0.2)
+        canvas_obj.drawString(tx, MARGEM_RODAPE - 1.0*cm,
+            "A escuta, entrega e critérios de concessão obedeceram à Lei Municipal do SUAS nº 3.603 de 01/12/2022.")
+        canvas_obj.drawString(tx, MARGEM_RODAPE - 1.4*cm,
+            f"Documento gerado em {data_geracao}  |  Nº de Controle: {numero_controle}")
+
+        # Numeração de páginas
+        canvas_obj.setFont("Helvetica-Bold", 8)
+        canvas_obj.setFillColorRGB(0.2, 0.2, 0.2)
+        canvas_obj.drawString(tx, MARGEM_RODAPE - 1.85*cm,
+            f"Página {pagina_atual} de {total_paginas}")
+
+        canvas_obj.restoreState()
+
+    def gerar_conteudo(canvas_obj, total_paginas_conhecido=None):
+        """
+        Desenha todo o conteúdo do PDF.
+        Se total_paginas_conhecido for None, apenas conta as páginas (passagem 1).
+        Caso contrário, desenha de verdade (passagem 2).
+        """
+        w, h = A4
+        pagina_atual = 1
+        desenhar = total_paginas_conhecido is not None
+
+        def nova_pagina():
+            nonlocal pagina_atual
+            if desenhar:
+                desenhar_rodape(canvas_obj, pagina_atual, total_paginas_conhecido)
+            canvas_obj.showPage()
+            pagina_atual += 1
+            return h - MARGEM_TOP
+
+        def check_space(needed, current_y):
+            if current_y - needed < LIMITE_Y:
+                return nova_pagina()
+            return current_y
+
+        y = h - MARGEM_TOP
+
+        if desenhar:
+            # ── CABEÇALHO ──────────────────────────────────────────
+            canvas_obj.setFont("Helvetica-Bold", 14)
+            canvas_obj.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 9)
+            canvas_obj.drawString(2*cm, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
+            y -= 0.4*cm
+            canvas_obj.line(2*cm, y, w - 2*cm, y)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica-Bold", 10)
+            canvas_obj.drawString(2*cm, y, f"Nº de Controle: {numero_controle}")
+            canvas_obj.drawString(10*cm, y, f"Data de Emissão: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
+            y -= 0.8*cm
+
+            # ── 1. DADOS DO BENEFICIÁRIO ────────────────────────────
+            y = check_space(5*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "1. DADOS DO BENEFICIÁRIO")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            for label, valor in [
+                ("Nome:", s[NOME] if s[NOME] else 'N/A'),
+                ("CPF:", cpf_pdf),
+                ("Data de Nascimento:", data_nasc),
+                ("Telefone:", s[TELEFONE] if s[TELEFONE] else 'N/A'),
+                ("Email:", s[EMAIL] if s[EMAIL] else 'N/A'),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 2. COMPOSIÇÃO FAMILIAR ──────────────────────────────
+            y = check_space(8*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "2. COMPOSIÇÃO FAMILIAR")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            total_pess = s[TOTAL_PESSOAS] if s[TOTAL_PESSOAS] and s[TOTAL_PESSOAS] > 0 else 1
+            canvas_obj.drawString(2.5*cm, y, f"Total de pessoas: {total_pess}")
+            y -= 0.5*cm
+            comp_familiar = s[COMPOSICAO_FAMILIAR] if s[COMPOSICAO_FAMILIAR] else '[]'
+            try:
+                membros = json.loads(comp_familiar)
+                if membros:
+                    canvas_obj.setFont("Helvetica-Bold", 9)
+                    canvas_obj.drawString(3*cm, y, "Nome")
+                    canvas_obj.drawString(9*cm, y, "Idade")
+                    canvas_obj.drawString(13*cm, y, "Vínculo")
+                    y -= 0.4*cm
+                    canvas_obj.setFont("Helvetica", 9)
+                    for membro in membros[:8]:
+                        y = check_space(1*cm, y)
+                        canvas_obj.drawString(3*cm, y, membro.get('nome', '')[:25])
+                        canvas_obj.drawString(9*cm, y, str(membro.get('idade', '')))
+                        canvas_obj.drawString(13*cm, y, membro.get('vinculo', '')[:15])
+                        y -= 0.35*cm
+                else:
+                    canvas_obj.drawString(2.5*cm, y, "Família unipessoal")
+                    y -= 0.35*cm
+            except:
+                canvas_obj.drawString(2.5*cm, y, "Não informado")
+                y -= 0.35*cm
+            y -= 0.2*cm
+
+            # ── 3. ENDEREÇO ─────────────────────────────────────────
+            y = check_space(7*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "3. ENDEREÇO")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            end_val = s[ENDERECO] if s[ENDERECO] else ''
+            num_val = s[NUMERO] if s[NUMERO] else 'S/N'
+            comp_val = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
+            end_completo = f"{end_val}, {num_val}" + (f" - {comp_val}" if comp_val else "")
+            for label, valor in [
+                ("Endereço:", end_completo[:60]),
+                ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
+                ("CEP:", cep_formatado),
+                ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),
+                ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 4. INFORMAÇÕES SOCIOECONÔMICAS ──────────────────────
+            y = check_space(6*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "4. INFORMAÇÕES SOCIOECONÔMICAS")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            rb_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
+            rpc_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
+            for label, valor in [
+                ("Renda Bruta Familiar:", f"R$ {float(rb_val):.2f}" if rb_val > 0 else 'N/A'),
+                ("Renda Per Capita:", f"R$ {float(rpc_val):.2f}" if rpc_val > 0 else 'N/A'),
+                ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
+                ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
+                ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 5. REGISTRO DE ATENDIMENTO ──────────────────────────
+            y = check_space(4*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "5. REGISTRO DE ATENDIMENTO")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            for label, valor in [
+                ("Técnico que realizou a Escuta:", tecnico_escuta),
+                ("Data da Escuta Técnica:", data_escuta),
+                ("Status:", s[STATUS] if s[STATUS] else 'N/A'),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 6. PARECER TÉCNICO ──────────────────────────────────
+            y = check_space(5*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "6. PARECER TÉCNICO")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
+            text_object = canvas_obj.beginText(2.5*cm, y)
+            text_object.setFont("Helvetica", 9)
+            max_w = w - 5*cm
+            linha = ""
+            for palavra in parecer_txt.split():
+                teste = linha + " " + palavra if linha else palavra
+                if canvas_obj.stringWidth(teste, "Helvetica", 9) <= max_w:
+                    linha = teste
+                else:
+                    text_object.textLine(linha)
+                    linha = palavra
+                    if text_object.getY() < LIMITE_Y:
+                        canvas_obj.drawText(text_object)
+                        y = nova_pagina()
+                        text_object = canvas_obj.beginText(2.5*cm, y)
+                        text_object.setFont("Helvetica", 9)
+            if linha:
+                text_object.textLine(linha)
+            canvas_obj.drawText(text_object)
+            y = text_object.getY() - 1*cm
+
+            # ── 7. ASSINATURAS ──────────────────────────────────────
+            if y < 8*cm + LIMITE_Y:
+                y = nova_pagina()
+            else:
+                y -= 0.5*cm
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "7. ASSINATURAS")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.8*cm
+            canvas_obj.setFont("Helvetica-Bold", 10)
+            canvas_obj.drawString(2*cm, y, f"Data da Entrega: {data_entrega_pdf}")
+            y -= 1.2*cm
+            canvas_obj.setFont("Helvetica", 10)
+            canvas_obj.line(2*cm, y, 9.5*cm, y)
+            canvas_obj.drawString(2*cm, y - 0.4*cm, "Assinatura do Beneficiário")
+            canvas_obj.line(10.5*cm, y, 19*cm, y)
+            canvas_obj.drawString(10.5*cm, y - 0.4*cm, "Técnico Responsável pela Entrega")
+            y -= 2.5*cm
+            if y > LIMITE_Y + 3*cm:
+                canvas_obj.rect(2*cm, y - 1.5*cm, 6*cm, 2*cm)
+                canvas_obj.setFont("Helvetica", 8)
+                canvas_obj.drawString(2.3*cm, y - 0.5*cm, "CARIMBO DO CRAS")
+                canvas_obj.drawString(2.3*cm, y - 0.9*cm, s[CRAS] if s[CRAS] else '')
+
+            # Rodapé da última página
+            desenhar_rodape(canvas_obj, pagina_atual, total_paginas_conhecido)
+
+        else:
+            # ── Passagem 1: simulação apenas para contar páginas ────
+            # Replica a mesma lógica de quebra de página sem desenhar
+            y -= 3.5*cm  # cabeçalho
+            y = check_space(5*cm, y)
+            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # dados beneficiário
+
+            y = check_space(8*cm, y)
+            y -= 0.6*cm + 0.5*cm  # composição - cabeçalho
+            try:
+                membros = json.loads(s[COMPOSICAO_FAMILIAR] if s[COMPOSICAO_FAMILIAR] else '[]')
+                for membro in membros[:8]:
+                    y = check_space(1*cm, y)
+                    y -= 0.35*cm
+            except:
+                y -= 0.35*cm
+            y -= 0.2*cm
+
+            y = check_space(7*cm, y)
+            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # endereço
+
+            y = check_space(6*cm, y)
+            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # socioeconômico
+
+            y = check_space(4*cm, y)
+            y -= 3 * 0.45*cm + 0.2*cm + 0.6*cm  # atendimento
+
+            y = check_space(5*cm, y)
+            y -= 0.6*cm
+            # simular quebra de página do parecer
+            parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
+            linhas_estimadas = max(1, len(parecer_txt) // 80)
+            for _ in range(linhas_estimadas):
+                if y - 0.4*cm < LIMITE_Y:
+                    y = nova_pagina()
+                y -= 0.4*cm
+            y -= 1*cm
+
+            if y < 8*cm + LIMITE_Y:
+                y = nova_pagina()
+
+        return pagina_atual
+
+    # ── Passagem 1: contar páginas ─────────────────────────────────
+    counter_buf = io.BytesIO()
+    c_count = canvas.Canvas(counter_buf, pagesize=A4)
+    total_paginas = gerar_conteudo(c_count, total_paginas_conhecido=None)
+
+    # ── Passagem 2: gerar PDF real ─────────────────────────────────
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    
-    def check_space(needed, current_y, c_obj, margin_bottom=2*cm):
-        if current_y - needed < margin_bottom:
-            c_obj.showPage()
-            return height - 2*cm
-        return current_y
-    
-    y = height - 2*cm
-    
-    # CABEÇALHO
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
-    y -= 0.6*cm
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
-    y -= 0.6*cm
-    c.setFont("Helvetica", 9)
-    c.drawString(2*cm, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
-    y -= 0.4*cm
-    c.line(2*cm, y, width - 2*cm, y)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(2*cm, y, f"Nº de Controle: {numero_controle}")
-    c.drawString(10*cm, y, f"Data de Emissão: {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M')}")
-    y -= 0.8*cm
-    
-    # 1. DADOS DO BENEFICIÁRIO
-    y = check_space(5*cm, y, c)
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "1. DADOS DO BENEFICIÁRIO")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 10)
-    dados = [
-        ("Nome:", s[NOME] if s[NOME] else 'N/A'),
-        ("CPF:", cpf_pdf),
-        ("Data de Nascimento:", data_nasc),
-        ("Telefone:", s[TELEFONE] if s[TELEFONE] else 'N/A'),
-        ("Email:", s[EMAIL] if s[EMAIL] else 'N/A'),
-    ]
-    for label, valor in dados:
-        c.drawString(2.5*cm, y, f"{label} {valor}")
-        y -= 0.45*cm
-    y -= 0.2*cm
-    
-    # 2. COMPOSIÇÃO FAMILIAR
-    y = check_space(8*cm, y, c)
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "2. COMPOSIÇÃO FAMILIAR")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 10)
-    total_pessoas = s[TOTAL_PESSOAS] if s[TOTAL_PESSOAS] and s[TOTAL_PESSOAS] > 0 else 1
-    c.drawString(2.5*cm, y, f"Total de pessoas: {total_pessoas}")
-    y -= 0.5*cm
-    
-    comp_familiar = s[COMPOSICAO_FAMILIAR] if s[COMPOSICAO_FAMILIAR] else '[]'
-    try:
-        membros = json.loads(comp_familiar)
-        if membros:
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(3*cm, y, "Nome")
-            c.drawString(9*cm, y, "Idade")
-            c.drawString(13*cm, y, "Vínculo")
-            y -= 0.4*cm
-            c.setFont("Helvetica", 9)
-            for membro in membros[:8]:
-                if y < 5*cm:
-                    c.showPage()
-                    y = height - 2*cm
-                c.drawString(3*cm, y, (membro.get('nome', '')[:25]))
-                c.drawString(9*cm, y, str(membro.get('idade', '')))
-                c.drawString(13*cm, y, (membro.get('vinculo', '')[:15]))
-                y -= 0.35*cm
-        else:
-            c.drawString(2.5*cm, y, "Família unipessoal")
-            y -= 0.35*cm
-    except:
-        c.drawString(2.5*cm, y, "Não informado")
-        y -= 0.35*cm
-    y -= 0.2*cm
-    
-    # 3. ENDEREÇO - CORRIGIDO!
-    y = check_space(7*cm, y, c)
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "3. ENDEREÇO")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 10)
-    
-    endereco_val = s[ENDERECO] if s[ENDERECO] else ''
-    numero_val = s[NUMERO] if s[NUMERO] else 'S/N'
-    complemento_val = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
-    endereco_completo = f"{endereco_val}, {numero_val}"
-    if complemento_val:
-        endereco_completo += f" - {complemento_val}"
-    
-    endereco_dados = [
-        ("Endereço:", endereco_completo[:60]),
-        ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
-        ("CEP:", cep_formatado),
-        ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),
-        ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
-    ]
-    for label, valor in endereco_dados:
-        c.drawString(2.5*cm, y, f"{label} {valor}")
-        y -= 0.45*cm
-    y -= 0.2*cm
-    
-    # 4. INFORMAÇÕES SOCIOECONÔMICAS
-    y = check_space(6*cm, y, c)
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "4. INFORMAÇÕES SOCIOECONÔMICAS")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 10)
-    
-    renda_bruta_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
-    renda_per_capita_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
-    
-    renda_bruta_fmt = f"R$ {float(renda_bruta_val):.2f}" if renda_bruta_val > 0 else 'N/A'
-    renda_per_capita_fmt = f"R$ {float(renda_per_capita_val):.2f}" if renda_per_capita_val > 0 else 'N/A'
-    
-    socio_dados = [
-        ("Renda Bruta Familiar:", renda_bruta_fmt),
-        ("Renda Per Capita:", renda_per_capita_fmt),
-        ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
-        ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
-        ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
-    ]
-    for label, valor in socio_dados:
-        c.drawString(2.5*cm, y, f"{label} {valor}")
-        y -= 0.45*cm
-    y -= 0.2*cm
-    
-    # 5. REGISTRO DE ATENDIMENTO
-    y = check_space(4*cm, y, c)
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "5. REGISTRO DE ATENDIMENTO")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 10)
-    tecnico_escuta = s[TECNICO_NOME] if s[TECNICO_NOME] else s[TECNICO]
-    atd_dados = [
-        ("Técnico que realizou a Escuta:", tecnico_escuta),
-        ("Data da Escuta Técnica:", data_escuta),
-        ("Status:", s[STATUS] if s[STATUS] else 'N/A'),
-    ]
-    for label, valor in atd_dados:
-        c.drawString(2.5*cm, y, f"{label} {valor}")
-        y -= 0.45*cm
-    y -= 0.2*cm
-    
-    # 6. PARECER TÉCNICO
-    y = check_space(5*cm, y, c)
-    
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "6. PARECER TÉCNICO")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.6*cm
-    
-    c.setFont("Helvetica", 9)
-    parecer = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
-    
-    text_object = c.beginText(2.5*cm, y)
-    text_object.setFont("Helvetica", 9)
-    max_width = width - 5*cm
-    
-    palavras = parecer.split()
-    linha = ""
-    for palavra in palavras:
-        teste = linha + " " + palavra if linha else palavra
-        if c.stringWidth(teste, "Helvetica", 9) <= max_width:
-            linha = teste
-        else:
-            text_object.textLine(linha)
-            linha = palavra
-            if text_object.getY() < 4*cm:
-                c.drawText(text_object)
-                c.showPage()
-                text_object = c.beginText(2.5*cm, height - 2*cm)
-                text_object.setFont("Helvetica", 9)
-    if linha:
-        text_object.textLine(linha)
-    c.drawText(text_object)
-    y = text_object.getY() - 1*cm
-    
-    # 7. ASSINATURAS
-    if y < 8*cm:
-        c.showPage()
-        y = height - 2*cm
-    else:
-        y -= 0.5*cm
-    
-    c.setFont("Helvetica-Bold", 11)
-    c.setFillColorRGB(0, 0.4, 0)
-    c.drawString(2*cm, y, "7. ASSINATURAS")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.8*cm
-    
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(2*cm, y, f"Data da Entrega: {data_entrega_pdf}")
-    y -= 1.2*cm
-    
-    c.setFont("Helvetica", 10)
-    c.line(2*cm, y, 9.5*cm, y)
-    c.drawString(2*cm, y - 0.4*cm, "Assinatura do Beneficiário")
-    
-    c.line(10.5*cm, y, 19*cm, y)
-    c.drawString(10.5*cm, y - 0.4*cm, "Técnico Responsável pela Entrega")
-    
-    y -= 2.5*cm
-    
-    if y > 3*cm:
-        c.rect(2*cm, y - 1.5*cm, 6*cm, 2*cm)
-        c.setFont("Helvetica", 8)
-        c.drawString(2.3*cm, y - 0.5*cm, "CARIMBO DO CRAS")
-        c.drawString(2.3*cm, y - 0.9*cm, s[CRAS] if s[CRAS] else '')
-    
-    # RODAPÉ
-    c.setFont("Helvetica", 6.5)
-    c.setFillColorRGB(0.3, 0.3, 0.3)
-    c.drawString(2*cm, 1.5*cm, f"Documento gerado em {datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y às %H:%M:%S')}")
-    c.drawString(2*cm, 1.1*cm, "Este documento deve ser assinado pelo beneficiário e pelo técnico responsável pela entrega.")
-    c.drawString(2*cm, 0.7*cm, "A escuta, entrega e critérios de concessão obedeceram a Lei Municipal do SUAS nº 3.603 de 01 de dezembro de 2022.")
-    
+    gerar_conteudo(c, total_paginas_conhecido=total_paginas)
     c.save()
     buffer.seek(0)
-    
+
     return send_file(buffer, as_attachment=True, download_name=f"termo_entrega_{numero_controle}.pdf", mimetype='application/pdf')
 
 # =====================================================
