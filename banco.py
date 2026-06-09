@@ -54,12 +54,13 @@ def criar_banco():
             )
         ''')
         
-        # Tabela de solicitações
+        # Tabela de solicitações (com cpf_hash desde o início)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (
                 id SERIAL PRIMARY KEY,
                 tecnico TEXT,
                 cpf TEXT,
+                cpf_hash TEXT,
                 nome TEXT,
                 data_nascimento TEXT,
                 telefone TEXT,
@@ -86,6 +87,20 @@ def criar_banco():
                 tecnico_entrega TEXT
             )
         ''')
+        
+        # =====================================================
+        # MIGRAÇÃO: Adiciona cpf_hash se a tabela já existe
+        # sem a coluna (bancos criados antes da criptografia)
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'solicitacoes' AND column_name = 'cpf_hash'
+        """)
+        if not cursor.fetchone():
+            print("⚠️  Coluna cpf_hash não encontrada. Adicionando...")
+            cursor.execute("ALTER TABLE solicitacoes ADD COLUMN cpf_hash TEXT")
+            print("✅ Coluna cpf_hash adicionada!")
         
         conn.commit()
         cursor.close()
