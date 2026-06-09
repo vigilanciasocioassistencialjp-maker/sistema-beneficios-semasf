@@ -383,15 +383,18 @@ def inicio():
         # Parecer
         parecer = request.form.get("parecer", "")
         
+        # Exceção Art. 64 - concessão fora dos critérios ordinários
+        excecao_art64 = request.form.get("excecao_art64") == "1"
+        
         tecnico = current_user.id
         data_solic = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
         
         conexao = get_db()
         cursor = conexao.cursor()
         cursor.execute("""
-            INSERT INTO solicitacoes (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_familiar, renda_bruta, renda_per_capita, beneficios, vulnerabilidade, servicos_suas, parecer, status, data_solicitacao)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (tecnico, cpf_cripto, cpf_hash, nome, data_nasc, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_json, renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text, servicos_text, parecer, 'Cadastrada', data_solic))
+            INSERT INTO solicitacoes (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_familiar, renda_bruta, renda_per_capita, beneficios, vulnerabilidade, servicos_suas, parecer, status, data_solicitacao, excecao_art64)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (tecnico, cpf_cripto, cpf_hash, nome, data_nasc, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_json, renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text, servicos_text, parecer, 'Cadastrada', data_solic, excecao_art64))
         conexao.commit()
         conexao.close()
         
@@ -516,7 +519,8 @@ def gerar_pdf_assinatura(id):
             s.cep,                      -- ÍNDICE 25
             s.referencia,               -- ÍNDICE 26
             s.complemento,              -- ÍNDICE 27
-            s.email                     -- ÍNDICE 28
+            s.email,                    -- ÍNDICE 28
+            s.excecao_art64             -- ÍNDICE 29
         FROM solicitacoes s
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
@@ -559,6 +563,7 @@ def gerar_pdf_assinatura(id):
     REFERENCIA = 26
     COMPLEMENTO = 27
     EMAIL = 28
+    EXCECAO_ART64 = 29
     
     # Descriptografar CPF
     cpf_pdf = formatar_cpf(descriptografar_cpf(s[CPF])) if s[CPF] else 'N/A'
@@ -838,6 +843,18 @@ def gerar_pdf_assinatura(id):
             canvas_obj.drawString(2*cm, y, "6. PARECER TÉCNICO")
             canvas_obj.setFillColorRGB(0, 0, 0)
             y -= 0.6*cm
+
+            # Aviso de exceção Art. 64
+            if s[EXCECAO_ART64]:
+                canvas_obj.setFillColorRGB(0.7, 0.1, 0.1)
+                canvas_obj.setFont("Helvetica-Bold", 9)
+                canvas_obj.rect(2*cm, y - 0.5*cm, 17*cm, 0.75*cm, fill=0)
+                canvas_obj.drawString(2.3*cm, y - 0.25*cm,
+                    "⚠  CONCESSÃO EXCEPCIONAL — Art. 64 da Lei Municipal nº 3.603/2022: situação não contemplada nos critérios ordinários,")
+                canvas_obj.drawString(2.3*cm, y - 0.55*cm,
+                    "     autorizada mediante parecer técnico social e autorização do gestor da SEMASF.")
+                canvas_obj.setFillColorRGB(0, 0, 0)
+                y -= 1.1*cm
             parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)
@@ -1045,6 +1062,13 @@ def relatorio():
     """, (filtro_like,))
     total_pendentes = cursor.fetchone()[0]
 
+    # Exceções Art. 64 do período
+    cursor.execute("""
+        SELECT COUNT(*) FROM solicitacoes
+        WHERE excecao_art64 = TRUE AND data_solicitacao LIKE %s
+    """, (filtro_like,))
+    total_excecoes = cursor.fetchone()[0]
+
     # Por CRAS
     cursor.execute("""
         SELECT cras,
@@ -1134,6 +1158,7 @@ def relatorio():
         total_entregues=total_entregues,
         total_ausentes=total_ausentes,
         total_pendentes=total_pendentes,
+        total_excecoes=total_excecoes,
         por_cras=por_cras,
         por_tecnico=por_tecnico,
         ultimas_entregas=ultimas_entregas,
