@@ -954,15 +954,29 @@ document.getElementById('solicitacaoForm').addEventListener('submit', function(e
         document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
     }
 
-    // Desmascarar renda antes de enviar (converter "1.621,00" → "1621.00")
-    const rb = document.getElementById('renda_bruta');
-    const rpc = document.getElementById('renda_per_capita');
-    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
-    if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
-
-    // Validar: se exceção Art. 64 marcada, parecer é obrigatório
     const excecao = document.getElementById('excecao_art64');
     const parecer = document.getElementById('parecerTexto');
+    const rb = document.getElementById('renda_bruta');
+    const rpcInput = document.getElementById('renda_per_capita');
+
+    // Validar: renda per capita acima do limite exige Art. 64 marcado
+    const rpcValor = desmascarar(rpcInput ? rpcInput.value : '0');
+    if (rpcValor > limiteRPC && rpcValor > 0 && excecao && !excecao.checked) {
+        e.preventDefault();
+        // Rolar até o checkbox e destacá-lo
+        const divExcecao = document.getElementById('divExcecao');
+        if (divExcecao) {
+            divExcecao.classList.remove('border-warning', 'bg-warning');
+            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+            divExcecao.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        excecao.classList.add('is-invalid');
+        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite de R$ ${formatarMoeda(limiteRPC)}.\n\nMarque a exceção do Art. 64 antes de salvar.`);
+        return false;
+    }
+    if (excecao) excecao.classList.remove('is-invalid');
+
+    // Validar: se exceção Art. 64 marcada, parecer é obrigatório
     if (excecao && excecao.checked && parecer && parecer.value.trim().length < 20) {
         e.preventDefault();
         parecer.focus();
@@ -971,6 +985,11 @@ document.getElementById('solicitacaoForm').addEventListener('submit', function(e
         return false;
     }
     if (parecer) parecer.classList.remove('is-invalid');
+
+    // Desmascarar renda antes de enviar (converter "1.621,00" → "1621.00")
+    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
+    if (rpcInput) rpcInput.value = desmascarar(rpcInput.value).toFixed(2);
+
     return true;
 });
 
