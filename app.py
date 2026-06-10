@@ -1056,15 +1056,27 @@ def gerar_pdf_assinatura(id):
 
             # Aviso de exceção Art. 64
             if s[EXCECAO_ART64]:
+                box_x = 2*cm
+                box_largura = w - 4*cm  # mesma largura útil da página (margens de 2cm)
+                box_altura = 1.15*cm
+                box_topo = y
+                # Moldura
+                canvas_obj.setStrokeColorRGB(0.7, 0.1, 0.1)
+                canvas_obj.setLineWidth(1)
+                canvas_obj.rect(box_x, box_topo - box_altura, box_largura, box_altura, fill=0)
+                # Texto dentro da moldura (com recuo interno)
                 canvas_obj.setFillColorRGB(0.7, 0.1, 0.1)
-                canvas_obj.setFont("Helvetica-Bold", 9)
-                canvas_obj.rect(2*cm, y - 0.5*cm, 17*cm, 0.75*cm, fill=0)
-                canvas_obj.drawString(2.3*cm, y - 0.25*cm,
-                    "⚠  CONCESSÃO EXCEPCIONAL — Art. 64 da Lei Municipal nº 3.603/2022: situação não contemplada nos critérios ordinários,")
-                canvas_obj.drawString(2.3*cm, y - 0.55*cm,
-                    "     autorizada mediante parecer técnico social e autorização do gestor da SEMASF.")
+                canvas_obj.setFont("Helvetica-Bold", 8)
+                canvas_obj.drawString(box_x + 0.3*cm, box_topo - 0.4*cm,
+                    "CONCESSÃO EXCEPCIONAL — Art. 64 da Lei Municipal nº 3.603/2022")
+                canvas_obj.setFont("Helvetica", 7.5)
+                canvas_obj.drawString(box_x + 0.3*cm, box_topo - 0.72*cm,
+                    "Situação não contemplada nos critérios ordinários, autorizada mediante parecer técnico social")
+                canvas_obj.drawString(box_x + 0.3*cm, box_topo - 1.0*cm,
+                    "e autorização do gestor da SEMASF.")
                 canvas_obj.setFillColorRGB(0, 0, 0)
-                y -= 1.1*cm
+                canvas_obj.setStrokeColorRGB(0, 0, 0)
+                y -= (box_altura + 0.3*cm)
             parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)
