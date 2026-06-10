@@ -486,10 +486,33 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-success w-100 py-2">
-                <strong>Salvar Solicitação</strong>
+            <button type="button" class="btn btn-success w-100 py-2" id="btnRevisar">
+                <i class="fas fa-eye"></i> <strong>Revisar e Salvar</strong>
             </button>
         </form>
+    </div>
+</div>
+
+<!-- Modal de Revisão -->
+<div class="modal fade" id="modalRevisao" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-eye"></i> Revisão da Solicitação — Confirme os dados antes de salvar
+                </h5>
+            </div>
+            <div class="modal-body" id="conteudoRevisao">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-lg" data-bs-dismiss="modal">
+                    <i class="fas fa-edit"></i> Voltar e Corrigir
+                </button>
+                <button type="button" class="btn btn-success btn-lg" id="btnConfirmarSalvar">
+                    <i class="fas fa-check"></i> Confirmar e Salvar
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -947,52 +970,6 @@ fetch('/api/configuracoes')
     .then(data => { limiteRPC = data.limite_renda_per_capita; })
     .catch(() => {});
 
-// CORREÇÃO: Impedir loop no submit
-document.getElementById('solicitacaoForm').addEventListener('submit', function(e) {
-    // Garantir que data_escuta tenha um valor
-    if (!document.getElementById('data_escuta').value) {
-        document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
-    }
-
-    const excecao = document.getElementById('excecao_art64');
-    const parecer = document.getElementById('parecerTexto');
-    const rb = document.getElementById('renda_bruta');
-    const rpcInput = document.getElementById('renda_per_capita');
-
-    // Validar: renda per capita acima do limite exige Art. 64 marcado
-    const rpcValor = desmascarar(rpcInput ? rpcInput.value : '0');
-    if (rpcValor > limiteRPC && rpcValor > 0 && excecao && !excecao.checked) {
-        e.preventDefault();
-        // Rolar até o checkbox e destacá-lo
-        const divExcecao = document.getElementById('divExcecao');
-        if (divExcecao) {
-            divExcecao.classList.remove('border-warning', 'bg-warning');
-            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
-            divExcecao.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        excecao.classList.add('is-invalid');
-        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite de R$ ${formatarMoeda(limiteRPC)}.\n\nMarque a exceção do Art. 64 antes de salvar.`);
-        return false;
-    }
-    if (excecao) excecao.classList.remove('is-invalid');
-
-    // Validar: se exceção Art. 64 marcada, parecer é obrigatório
-    if (excecao && excecao.checked && parecer && parecer.value.trim().length < 20) {
-        e.preventDefault();
-        parecer.focus();
-        parecer.classList.add('is-invalid');
-        alert('⚠️ Ao marcar a exceção do Art. 64, o Parecer Técnico é obrigatório e deve descrever a justificativa da concessão excepcional.');
-        return false;
-    }
-    if (parecer) parecer.classList.remove('is-invalid');
-
-    // Desmascarar renda antes de enviar (converter "1.621,00" → "1621.00")
-    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
-    if (rpcInput) rpcInput.value = desmascarar(rpcInput.value).toFixed(2);
-
-    return true;
-});
-
 // Destacar visualmente quando Art. 64 for marcado
 document.getElementById('excecao_art64') && document.getElementById('excecao_art64').addEventListener('change', function() {
     const caixa = document.getElementById('divExcecao');
@@ -1012,6 +989,147 @@ document.getElementById('excecao_art64') && document.getElementById('excecao_art
             parecer.rows = 5;
         }
     }
+});
+
+// =============================================
+// TELA DE REVISÃO
+// =============================================
+document.getElementById('btnRevisar').addEventListener('click', function() {
+    // Validações antes de abrir a revisão
+    const form = document.getElementById('solicitacaoForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    if (!document.getElementById('data_escuta').value) {
+        document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
+    }
+    const excecao = document.getElementById('excecao_art64');
+    const parecer = document.getElementById('parecerTexto');
+    const rpcValor = desmascarar(document.getElementById('renda_per_capita').value);
+    if (rpcValor > limiteRPC && rpcValor > 0 && excecao && !excecao.checked) {
+        const divExcecao = document.getElementById('divExcecao');
+        if (divExcecao) {
+            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+            divExcecao.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite de R$ ${formatarMoeda(limiteRPC)}.\n\nMarque a exceção do Art. 64 antes de salvar.`);
+        return;
+    }
+    if (excecao && excecao.checked && parecer && parecer.value.trim().length < 20) {
+        parecer.focus();
+        parecer.classList.add('is-invalid');
+        alert('⚠️ Ao marcar a exceção do Art. 64, o Parecer Técnico é obrigatório.');
+        return;
+    }
+
+    // Montar conteúdo da revisão
+    const nome = document.querySelector('input[name="nome"]').value;
+    const cpf = document.getElementById('cpf').value;
+    const dataNasc = document.querySelector('input[name="data_nascimento"]').value;
+    const telefone = document.querySelector('input[name="telefone"]').value;
+    const emailVal = document.querySelector('input[name="email"]').value;
+    const endereco = document.querySelector('input[name="endereco"]').value;
+    const numero = document.querySelector('input[name="numero"]').value;
+    const complemento = document.querySelector('input[name="complemento"]').value;
+    const bairro = document.getElementById('bairro').value;
+    const cras = document.querySelector('select[name="cras"]').value;
+    const rendaBruta = document.getElementById('renda_bruta').value;
+    const rendaRPC = document.getElementById('renda_per_capita').value;
+    const beneficios = document.querySelector('select[name="beneficios"]').value;
+    const dataEscuta = document.getElementById('data_escuta').value;
+    const parecerTxt = parecer ? parecer.value : '';
+    const excecaoMarcada = excecao && excecao.checked;
+
+    // Membros familiares
+    const nomes = [...document.querySelectorAll('input[name="membro_nome[]"]')].map(i => i.value).filter(v => v.trim());
+    const idades = [...document.querySelectorAll('input[name="membro_idade[]"]')].map(i => i.value);
+    const vinculos = [...document.querySelectorAll('select[name="membro_vinculo[]"]')].map(s => s.value);
+    let tabelaMembros = nomes.map((n, i) =>
+        `<tr><td>${n}</td><td>${idades[i]||''}</td><td>${vinculos[i]||''}</td></tr>`
+    ).join('');
+
+    // Vulnerabilidades e serviços marcados
+    const vuls = [...document.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value).join(', ') || 'Nenhuma';
+    const servs = [...document.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value).join(', ') || 'Nenhum';
+
+    const excecaoHtml = excecaoMarcada
+        ? `<div class="alert alert-danger py-2"><i class="fas fa-exclamation-triangle"></i> <strong>Concessão com base no Art. 64 — Lei Municipal nº 3.603/2022</strong></div>`
+        : '';
+
+    document.getElementById('conteudoRevisao').innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white"><strong>Dados do Beneficiário</strong></div>
+                    <div class="card-body">
+                        <p><strong>Nome:</strong> ${nome}</p>
+                        <p><strong>CPF:</strong> ${cpf}</p>
+                        <p><strong>Data Nascimento:</strong> ${dataNasc}</p>
+                        <p><strong>Telefone:</strong> ${telefone}</p>
+                        <p><strong>E-mail:</strong> ${emailVal || 'Não informado'}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white"><strong>Endereço</strong></div>
+                    <div class="card-body">
+                        <p><strong>Endereço:</strong> ${endereco}, ${numero} ${complemento ? '- '+complemento : ''}</p>
+                        <p><strong>Bairro:</strong> ${bairro}</p>
+                        <p><strong>CRAS:</strong> ${cras}</p>
+                        <p><strong>Data da Escuta:</strong> ${dataEscuta}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white"><strong>Composição Familiar (${nomes.length} pessoa(s))</strong></div>
+                    <div class="card-body p-2">
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr></thead>
+                            <tbody>${tabelaMembros}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white"><strong>Renda e Benefícios</strong></div>
+                    <div class="card-body">
+                        <p><strong>Renda Familiar:</strong> R$ ${rendaBruta}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ ${rendaRPC}</p>
+                        <p><strong>Benefícios:</strong> ${beneficios}</p>
+                        <p><strong>Vulnerabilidades:</strong> ${vuls}</p>
+                        <p><strong>Serviços SUAS:</strong> ${servs}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header bg-warning"><strong>Parecer Técnico</strong></div>
+            <div class="card-body"><p>${parecerTxt || 'Não informado'}</p></div>
+        </div>
+        ${excecaoHtml}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>Confira todos os dados acima.</strong> Após confirmar, a solicitação será salva e não poderá ser desfeita sem o perfil de administrador.
+        </div>`;
+
+    new bootstrap.Modal(document.getElementById('modalRevisao')).show();
+});
+
+// Confirmar e submeter o formulário real
+document.getElementById('btnConfirmarSalvar').addEventListener('click', function() {
+    const form = document.getElementById('solicitacaoForm');
+    // Desmascarar antes de enviar
+    const rb = document.getElementById('renda_bruta');
+    const rpc = document.getElementById('renda_per_capita');
+    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
+    if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+    form.submit();
 });
 </script>
 {% endblock %}
