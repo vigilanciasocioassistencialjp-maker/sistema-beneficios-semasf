@@ -587,8 +587,100 @@ def ver_solicitacao(id):
     return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
 
 # =====================================================
-# PDF
+# EDITAR SOLICITAÇÃO
 # =====================================================
+
+@app.route("/editar_solicitacao/<int:id>", methods=["GET", "POST"])
+@login_required
+def editar_solicitacao(id):
+    conexao = get_db()
+    cursor = conexao.cursor()
+
+    # Buscar solicitação
+    cursor.execute("SELECT * FROM solicitacoes WHERE id = %s", (id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        return "Solicitação não encontrada", 404
+
+    cols = [d[0] for d in cursor.description]
+    s = dict(zip(cols, row))
+
+    # Descriptografar CPF para exibição
+    s['cpf'] = formatar_cpf(descriptografar_cpf(s['cpf'])) if s['cpf'] else ''
+
+    # Verificar permissão
+    pode_editar = (
+        current_user.perfil in ['admin', 'gestor'] or
+        current_user.id == s['tecnico']
+    )
+    if not pode_editar:
+        conexao.close()
+        flash('❌ Você não tem permissão para editar esta solicitação.', 'danger')
+        return redirect(url_for('ver_solicitacao', id=id))
+
+    if request.method == "POST":
+        nome         = request.form.get("nome", "")
+        data_nasc    = request.form.get("data_nascimento", "")
+        telefone     = request.form.get("telefone", "")
+        email        = request.form.get("email", "")
+        endereco     = request.form.get("endereco", "")
+        numero       = request.form.get("numero", "")
+        complemento  = request.form.get("complemento", "")
+        bairro       = request.form.get("bairro", "")
+        cep          = request.form.get("cep", "")
+        referencia   = request.form.get("referencia", "")
+        cras         = request.form.get("cras", "")
+        data_escuta  = request.form.get("data_escuta", "")
+        renda_bruta  = float(request.form.get("renda_bruta", 0) or 0)
+        renda_rpc    = float(request.form.get("renda_per_capita", 0) or 0)
+        beneficios   = request.form.get("beneficios", "")
+        vuls         = request.form.getlist("vulnerabilidade")
+        servicos     = request.form.getlist("servicos_suas")
+        parecer      = request.form.get("parecer", "")
+        excecao      = request.form.get("excecao_art64") == "1"
+
+        membros_nomes    = request.form.getlist("membro_nome[]")
+        membros_idades   = request.form.getlist("membro_idade[]")
+        membros_vinculos = request.form.getlist("membro_vinculo[]")
+        composicao = []
+        for i in range(len(membros_nomes)):
+            if membros_nomes[i].strip():
+                composicao.append({
+                    'nome': membros_nomes[i],
+                    'idade': membros_idades[i] if i < len(membros_idades) else '',
+                    'vinculo': membros_vinculos[i] if i < len(membros_vinculos) else ''
+                })
+
+        cursor.execute("""
+            UPDATE solicitacoes SET
+                nome=%s, data_nascimento=%s, telefone=%s, email=%s,
+                endereco=%s, numero=%s, complemento=%s, bairro=%s,
+                cep=%s, referencia=%s, cras=%s, data_escuta=%s,
+                total_pessoas=%s, composicao_familiar=%s,
+                renda_bruta=%s, renda_per_capita=%s, beneficios=%s,
+                vulnerabilidade=%s, servicos_suas=%s, parecer=%s,
+                excecao_art64=%s
+            WHERE id=%s
+        """, (
+            nome, data_nasc, telefone, email,
+            endereco, numero, complemento, bairro,
+            cep, referencia, cras, data_escuta,
+            len(composicao), json.dumps(composicao, ensure_ascii=False),
+            renda_bruta, renda_rpc, beneficios,
+            ", ".join(vuls), ", ".join(servicos), parecer,
+            excecao, id
+        ))
+        conexao.commit()
+        conexao.close()
+        logger.info(f"Solicitação {id} editada por {current_user.id}")
+        flash('✅ Solicitação atualizada com sucesso!', 'success')
+        return redirect(url_for('ver_solicitacao', id=id))
+
+    conexao.close()
+    return render_template("editar_solicitacao.html", s=s, current_user=current_user)
+
+
 
 @app.route("/gerar_pdf/<int:id>")
 @login_required
