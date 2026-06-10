@@ -1076,7 +1076,7 @@ def gerar_pdf_assinatura(id):
                     "e autorização do gestor da SEMASF.")
                 canvas_obj.setFillColorRGB(0, 0, 0)
                 canvas_obj.setStrokeColorRGB(0, 0, 0)
-                y -= (box_altura + 0.3*cm)
+                y -= (box_altura + 0.6*cm)
             parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)
