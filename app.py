@@ -408,7 +408,7 @@ def verificar_cpf(cpf):
         if ultima_entrega:
             try:
                 data_ultima = datetime.strptime(str(ultima_entrega)[:10], '%Y-%m-%d' if '-' in str(ultima_entrega) else '%d/%m/%Y')
-                dias = (datetime.now(FUSO_RONDONIA) - data_ultima.replace(tzinfo=None)).days
+                dias = (datetime.now() - data_ultima).days
             except: pass
         
         # Alerta
@@ -1193,12 +1193,16 @@ def gerar_pdf_assinatura(id):
 def registrar_entrega(id):
     status = request.form.get("status_entrega")
     data = request.form.get("data_entrega")
+    observacoes = request.form.get("observacoes", "").strip()
     if not status or not data:
         flash("Preencha todos os campos!", "danger")
         return redirect(url_for("solicitacoes"))
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("UPDATE solicitacoes SET status=%s, data_entrega=%s, tecnico_entrega=%s WHERE id=%s", (status, data, current_user.id, id))
+    cursor.execute(
+        "UPDATE solicitacoes SET status=%s, data_entrega=%s, tecnico_entrega=%s, observacoes_entrega=%s WHERE id=%s",
+        (status, data, current_user.id, observacoes or None, id)
+    )
     conexao.commit()
     conexao.close()
     logger.info(f"Entrega: ID={id}, Status={status}")
@@ -1603,10 +1607,16 @@ def relatorio_pdf(tipo):
         y -= 0.1*cm
         c.line(2*cm, y, w - 2*cm, y)
         y -= 0.4*cm
+        def nova_pagina_relatorio():
+            _rodape_relatorio(c, w, mes)
+            c.showPage()
+            _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo)
+            return h - 5*cm
+
         c.setFont("Helvetica", 9)
         for cras, tot, ent, aus in dados['por_cras']:
             if y < 4*cm:
-                c.showPage(); y = h - 2*cm
+                y = nova_pagina_relatorio()
             c.drawString(2.2*cm, y, (cras or 'N/A')[:45])
             c.drawString(11*cm, y, str(tot))
             c.drawString(13.5*cm, y, str(ent or 0))
@@ -1616,7 +1626,7 @@ def relatorio_pdf(tipo):
         y -= 0.5*cm
         # Tabela Por Técnico
         if y < 6*cm:
-            c.showPage(); y = h - 2*cm
+            y = nova_pagina_relatorio()
         c.setFont("Helvetica-Bold", 11)
         c.setFillColorRGB(0, 0.3, 0)
         c.drawString(2*cm, y, "DISTRIBUIÇÃO POR TÉCNICO")
@@ -1633,7 +1643,7 @@ def relatorio_pdf(tipo):
         c.setFont("Helvetica", 9)
         for nome, tot, ent, aus in dados['por_tecnico']:
             if y < 3*cm:
-                c.showPage(); y = h - 2*cm
+                y = nova_pagina_relatorio()
             c.drawString(2.2*cm, y, (nome or 'N/A')[:45])
             c.drawString(11*cm, y, str(tot))
             c.drawString(13.5*cm, y, str(ent or 0))
@@ -1684,8 +1694,13 @@ def novo_usuario():
                 )
                 conexao.commit()
                 flash("✅ Usuário criado!", 'success')
-            except:
-                flash("❌ Usuário já existe!", 'danger')
+            except Exception as e:
+                if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+                    flash("❌ Usuário já existe!", 'danger')
+                else:
+                    logger.error(f"Erro ao criar usuário: {e}")
+                    flash("❌ Erro ao criar usuário. Tente novamente.", 'danger')
+                conexao.rollback()
             finally:
                 conexao.close()
     return render_template("novo_usuario.html")
@@ -1693,6 +1708,8 @@ def novo_usuario():
 @app.route("/usuario/excluir/<int:id>")
 @login_required
 def excluir_usuario(id):
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
@@ -1700,21 +1717,93 @@ def excluir_usuario(id):
     conexao.close()
     return redirect(url_for("listar_usuarios"))
 
+@app.route("/usuario/editar/<int:id>", methods=["POST"])
+@login_required
+def editar_usuario(id):
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    nome = request.form.get("nome", "").strip()
+    if not nome:
+        flash("Nome não pode ser vazio.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET nome = %s WHERE id = %s", (nome, id))
+    conexao.commit()
+    conexao.close()
+    logger.info(f"Nome do usuário ID={id} alterado por {current_user.id}")
+    flash("✅ Nome atualizado!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/usuario/editar_perfil/<int:id>", methods=["POST"])
+@login_required
+def editar_perfil_usuario(id):
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    perfil = request.form.get("perfil", "")
+    if perfil not in ['tecnico', 'creas', 'gestor', 'admin']:
+        flash("Perfil inválido.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (perfil, id))
+    conexao.commit()
+    conexao.close()
+    logger.info(f"Perfil do usuário ID={id} alterado para {perfil} por {current_user.id}")
+    flash("✅ Perfil atualizado!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/usuario/editar_cras/<int:id>", methods=["POST"])
+@login_required
+def editar_cras_usuario(id):
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    cras = request.form.get("cras", "").strip() or None
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET cras = %s WHERE id = %s", (cras, id))
+    conexao.commit()
+    conexao.close()
+    logger.info(f"CRAS do usuário ID={id} alterado para {cras} por {current_user.id}")
+    flash("✅ CRAS atualizado!", "success")
+    return redirect(url_for("listar_usuarios"))
+
 @app.route("/usuario/alterar_senha", methods=["POST"])
 @login_required
 def alterar_senha_simples():
+    atual = request.form.get("senha_atual", "")
     nova = request.form.get("nova_senha", "")
+    confirma = request.form.get("confirmar_senha", "")
+    # Verificar senha atual
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT senha FROM usuarios WHERE usuario = %s", (current_user.id,))
+    row = cursor.fetchone()
+    conexao.close()
+    if not row or not bcrypt.checkpw(atual.encode('utf-8'), row[0].encode('utf-8')):
+        flash("❌ Senha atual incorreta!", "danger")
+        return redirect(url_for("solicitacoes"))
     if len(nova) < 6:
         flash("Mínimo 6 caracteres!", "danger")
-        return redirect(url_for("listar_usuarios"))
+        return redirect(url_for("solicitacoes"))
+    if not any(c.isupper() for c in nova):
+        flash("A nova senha precisa ter pelo menos uma letra maiúscula!", "danger")
+        return redirect(url_for("solicitacoes"))
+    if not any(c.isdigit() for c in nova):
+        flash("A nova senha precisa ter pelo menos um número!", "danger")
+        return redirect(url_for("solicitacoes"))
+    if nova != confirma:
+        flash("❌ As senhas não conferem!", "danger")
+        return redirect(url_for("solicitacoes"))
     hash_nova = bcrypt.hashpw(nova.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("UPDATE usuarios SET senha = %s WHERE usuario = %s", (hash_nova, current_user.id))
     conexao.commit()
     conexao.close()
-    flash("✅ Senha alterada!", 'success')
-    return redirect(url_for("listar_usuarios"))
+    logger.info(f"Senha alterada por {current_user.id}")
+    flash("✅ Senha alterada com sucesso!", 'success')
+    return redirect(url_for("solicitacoes"))
 
 # =====================================================
 # CONFIGURAÇÕES DO SISTEMA
@@ -1730,7 +1819,7 @@ def get_salario_minimo():
         conn.close()
         return float(row[0]) if row else 1621.00
     except:
-        return 1518.00
+        return 1621.00
 
 @app.route("/api/configuracoes")
 @login_required

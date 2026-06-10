@@ -107,14 +107,27 @@ def criar_banco():
         # sem a coluna (bancos criados antes da criptografia)
         # =====================================================
         cursor.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
+            SELECT column_name
+            FROM information_schema.columns
             WHERE table_name = 'solicitacoes' AND column_name = 'cpf_hash'
         """)
         if not cursor.fetchone():
             print("⚠️  Coluna cpf_hash não encontrada. Adicionando...")
             cursor.execute("ALTER TABLE solicitacoes ADD COLUMN cpf_hash TEXT")
             print("✅ Coluna cpf_hash adicionada!")
+
+        # =====================================================
+        # MIGRAÇÃO: Adiciona observacoes_entrega
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'solicitacoes' AND column_name = 'observacoes_entrega'
+        """)
+        if not cursor.fetchone():
+            print("⚠️  Coluna observacoes_entrega não encontrada. Adicionando...")
+            cursor.execute("ALTER TABLE solicitacoes ADD COLUMN observacoes_entrega TEXT")
+            print("✅ Coluna observacoes_entrega adicionada!")
 
         # Tabela de configurações do sistema
         cursor.execute('''
