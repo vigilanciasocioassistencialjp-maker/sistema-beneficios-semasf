@@ -363,7 +363,7 @@
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label required">Renda Per Capita (R$)</label>
-                        <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly required>
+                        <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly>
                         <small class="text-muted">Calculado: renda familiar ÷ total de pessoas</small>
                         <div id="avisoRPC"></div>
                     </div>
@@ -1021,9 +1021,19 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
     if (!document.getElementById('data_escuta').value) {
         document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
     }
+
+    // Validar renda per capita (campo readonly, validado manualmente)
+    const rpcInput = document.getElementById('renda_per_capita');
+    const rpcValor = desmascarar(rpcInput.value);
+    if (rpcValor <= 0) {
+        rpcInput.classList.add('is-invalid');
+        document.getElementById('renda_bruta').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        alert('⚠️ Preencha a Renda Familiar para calcular a renda per capita antes de salvar.');
+        return;
+    }
+
     const excecao = document.getElementById('excecao_art64');
     const parecer = document.getElementById('parecerTexto');
-    const rpcValor = desmascarar(document.getElementById('renda_per_capita').value);
     if (rpcValor > limiteRPC && rpcValor > 0 && excecao && !excecao.checked) {
         const divExcecao = document.getElementById('divExcecao');
         if (divExcecao) {
