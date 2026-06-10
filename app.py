@@ -18,12 +18,10 @@ import logging
 from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 import hashlib
-import smtplib
 import gzip
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email.mime.text import MIMEText
-from email import encoders
+import base64
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
@@ -155,9 +153,9 @@ criar_banco()
 # BACKUP AUTOMATICO POR E-MAIL
 # =====================================================
 
-EMAIL_REMETENTE    = os.environ.get('EMAIL_REMETENTE', '')
-EMAIL_SENHA_APP    = os.environ.get('EMAIL_SENHA_APP', '')
-EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', '')
+EMAIL_REMETENTE    = os.environ.get('EMAIL_REMETENTE', 'sistema.cestas.semasf@gmail.com')
+EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', 'sistema.cestas.semasf@gmail.com')
+SENDGRID_API_KEY   = os.environ.get('SENDGRID_API_KEY', '')
 
 def gerar_backup_json():
     conn = get_db_connection()
@@ -178,13 +176,14 @@ def gerar_backup_json():
     }
 
 def enviar_backup_email():
-    if not EMAIL_REMETENTE or not EMAIL_SENHA_APP or not EMAIL_DESTINATARIO:
-        print("Backup ignorado: variaveis de e-mail nao configuradas no Render.")
+    if not SENDGRID_API_KEY:
+        print("Backup ignorado: SENDGRID_API_KEY nao configurada no Render.")
         return
     try:
         agora = datetime.now(FUSO_RONDONIA)
         nome_arquivo = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}.json.gz"
 
+        # Gerar e compactar backup
         dados = gerar_backup_json()
         conteudo = json.dumps(dados, ensure_ascii=False, indent=2, default=str).encode('utf-8')
         buffer_gz = io.BytesIO()
@@ -192,11 +191,6 @@ def enviar_backup_email():
             gz.write(conteudo)
         buffer_gz.seek(0)
         tamanho_kb = round(buffer_gz.getbuffer().nbytes / 1024, 1)
-
-        msg = MIMEMultipart()
-        msg['From']    = f"Sistema SEMASF <{EMAIL_REMETENTE}>"
-        msg['To']      = EMAIL_DESTINATARIO
-        msg['Subject'] = f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}"
 
         corpo = (
             f"Backup automatico do Sistema de Cestas Basicas - SEMASF Ji-Parana\n\n"
@@ -208,21 +202,29 @@ def enviar_backup_email():
             f"Guarde os ultimos 30 e-mails para manter 30 dias de historico.\n\n"
             f"-- Sistema SEMASF"
         )
-        msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
 
-        parte = MIMEBase('application', 'octet-stream')
-        parte.set_payload(buffer_gz.read())
-        encoders.encode_base64(parte)
-        parte.add_header('Content-Disposition', f'attachment; filename="{nome_arquivo}"')
-        msg.attach(parte)
+        # Montar e-mail via SendGrid
+        mensagem = Mail(
+            from_email=EMAIL_REMETENTE,
+            to_emails=EMAIL_DESTINATARIO,
+            subject=f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}",
+            plain_text_content=corpo
+        )
 
-        with smtplib.SMTP('smtp.gmail.com', 587) as servidor:
-            servidor.ehlo()
-            servidor.starttls()
-            servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
-            servidor.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
+        # Anexar arquivo compactado
+        anexo = Attachment(
+            FileContent(base64.b64encode(buffer_gz.read()).decode()),
+            FileName(nome_arquivo),
+            FileType('application/gzip'),
+            Disposition('attachment')
+        )
+        mensagem.attachment = anexo
 
-        print(f"Backup enviado: {nome_arquivo} ({tamanho_kb} KB)")
+        # Enviar via API HTTP (sem bloqueio de porta)
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(mensagem)
+
+        print(f"Backup enviado via SendGrid: {nome_arquivo} ({tamanho_kb} KB) — status {response.status_code}")
         logger.info(f"Backup automatico enviado: {nome_arquivo} ({tamanho_kb} KB, {dados['total_solicitacoes']} solicitacoes)")
 
     except Exception as e:
