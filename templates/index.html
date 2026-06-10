@@ -1051,9 +1051,17 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
     }
 
     // Montar conteúdo da revisão
+    // Converte data de "YYYY-MM-DD" para "DD/MM/YYYY"
+    function formatarData(dataIso) {
+        if (!dataIso) return 'Não informado';
+        const partes = dataIso.split('-');
+        if (partes.length !== 3) return dataIso;
+        return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    }
+
     const nome = document.querySelector('input[name="nome"]').value;
     const cpf = document.getElementById('cpf').value;
-    const dataNasc = document.querySelector('input[name="data_nascimento"]').value;
+    const dataNasc = formatarData(document.querySelector('input[name="data_nascimento"]').value);
     const telefone = document.querySelector('input[name="telefone"]').value;
     const emailVal = document.querySelector('input[name="email"]').value;
     const endereco = document.querySelector('input[name="endereco"]').value;
@@ -1064,7 +1072,7 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
     const rendaBruta = document.getElementById('renda_bruta').value;
     const rendaRPC = document.getElementById('renda_per_capita').value;
     const beneficios = document.querySelector('select[name="beneficios"]').value;
-    const dataEscuta = document.getElementById('data_escuta').value;
+    const dataEscuta = formatarData(document.getElementById('data_escuta').value);
     const parecerTxt = parecer ? parecer.value : '';
     const excecaoMarcada = excecao && excecao.checked;
 
