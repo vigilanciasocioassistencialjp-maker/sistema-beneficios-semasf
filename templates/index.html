@@ -709,6 +709,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // MÁSCARA MONETÁRIA E CÁLCULO RENDA PER CAPITA
     // =============================================
 
+    function formatarMoeda(valor) {
+        return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    
     function mascaraMoeda(valor) {
         // Remove tudo que não for dígito
         let num = valor.replace(/\D/g, '');
@@ -751,9 +756,7 @@ document.addEventListener('DOMContentLoaded', function() {
         verificarRendaPerCapita();
     }
 
-    function formatarMoeda(valor) {
-        return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+
 
     function verificarRendaPerCapita() {
         const rpcInput = document.getElementById('renda_per_capita');
