@@ -950,11 +950,55 @@ def gerar_pdf_assinatura(id):
                 y -= 0.45*cm
             y -= 0.2*cm
 
-            # ── 2. COMPOSIÇÃO FAMILIAR ──────────────────────────────
+            # ── 2. ENDEREÇO ─────────────────────────────────────────
+            y = check_space(7*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "2. ENDEREÇO")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            end_val = s[ENDERECO] if s[ENDERECO] else ''
+            num_val = s[NUMERO] if s[NUMERO] else 'S/N'
+            comp_val = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
+            end_completo = f"{end_val}, {num_val}" + (f" - {comp_val}" if comp_val else "")
+            for label, valor in [
+                ("Endereço:", end_completo[:60]),
+                ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
+                ("CEP:", cep_formatado),
+                ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),
+                ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 3. INFORMAÇÕES SOCIOECONÔMICAS ──────────────────────
+            y = check_space(6*cm, y)
+            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFillColorRGB(0, 0.4, 0)
+            canvas_obj.drawString(2*cm, y, "3. INFORMAÇÕES SOCIOECONÔMICAS")
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            y -= 0.6*cm
+            canvas_obj.setFont("Helvetica", 10)
+            rb_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
+            rpc_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
+            for label, valor in [
+                ("Renda Bruta Familiar:", f"R$ {float(rb_val):.2f}" if rb_val > 0 else 'N/A'),
+                ("Renda Per Capita:", f"R$ {float(rpc_val):.2f}" if rpc_val > 0 else 'N/A'),
+                ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
+                ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
+                ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
+            ]:
+                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
+                y -= 0.45*cm
+            y -= 0.2*cm
+
+            # ── 4. COMPOSIÇÃO FAMILIAR ──────────────────────────────
             y = check_space(8*cm, y)
             canvas_obj.setFont("Helvetica-Bold", 11)
             canvas_obj.setFillColorRGB(0, 0.4, 0)
-            canvas_obj.drawString(2*cm, y, "2. COMPOSIÇÃO FAMILIAR")
+            canvas_obj.drawString(2*cm, y, "4. COMPOSIÇÃO FAMILIAR")
             canvas_obj.setFillColorRGB(0, 0, 0)
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica", 10)
@@ -983,50 +1027,6 @@ def gerar_pdf_assinatura(id):
             except:
                 canvas_obj.drawString(2.5*cm, y, "Não informado")
                 y -= 0.35*cm
-            y -= 0.2*cm
-
-            # ── 3. ENDEREÇO ─────────────────────────────────────────
-            y = check_space(7*cm, y)
-            canvas_obj.setFont("Helvetica-Bold", 11)
-            canvas_obj.setFillColorRGB(0, 0.4, 0)
-            canvas_obj.drawString(2*cm, y, "3. ENDEREÇO")
-            canvas_obj.setFillColorRGB(0, 0, 0)
-            y -= 0.6*cm
-            canvas_obj.setFont("Helvetica", 10)
-            end_val = s[ENDERECO] if s[ENDERECO] else ''
-            num_val = s[NUMERO] if s[NUMERO] else 'S/N'
-            comp_val = s[COMPLEMENTO] if s[COMPLEMENTO] else ''
-            end_completo = f"{end_val}, {num_val}" + (f" - {comp_val}" if comp_val else "")
-            for label, valor in [
-                ("Endereço:", end_completo[:60]),
-                ("Bairro:", s[BAIRRO] if s[BAIRRO] else 'N/A'),
-                ("CEP:", cep_formatado),
-                ("Referência:", s[REFERENCIA][:50] if s[REFERENCIA] else 'N/A'),
-                ("CRAS:", s[CRAS] if s[CRAS] else 'N/A'),
-            ]:
-                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
-                y -= 0.45*cm
-            y -= 0.2*cm
-
-            # ── 4. INFORMAÇÕES SOCIOECONÔMICAS ──────────────────────
-            y = check_space(6*cm, y)
-            canvas_obj.setFont("Helvetica-Bold", 11)
-            canvas_obj.setFillColorRGB(0, 0.4, 0)
-            canvas_obj.drawString(2*cm, y, "4. INFORMAÇÕES SOCIOECONÔMICAS")
-            canvas_obj.setFillColorRGB(0, 0, 0)
-            y -= 0.6*cm
-            canvas_obj.setFont("Helvetica", 10)
-            rb_val = s[RENDA_BRUTA] if s[RENDA_BRUTA] and float(s[RENDA_BRUTA]) > 0 else 0
-            rpc_val = s[RENDA_PER_CAPITA] if s[RENDA_PER_CAPITA] and float(s[RENDA_PER_CAPITA]) > 0 else 0
-            for label, valor in [
-                ("Renda Bruta Familiar:", f"R$ {float(rb_val):.2f}" if rb_val > 0 else 'N/A'),
-                ("Renda Per Capita:", f"R$ {float(rpc_val):.2f}" if rpc_val > 0 else 'N/A'),
-                ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
-                ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
-                ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
-            ]:
-                canvas_obj.drawString(2.5*cm, y, f"{label} {valor}")
-                y -= 0.45*cm
             y -= 0.2*cm
 
             # ── 5. REGISTRO DE ATENDIMENTO ──────────────────────────
@@ -1134,6 +1134,12 @@ def gerar_pdf_assinatura(id):
             y = check_space(5*cm, y)
             y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # dados beneficiário
 
+            y = check_space(7*cm, y)
+            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # endereço
+
+            y = check_space(6*cm, y)
+            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # socioeconômico
+
             y = check_space(8*cm, y)
             y -= 0.6*cm + 0.5*cm  # composição - cabeçalho
             try:
@@ -1144,12 +1150,6 @@ def gerar_pdf_assinatura(id):
             except:
                 y -= 0.35*cm
             y -= 0.2*cm
-
-            y = check_space(7*cm, y)
-            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # endereço
-
-            y = check_space(6*cm, y)
-            y -= 5 * 0.45*cm + 0.2*cm + 0.6*cm  # socioeconômico
 
             y = check_space(4*cm, y)
             y -= 3 * 0.45*cm + 0.2*cm + 0.6*cm  # atendimento
