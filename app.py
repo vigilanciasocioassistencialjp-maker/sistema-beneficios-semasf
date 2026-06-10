@@ -256,6 +256,16 @@ def before_request():
         usuario = current_user.id if current_user.is_authenticated else 'não autenticado'
         logger.info(f"Acesso: {request.method} {request.path} | IP: {request.remote_addr} | Usuário: {usuario}")
 
+@app.after_request
+def adicionar_headers_no_cache(response):
+    """Impede o navegador de cachear páginas HTML, garantindo que os
+    técnicos sempre recebam a versão mais recente após atualizações."""
+    if response.content_type and 'text/html' in response.content_type:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 def get_db():
     return get_db_connection()
 
