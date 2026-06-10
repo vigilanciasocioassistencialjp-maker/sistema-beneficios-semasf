@@ -105,14 +105,17 @@
                                     <option value="CIDADE JARDIM">CIDADE JARDIM</option>
                                     <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
                                     <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                    <option value="JARDIM PRESIDENCIAL I, II E III">JARDIM PRESIDENCIAL I, II E III</option>
+                                    <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
+                                    <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
+                                    <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
                                     <option value="NOVO URUPÁ">NOVO URUPÁ</option>
                                     <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
                                     <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
                                     <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
                                     <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
                                     <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                    <option value="RESIDENCIAL PLANALTO I E II">RESIDENCIAL PLANALTO I E II</option>
+                                    <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
+                                    <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
                                     <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
                                     <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
                                     <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
@@ -193,14 +196,17 @@
                                     <option value="CIDADE JARDIM">CIDADE JARDIM</option>
                                     <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
                                     <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                    <option value="JARDIM PRESIDENCIAL I, II E III">JARDIM PRESIDENCIAL I, II E III</option>
+                                    <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
+                                    <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
+                                    <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
                                     <option value="NOVO URUPÁ">NOVO URUPÁ</option>
                                     <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
                                     <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
                                     <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
                                     <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
                                     <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                    <option value="RESIDENCIAL PLANALTO I E II">RESIDENCIAL PLANALTO I E II</option>
+                                    <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
+                                    <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
                                     <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
                                     <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
                                     <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
@@ -517,10 +523,12 @@
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+document.addEventListener('DOMContentLoaded', function() {
     // =============================================
     // FUNÇÃO PARA ATUALIZAR O MEMBRO PRINCIPAL
     // =============================================
@@ -582,14 +590,17 @@
         "CIDADE JARDIM": "CRAS JARDIM DOS MIGRANTES",
         "DOIS DE ABRIL": "CRAS JARDIM DOS MIGRANTES",
         "JARDIM DOS MIGRANTES": "CRAS JARDIM DOS MIGRANTES",
-        "JARDIM PRESIDENCIAL I, II E III": "CRAS JARDIM DOS MIGRANTES",
+        "JARDIM PRESIDENCIAL I": "CRAS JARDIM DOS MIGRANTES",
+        "JARDIM PRESIDENCIAL II": "CRAS JARDIM DOS MIGRANTES",
+        "JARDIM PRESIDENCIAL III": "CRAS JARDIM DOS MIGRANTES",
         "NOVO URUPÁ": "CRAS JARDIM DOS MIGRANTES",
         "NOVO JI-PARANÁ": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL ALDEIA DO LAGO": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL COPAS VERDES": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL GREEN PARK": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL MILÃO": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL PLANALTO I e II": "CRAS JARDIM DOS MIGRANTES",
+        "RESIDENCIAL PLANALTO I": "CRAS JARDIM DOS MIGRANTES",
+        "RESIDENCIAL PLANALTO II": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL VENEZA": "CRAS JARDIM DOS MIGRANTES",
         "RESIDENCIAL ESPELHO D'ÁGUA": "CRAS JARDIM DOS MIGRANTES",
         "ESPELHO ECOVILLE": "CRAS JARDIM DOS MIGRANTES",
