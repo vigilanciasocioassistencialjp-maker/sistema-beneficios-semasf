@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-edit text-warning"></i> Editar Solicitação #{{ s.id }}</h2>
+            <a href="/ver_solicitacao/{{ s.id }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Cancelar
+            </a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="editarForm">
+
+            <!-- 1. DADOS PESSOAIS -->
+            <div class="form-section">
+                <h5>1. DADOS PESSOAIS</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label required">Nome Completo</label>
+                        <input type="text" name="nome" class="form-control" value="{{ s.nome }}" required>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">CPF</label>
+                        <input type="text" class="form-control" value="{{ s.cpf }}" disabled>
+                        <small class="text-muted">CPF não pode ser alterado</small>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label required">Data Nascimento</label>
+                        <input type="date" name="data_nascimento" class="form-control" value="{{ s.data_nascimento }}" required>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label required">Telefone</label>
+                        <input type="text" name="telefone" class="form-control" value="{{ s.telefone }}">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">E-mail</label>
+                        <input type="email" name="email" class="form-control" value="{{ s.email if s.email else '' }}" placeholder="Opcional">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. ENDEREÇO -->
+            <div class="form-section">
+                <h5>2. ENDEREÇO</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label required">Endereço</label>
+                        <input type="text" name="endereco" class="form-control" value="{{ s.endereco }}" required>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label required">Número</label>
+                        <input type="text" name="numero" class="form-control" value="{{ s.numero }}" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Complemento</label>
+                        <input type="text" name="complemento" class="form-control" value="{{ s.complemento if s.complemento else '' }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label required">Bairro</label>
+                        <input type="text" name="bairro" class="form-control" value="{{ s.bairro }}" required>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">CEP</label>
+                        <input type="text" name="cep" class="form-control" value="{{ s.cep if s.cep else '' }}">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">CRAS</label>
+                        <select name="cras" class="form-select">
+                            <option value="CRAS MORAR MELHOR" {% if s.cras == 'CRAS MORAR MELHOR' %}selected{% endif %}>CRAS MORAR MELHOR</option>
+                            <option value="CRAS JARDIM DOS MIGRANTES" {% if s.cras == 'CRAS JARDIM DOS MIGRANTES' %}selected{% endif %}>CRAS JARDIM DOS MIGRANTES</option>
+                            <option value="CRAS SÃO FRANCISCO" {% if s.cras == 'CRAS SÃO FRANCISCO' %}selected{% endif %}>CRAS SÃO FRANCISCO</option>
+                            <option value="CRAS RODA MOINHO" {% if s.cras == 'CRAS RODA MOINHO' %}selected{% endif %}>CRAS RODA MOINHO</option>
+                            <option value="CREAS" {% if s.cras == 'CREAS' %}selected{% endif %}>CREAS</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Referência</label>
+                        <input type="text" name="referencia" class="form-control" value="{{ s.referencia if s.referencia else '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. ATENDIMENTO -->
+            <div class="form-section">
+                <h5>3. REGISTRO DE ATENDIMENTO</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label required">Data da Escuta Técnica</label>
+                        <input type="date" name="data_escuta" class="form-control" value="{{ s.data_escuta }}" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. COMPOSIÇÃO FAMILIAR -->
+            <div class="form-section">
+                <h5>4. COMPOSIÇÃO FAMILIAR</h5>
+                <div id="composicaoFamiliar">
+                    {% set membros = s.composicao_familiar | fromjson %}
+                    {% for membro in membros %}
+                    <div class="row membro-familia mb-2">
+                        <div class="col-md-4">
+                            <input type="text" name="membro_nome[]" class="form-control" value="{{ membro.nome }}" placeholder="Nome completo" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" name="membro_idade[]" class="form-control" value="{{ membro.idade }}" placeholder="Idade" required>
+                        </div>
+                        <div class="col-md-3">
+                            <select name="membro_vinculo[]" class="form-select" required>
+                                <option value="">Selecione o vínculo</option>
+                                {% for v in ['Beneficiário(a)', 'Cônjuge', 'Filho(a)', 'Pai', 'Mãe', 'Avô/Avó', 'Neto(a)', 'Irmão(ã)', 'Outro'] %}
+                                <option value="{{ v }}" {% if membro.vinculo == v %}selected{% endif %}>{{ v }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-danger btn-sm remover-membro">Remover</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm mt-2" id="btnAdicionarMembro">+ Adicionar membro</button>
+            </div>
+
+            <!-- 5. RENDA -->
+            <div class="form-section">
+                <h5>5. RENDA FAMILIAR</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label required">Renda Familiar (R$)</label>
+                        <input type="text" inputmode="numeric" name="renda_bruta" class="form-control" id="renda_bruta"
+                               value="{{ '%.2f'|format(s.renda_bruta|float) if s.renda_bruta else '0.00' }}" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label required">Renda Per Capita (R$)</label>
+                        <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita"
+                               value="{{ '%.2f'|format(s.renda_per_capita|float) if s.renda_per_capita else '0.00' }}" readonly required>
+                        <small class="text-muted">Calculado automaticamente</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label required">Benefícios Recebidos</label>
+                        <select name="beneficios" class="form-select" required>
+                            {% for b in ['Bolsa Família', 'BPC', 'Outros', 'Nenhum'] %}
+                            <option value="{{ b }}" {% if s.beneficios == b %}selected{% endif %}>{{ b }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. VULNERABILIDADE -->
+            <div class="form-section">
+                <h5>6. SITUAÇÃO DE VULNERABILIDADE</h5>
+                <div class="row">
+                    {% set vuls_atuais = s.vulnerabilidade.split(', ') if s.vulnerabilidade else [] %}
+                    {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Idoso', 'Pessoa com deficiência', 'Gestante/Nutriz', 'Criança em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}"
+                                   {% if vul in vuls_atuais %}checked{% endif %}>
+                            <label class="form-check-label">{{ vul }}</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 7. SERVIÇOS SUAS -->
+            <div class="form-section">
+                <h5>7. SERVIÇOS SUAS VINCULADOS</h5>
+                <div class="row">
+                    {% set servicos_atuais = s.servicos_suas.split(', ') if s.servicos_suas else [] %}
+                    {% for serv in ['PAIF', 'PAEFI', 'SCFV', 'BPC', 'Bolsa Família', 'Acolhimento Institucional', 'Serviço de Abordagem Social', 'Nenhum'] %}
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="servicos_suas" value="{{ serv }}"
+                                   {% if serv in servicos_atuais %}checked{% endif %}>
+                            <label class="form-check-label">{{ serv }}</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 8. PARECER -->
+            <div class="form-section">
+                <h5>8. PARECER TÉCNICO</h5>
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <textarea name="parecer" class="form-control" rows="5" required>{{ s.parecer if s.parecer else '' }}</textarea>
+                    </div>
+                </div>
+                <!-- Exceção Art. 64 -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="border {% if s.excecao_art64 %}border-danger bg-danger{% else %}border-warning bg-warning{% endif %} bg-opacity-10 rounded p-3" id="divExcecao">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1" {% if s.excecao_art64 %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="excecao_art64">
+                                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                                    Concessão com base no <strong>Art. 64 — Lei Municipal nº 3.603/2022</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">
+                                Marque quando a família não atende integralmente os critérios ordinários da lei.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-warning btn-lg">
+                    <i class="fas fa-save"></i> Salvar Alterações
+                </button>
+                <a href="/ver_solicitacao/{{ s.id }}" class="btn btn-secondary btn-lg">
+                    <i class="fas fa-times"></i> Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Máscara monetária
+    function mascaraMoeda(valor) {
+        let num = valor.replace(/\D/g, '');
+        if (!num) return '';
+        num = (parseInt(num, 10) / 100).toFixed(2);
+        return num.replace('.', ',').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+    }
+    function desmascarar(valor) {
+        if (!valor) return 0;
+        return parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+    function calcularTotalPessoas() {
+        const membros = document.querySelectorAll('input[name="membro_nome[]"]');
+        let total = 0;
+        membros.forEach(m => { if (m.value.trim()) total++; });
+        return total || 1;
+    }
+    function calcularRPC() {
+        const bruta = desmascarar(document.getElementById('renda_bruta').value);
+        const pessoas = calcularTotalPessoas();
+        const rpc = bruta / pessoas;
+        document.getElementById('renda_per_capita').value = rpc > 0
+            ? mascaraMoeda(Math.round(rpc * 100).toString()) : '';
+    }
+
+    // Aplicar máscara no valor inicial
+    const rbInput = document.getElementById('renda_bruta');
+    if (rbInput.value && rbInput.value !== '0.00') {
+        const numInicial = parseFloat(rbInput.value) * 100;
+        rbInput.value = mascaraMoeda(Math.round(numInicial).toString());
+    }
+    const rpcInput = document.getElementById('renda_per_capita');
+    if (rpcInput.value && rpcInput.value !== '0.00') {
+        const numInicial = parseFloat(rpcInput.value) * 100;
+        rpcInput.value = mascaraMoeda(Math.round(numInicial).toString());
+    }
+
+    rbInput.addEventListener('input', function() {
+        this.value = mascaraMoeda(this.value);
+        calcularRPC();
+    });
+
+    const observer = new MutationObserver(calcularRPC);
+    observer.observe(document.getElementById('composicaoFamiliar'), { childList: true, subtree: true });
+
+    // Adicionar/remover membros
+    document.getElementById('btnAdicionarMembro').addEventListener('click', function() {
+        const container = document.getElementById('composicaoFamiliar');
+        const div = document.createElement('div');
+        div.className = 'row membro-familia mb-2';
+        div.innerHTML = `
+            <div class="col-md-4"><input type="text" name="membro_nome[]" class="form-control" placeholder="Nome completo" required></div>
+            <div class="col-md-2"><input type="number" name="membro_idade[]" class="form-control" placeholder="Idade" required></div>
+            <div class="col-md-3">
+                <select name="membro_vinculo[]" class="form-select" required>
+                    <option value="">Selecione o vínculo</option>
+                    <option value="Beneficiário(a)">Beneficiário(a)</option>
+                    <option value="Cônjuge">Cônjuge</option>
+                    <option value="Filho(a)">Filho(a)</option>
+                    <option value="Pai">Pai</option>
+                    <option value="Mãe">Mãe</option>
+                    <option value="Avô/Avó">Avô/Avó</option>
+                    <option value="Neto(a)">Neto(a)</option>
+                    <option value="Irmão(ã)">Irmão(ã)</option>
+                    <option value="Outro">Outro</option>
+                </select>
+            </div>
+            <div class="col-md-2"><button type="button" class="btn btn-danger btn-sm remover-membro">Remover</button></div>`;
+        container.appendChild(div);
+        div.querySelector('.remover-membro').addEventListener('click', function() {
+            div.remove(); calcularRPC();
+        });
+    });
+    document.querySelectorAll('.remover-membro').forEach(btn => {
+        btn.addEventListener('click', function() { btn.closest('.membro-familia').remove(); calcularRPC(); });
+    });
+
+    // Submit: desmascarar antes de enviar
+    document.getElementById('editarForm').addEventListener('submit', function() {
+        const rb = document.getElementById('renda_bruta');
+        const rpc = document.getElementById('renda_per_capita');
+        if (rb) rb.value = desmascarar(rb.value).toFixed(2);
+        if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+        return true;
+    });
+</script>
+{% endblock %}
+{% endblock %}
