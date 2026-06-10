@@ -1372,6 +1372,55 @@ def relatorio():
             'ultima_entrega': str(row[4]) if row[4] else 'N/A',
         })
 
+    # ===== BUSCA FILTRADA DE SOLICITAÇÕES =====
+    busca_nome = request.args.get('busca_nome', '').strip()
+    busca_cpf = request.args.get('busca_cpf', '').strip()
+    busca_bairro = request.args.get('busca_bairro', '').strip()
+    busca_status = request.args.get('busca_status', '').strip()
+    tem_busca = bool(busca_nome or busca_cpf or busca_bairro or busca_status)
+
+    resultados_busca = []
+    if tem_busca:
+        conexao2 = get_db()
+        cursor2 = conexao2.cursor()
+        condicoes = []
+        params = []
+        if busca_nome:
+            condicoes.append("s.nome ILIKE %s")
+            params.append(f"%{busca_nome}%")
+        if busca_cpf:
+            # CPF é criptografado; buscar pelo hash
+            cpf_limpo = ''.join(filter(str.isdigit, busca_cpf))
+            if cpf_limpo:
+                condicoes.append("s.cpf_hash = %s")
+                params.append(hash_cpf(cpf_limpo))
+        if busca_bairro:
+            condicoes.append("s.bairro ILIKE %s")
+            params.append(f"%{busca_bairro}%")
+        if busca_status:
+            condicoes.append("s.status = %s")
+            params.append(busca_status)
+
+        where_clause = " AND ".join(condicoes) if condicoes else "1=1"
+        cursor2.execute(f"""
+            SELECT s.id, s.nome, s.cpf, s.bairro, s.cras, s.status,
+                   s.data_solicitacao, s.data_entrega,
+                   COALESCE(u.nome, s.tecnico) as tecnico
+            FROM solicitacoes s
+            LEFT JOIN usuarios u ON s.tecnico = u.usuario
+            WHERE {where_clause}
+            ORDER BY s.id DESC
+            LIMIT 100
+        """, tuple(params))
+        raw_busca = cursor2.fetchall()
+        conexao2.close()
+
+        for row in raw_busca:
+            row = list(row)
+            if row[2]:
+                row[2] = formatar_cpf(descriptografar_cpf(row[2]))
+            resultados_busca.append(tuple(row))
+
     return render_template(
         "relatorio.html",
         mes=mes,
@@ -1385,9 +1434,219 @@ def relatorio():
         por_tecnico=por_tecnico,
         ultimas_entregas=ultimas_entregas,
         recorrencia=recorrencia,
+        resultados_busca=resultados_busca,
+        tem_busca=tem_busca,
+        busca_nome=busca_nome,
+        busca_cpf=busca_cpf,
+        busca_bairro=busca_bairro,
+        busca_status=busca_status,
         datetime=datetime,
         current_user=current_user
     )
+
+# =====================================================
+# EXPORTAÇÃO PDF DO RELATÓRIO
+# =====================================================
+
+def _coletar_dados_relatorio(mes):
+    """Coleta os totais e tabelas do relatório para um mês. Retorna um dict."""
+    try:
+        ano, num_mes = mes.split('-')
+        filtro_like = f"%/{num_mes}/{ano}%"
+        filtro_like_entrega = f"{ano}-{num_mes}%"
+    except:
+        filtro_like = "%"
+        filtro_like_entrega = "%"
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+
+    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
+        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s""",
+        (filtro_like, filtro_like, filtro_like_entrega))
+    total = cursor.fetchone()[0]
+
+    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
+        WHERE status='Entregue' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)""",
+        (filtro_like, filtro_like, filtro_like_entrega))
+    entregues = cursor.fetchone()[0]
+
+    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
+        WHERE status='Ausente' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)""",
+        (filtro_like, filtro_like, filtro_like_entrega))
+    ausentes = cursor.fetchone()[0]
+
+    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
+        WHERE status='Cadastrada' AND data_solicitacao LIKE %s""", (filtro_like,))
+    pendentes = cursor.fetchone()[0]
+
+    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
+        WHERE excecao_art64=TRUE AND data_solicitacao LIKE %s""", (filtro_like,))
+    excecoes = cursor.fetchone()[0]
+
+    cursor.execute("""SELECT cras, COUNT(*),
+            SUM(CASE WHEN status='Entregue' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN status='Ausente' THEN 1 ELSE 0 END)
+        FROM solicitacoes
+        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
+        GROUP BY cras ORDER BY COUNT(*) DESC""",
+        (filtro_like, filtro_like, filtro_like_entrega))
+    por_cras = cursor.fetchall()
+
+    cursor.execute("""SELECT COALESCE(u.nome, s.tecnico), COUNT(*),
+            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END)
+        FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico=u.usuario
+        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
+        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY COUNT(*) DESC""",
+        (filtro_like, filtro_like, filtro_like_entrega))
+    por_tecnico = cursor.fetchall()
+
+    conexao.close()
+    return {
+        'total': total, 'entregues': entregues, 'ausentes': ausentes,
+        'pendentes': pendentes, 'excecoes': excecoes,
+        'por_cras': por_cras, 'por_tecnico': por_tecnico
+    }
+
+def _nome_mes_extenso(mes):
+    nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+             'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    try:
+        ano, num = mes.split('-')
+        return f"{nomes[int(num)-1]}/{ano}"
+    except:
+        return mes
+
+def _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo):
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColorRGB(0.12, 0.24, 0.45)
+    c.drawCentredString(w/2, h - 2*cm, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+    c.setFont("Helvetica", 10)
+    c.setFillColorRGB(0, 0, 0)
+    c.drawCentredString(w/2, h - 2.6*cm, "Secretaria Municipal de Assistência Social e Família - SEMASF")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(w/2, h - 3.4*cm, subtitulo)
+    c.setFont("Helvetica", 10)
+    c.drawCentredString(w/2, h - 3.9*cm, f"Mês de referência: {_nome_mes_extenso(mes)}")
+    c.setLineWidth(1)
+    c.setStrokeColorRGB(0.12, 0.24, 0.45)
+    c.line(2*cm, h - 4.2*cm, w - 2*cm, h - 4.2*cm)
+
+def _desenhar_totais(c, w, y, dados):
+    cards = [
+        ("Total de Solicitações", dados['total'], (0.12, 0.24, 0.45)),
+        ("Entregues", dados['entregues'], (0.15, 0.55, 0.25)),
+        ("Ausentes", dados['ausentes'], (0.70, 0.15, 0.15)),
+        ("Pendentes", dados['pendentes'], (0.80, 0.55, 0.10)),
+        ("Exceções Art. 64", dados['excecoes'], (0.55, 0.15, 0.55)),
+    ]
+    card_w = (w - 4*cm) / len(cards)
+    for i, (label, valor, cor) in enumerate(cards):
+        x = 2*cm + i * card_w
+        c.setStrokeColorRGB(*cor)
+        c.setLineWidth(1)
+        c.rect(x + 0.1*cm, y - 1.6*cm, card_w - 0.2*cm, 1.5*cm, fill=0)
+        c.setFillColorRGB(*cor)
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(x + card_w/2, y - 0.85*cm, str(valor))
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(x + card_w/2, y - 1.35*cm, label)
+    return y - 2.2*cm
+
+def _rodape_relatorio(c, w, mes):
+    agora = datetime.now(FUSO_RONDONIA)
+    c.setFont("Helvetica", 7)
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawString(2*cm, 1*cm, f"Relatório gerado em {agora.strftime('%d/%m/%Y às %H:%M:%S')} (horário de Rondônia)")
+    c.drawRightString(w - 2*cm, 1*cm, "SEMASF Ji-Paraná - Sistema de Cestas Básicas")
+
+@app.route("/relatorio/pdf/<tipo>")
+@login_required
+def relatorio_pdf(tipo):
+    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+        return "Acesso negado", 403
+
+    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
+    dados = _coletar_dados_relatorio(mes)
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    w, h = A4
+
+    subtitulo = "RELATÓRIO RESUMIDO DE CESTAS BÁSICAS" if tipo == 'resumido' else "RELATÓRIO DE CESTAS BÁSICAS"
+    _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo)
+
+    y = h - 5*cm
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0, 0.3, 0)
+    c.drawString(2*cm, y, "RESUMO DO MÊS")
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.3*cm
+    y = _desenhar_totais(c, w, y, dados)
+
+    # No PDF completo, adicionar as tabelas Por CRAS e Por Técnico
+    if tipo == 'completo':
+        y -= 0.5*cm
+        # Tabela Por CRAS
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0, 0.3, 0)
+        c.drawString(2*cm, y, "DISTRIBUIÇÃO POR CRAS")
+        c.setFillColorRGB(0, 0, 0)
+        y -= 0.6*cm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(2.2*cm, y, "Unidade")
+        c.drawString(11*cm, y, "Total")
+        c.drawString(13.5*cm, y, "Entregues")
+        c.drawString(16.5*cm, y, "Ausentes")
+        y -= 0.1*cm
+        c.line(2*cm, y, w - 2*cm, y)
+        y -= 0.4*cm
+        c.setFont("Helvetica", 9)
+        for cras, tot, ent, aus in dados['por_cras']:
+            if y < 4*cm:
+                c.showPage(); y = h - 2*cm
+            c.drawString(2.2*cm, y, (cras or 'N/A')[:45])
+            c.drawString(11*cm, y, str(tot))
+            c.drawString(13.5*cm, y, str(ent or 0))
+            c.drawString(16.5*cm, y, str(aus or 0))
+            y -= 0.45*cm
+
+        y -= 0.5*cm
+        # Tabela Por Técnico
+        if y < 6*cm:
+            c.showPage(); y = h - 2*cm
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0, 0.3, 0)
+        c.drawString(2*cm, y, "DISTRIBUIÇÃO POR TÉCNICO")
+        c.setFillColorRGB(0, 0, 0)
+        y -= 0.6*cm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(2.2*cm, y, "Técnico")
+        c.drawString(11*cm, y, "Total")
+        c.drawString(13.5*cm, y, "Entregues")
+        c.drawString(16.5*cm, y, "Ausentes")
+        y -= 0.1*cm
+        c.line(2*cm, y, w - 2*cm, y)
+        y -= 0.4*cm
+        c.setFont("Helvetica", 9)
+        for nome, tot, ent, aus in dados['por_tecnico']:
+            if y < 3*cm:
+                c.showPage(); y = h - 2*cm
+            c.drawString(2.2*cm, y, (nome or 'N/A')[:45])
+            c.drawString(11*cm, y, str(tot))
+            c.drawString(13.5*cm, y, str(ent or 0))
+            c.drawString(16.5*cm, y, str(aus or 0))
+            y -= 0.45*cm
+
+    _rodape_relatorio(c, w, mes)
+    c.save()
+    buffer.seek(0)
+
+    nome_arq = f"relatorio_{tipo}_{mes}.pdf"
+    logger.info(f"Relatório PDF ({tipo}) de {mes} gerado por {current_user.id}")
+    return send_file(buffer, as_attachment=True, download_name=nome_arq, mimetype='application/pdf')
 
 # =====================================================
 # USUÁRIOS
