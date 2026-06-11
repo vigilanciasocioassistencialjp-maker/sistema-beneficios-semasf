@@ -58,6 +58,13 @@ else:
 # Criar o Fernet
 fernet = Fernet(CHAVE_CRIPTO.encode())
 
+# 🛡️ CSRF token (compatibilidade com base.html)
+@app.context_processor
+def inject_csrf_token():
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(16)
+    return dict(csrf_token=lambda: session['csrf_token'])
+
 # =====================================================
 # FUNÇÕES DE CPF
 # =====================================================
