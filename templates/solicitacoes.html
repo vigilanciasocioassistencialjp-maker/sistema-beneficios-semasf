@@ -199,9 +199,9 @@
                                   placeholder="Motivo da ausência, observações sobre a entrega, etc..."></textarea>
                     </div>
 
-                    <div class="alert alert-warning small">
+                    <div class="alert alert-warning small" id="avisoEntregue" style="display:none;">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <strong>Atenção:</strong> Esta ação não poderá ser desfeita.
+                        <strong>Atenção:</strong> A entrega é definitiva e não poderá ser desfeita.
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -316,6 +316,11 @@ document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
     });
 });
 
+// Mostrar aviso apenas para Entregue
+document.getElementById('status_entrega').addEventListener('change', function() {
+    document.getElementById('avisoEntregue').style.display = this.value === 'Entregue' ? 'block' : 'none';
+});
+
 // Limpar modal ao fechar
 const modalElement = document.getElementById('modalEntrega');
 if (modalElement) {
@@ -348,13 +353,6 @@ if (formEntrega) {
 
         if (!data) {
             alert('Selecione a data da entrega!');
-            return false;
-        }
-
-        const msgConfirm = status === 'Ausente'
-            ? `⚠️ Confirmar AUSÊNCIA de "${document.getElementById('beneficiarioNome').textContent}"?\n\nIsso indica que o beneficiário não compareceu para receber a cesta. Esta ação não pode ser desfeita.`
-            : `✅ Confirmar entrega para "${document.getElementById('beneficiarioNome').textContent}"?\n\nEsta ação não pode ser desfeita.`;
-        if (!confirm(msgConfirm)) {
             return false;
         }
 
