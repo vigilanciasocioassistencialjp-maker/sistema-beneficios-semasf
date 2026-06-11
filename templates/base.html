@@ -15,169 +15,185 @@
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 
     <style>
-        body {
-            background-color: #f8f9fa;
-            padding-bottom: 60px;
+        /* ── Paleta SEMASF / Prefeitura Ji-Paraná ── */
+        :root {
+            --semasf-navy:  #1b2f5e;
+            --semasf-green: #2d8b38;
+            --semasf-blue:  #2d6eb5;
+            --semasf-gold:  #f5a61e;
         }
 
+        body {
+            background-color: #f0f2f5;
+            padding-bottom: 70px;
+        }
+
+        /* ── Navbar ── */
         .navbar {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            padding: 0.8rem 1rem;
+            background: var(--semasf-navy) !important;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+            padding: 0.7rem 1rem;
+            border-bottom: 3px solid var(--semasf-gold);
         }
 
         .navbar-brand {
             font-weight: bold;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             color: #fff !important;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
         }
 
-        .navbar-brand:hover {
-            color: #ffd700 !important;
-        }
+        .navbar-brand:hover { color: var(--semasf-gold) !important; }
 
         .nav-link {
             font-weight: 500;
-            margin: 0 5px;
-            transition: all 0.3s ease;
-            border-radius: 8px;
-            padding: 8px 16px !important;
+            color: rgba(255,255,255,0.88) !important;
+            border-radius: 6px;
+            padding: 7px 14px !important;
+            transition: background 0.2s;
         }
 
         .nav-link:hover {
             background-color: rgba(255,255,255,0.15);
+            color: #fff !important;
         }
 
+        .nav-link.active {
+            background-color: var(--semasf-blue);
+            color: #fff !important;
+        }
+
+        .nav-link.text-danger { color: #ff8888 !important; }
         .nav-link.text-danger:hover {
             background-color: rgba(220,53,69,0.2);
-            color: #ff6b6b !important;
+            color: #ffb3b3 !important;
+        }
+
+        .navbar-nav { align-items: center; gap: 3px; }
+
+        @media (max-width: 992px) {
+            .navbar-nav { margin-top: 12px; }
+            .user-info   { margin: 8px 0; justify-content: center; }
         }
 
         .user-info {
-            background-color: rgba(255,255,255,0.15);
+            background-color: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: 20px;
-            padding: 5px 15px;
-            margin: 0 10px;
+            padding: 4px 14px;
+            margin: 0 6px;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 7px;
         }
 
-        .user-name {
-            font-weight: 600;
-            color: #fff;
-        }
+        .user-name    { font-weight: 600; color: #fff; }
 
         .user-profile {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             padding: 2px 8px;
             border-radius: 12px;
-            background-color: #ffd700;
-            color: #1e3c72;
+            background-color: var(--semasf-gold);
+            color: var(--semasf-navy);
             font-weight: bold;
         }
 
-        .navbar-nav {
-            align-items: center;
-            gap: 5px;
-        }
-
-        @media (max-width: 992px) {
-            .navbar-nav {
-                margin-top: 15px;
-            }
-            .user-info {
-                margin: 10px 0;
-                justify-content: center;
-            }
-        }
-
+        /* ── Cards ── */
         .card {
+            border: none;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.09);
             margin-bottom: 20px;
         }
 
         .card-header {
-            background-color: #007bff;
+            background-color: var(--semasf-navy);
             color: white;
             border-radius: 10px 10px 0 0 !important;
-            font-weight: bold;
+            font-weight: 600;
         }
 
-        .table {
-            background-color: white;
-        }
+        /* card-header coloridos mantém suas cores Bootstrap */
+        .card-header.bg-success { background-color: var(--semasf-green) !important; }
+        .card-header.bg-primary { background-color: var(--semasf-blue)  !important; }
 
-        .status-badge {
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
+        /* ── Tabelas ── */
+        .table { background-color: white; }
 
-        .status-cadastrada {
-            background-color: #ffc107;
-            color: #000;
-        }
+        .table-dark thead { background-color: var(--semasf-navy) !important; }
 
-        .status-entregue {
-            background-color: #28a745;
-            color: #fff;
-        }
+        /* ── Status badges ── */
+        .status-badge       { padding: 4px 10px; border-radius: 5px; font-size: 0.82em; font-weight: bold; }
+        .status-cadastrada  { background-color: #ffc107; color: #000; }
+        .status-entregue    { background-color: var(--semasf-green); color: #fff; }
+        .status-ausente     { background-color: #dc3545; color: #fff; }
 
-        .status-ausente {
-            background-color: #dc3545;
-            color: #fff;
-        }
-
-        footer {
-            text-align: center;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-top: 1px solid #dee2e6;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-        }
-
+        /* ── Flash alerts ── */
         .flash-messages {
             position: fixed;
             top: 80px;
             right: 20px;
             z-index: 9999;
-            min-width: 300px;
+            min-width: 320px;
+            max-width: 420px;
         }
 
         @media (max-width: 768px) {
-            .flash-messages {
-                left: 20px;
-                right: 20px;
-                min-width: auto;
-            }
+            .flash-messages { left: 10px; right: 10px; min-width: auto; }
         }
 
+        .flash-messages .alert {
+            border-left: 5px solid transparent;
+            border-radius: 8px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.15);
+        }
+
+        .flash-messages .alert-success { border-left-color: var(--semasf-green); }
+        .flash-messages .alert-danger  { border-left-color: #dc3545; }
+        .flash-messages .alert-warning { border-left-color: var(--semasf-gold); }
+        .flash-messages .alert-info    { border-left-color: var(--semasf-blue); }
+
+        /* ── Formulário de seções ── */
         .form-section {
-            background-color: #f8f9fa;
-            padding: 15px;
+            background-color: #fff;
+            border: 1px solid #e0e4ed;
+            padding: 18px;
             border-radius: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 22px;
         }
 
         .form-section h5 {
-            color: #4CAF50;
-            margin-bottom: 15px;
-            border-left: 4px solid #4CAF50;
+            color: var(--semasf-navy);
+            margin-bottom: 14px;
+            border-left: 4px solid var(--semasf-green);
             padding-left: 10px;
+            font-weight: 700;
         }
 
-        .required:after {
-            content: " *";
-            color: red;
+        .required:after { content: " *"; color: #dc3545; }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 14px 20px;
+            background-color: var(--semasf-navy);
+            color: rgba(255,255,255,0.75);
+            border-top: 3px solid var(--semasf-gold);
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            font-size: 0.85rem;
         }
+
+        footer a { color: var(--semasf-gold); text-decoration: none; }
+
+        /* ── Botões primários adaptados ── */
+        .btn-primary   { background-color: var(--semasf-blue);  border-color: var(--semasf-blue); }
+        .btn-primary:hover { background-color: #235a9a; border-color: #235a9a; }
+        .btn-success   { background-color: var(--semasf-green); border-color: var(--semasf-green); }
+        .btn-success:hover { background-color: #236c2c; border-color: #236c2c; }
     </style>
 
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -264,10 +280,15 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show" role="alert">
-                    <i class="fas fa-info-circle"></i> {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
+            {% set cat = category if category != 'message' else 'info' %}
+            <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+                {% if cat == 'success' %}<i class="fas fa-check-circle me-2"></i>
+                {% elif cat == 'danger'  %}<i class="fas fa-exclamation-circle me-2"></i>
+                {% elif cat == 'warning' %}<i class="fas fa-exclamation-triangle me-2"></i>
+                {% else %}<i class="fas fa-info-circle me-2"></i>{% endif %}
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
             {% endfor %}
         {% endif %}
     {% endwith %}
@@ -278,8 +299,7 @@
 </div>
 
 <footer>
-    <p>&copy; 2025 - Secretaria Municipal de Assistência Social e Família - SEMASF</p>
-    <small>Sistema de Controle de Entrega de Cestas Básicas</small>
+    <span>&copy; 2026 · SEMASF Ji-Paraná · Sistema de Controle de Entrega de Cestas Básicas</span>
 </footer>
 
 <!-- Modal Alterar Senha -->
@@ -323,13 +343,54 @@
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
-    setTimeout(function() {
-        var alerts = document.querySelectorAll('.alert');
-        alerts.forEach(function(alert) {
-            var bsAlert = new bootstrap.Alert(alert);
-            bsAlert.close();
-        });
-    }, 5000);
+// ── Auto-fechar alertas após 5 s ──
+setTimeout(function() {
+    document.querySelectorAll('.alert').forEach(function(el) {
+        try { new bootstrap.Alert(el).close(); } catch(e) {}
+    });
+}, 5000);
+
+// ── CSRF: injeta token em todos os forms POST e em fetch() ──
+(function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!csrfToken) return;
+
+    // Adiciona campo oculto a todos os forms POST existentes e futuros
+    function injetarCsrf(form) {
+        if (form.method && form.method.toLowerCase() === 'post') {
+            if (!form.querySelector('input[name="csrf_token"]')) {
+                const inp = document.createElement('input');
+                inp.type  = 'hidden';
+                inp.name  = 'csrf_token';
+                inp.value = csrfToken;
+                form.appendChild(inp);
+            }
+        }
+    }
+    document.querySelectorAll('form').forEach(injetarCsrf);
+
+    // Observa novos forms adicionados dinamicamente (modais)
+    new MutationObserver(mutations => {
+        mutations.forEach(m => m.addedNodes.forEach(node => {
+            if (node.nodeType === 1) {
+                if (node.tagName === 'FORM') injetarCsrf(node);
+                node.querySelectorAll?.('form').forEach(injetarCsrf);
+            }
+        }));
+    }).observe(document.body, { childList: true, subtree: true });
+
+    // Intercepta fetch() para incluir o token no cabeçalho
+    const _fetch = window.fetch;
+    window.fetch = function(url, opts = {}) {
+        opts.headers = opts.headers || {};
+        if (!(opts.headers instanceof Headers)) {
+            opts.headers['X-CSRFToken'] = csrfToken;
+        } else {
+            opts.headers.set('X-CSRFToken', csrfToken);
+        }
+        return _fetch(url, opts);
+    };
+})();
 </script>
 
 {% block extra_js %}{% endblock %}
