@@ -1,5 +1,6 @@
 import os
 import psycopg2
+import bcrypt
 from psycopg2 import pool as pg_pool
 
 # =====================================================
@@ -263,6 +264,25 @@ def criar_banco():
                 SET valor = '1621.00', atualizado_em = NOW()::text
                 WHERE configuracoes.valor = '1518.00'
         """)
+
+        # Cria admin padrão via variável de ambiente se não houver nenhum usuário
+        cursor2 = conn.cursor()
+        cursor2.execute("SELECT COUNT(*) FROM usuarios")
+        if cursor2.fetchone()[0] == 0:
+            admin_user  = os.environ.get('ADMIN_USER',  'admin')
+            admin_senha = os.environ.get('ADMIN_SENHA', '')
+            admin_nome  = os.environ.get('ADMIN_NOME',  'Administrador')
+            if admin_senha:
+                senha_hash = bcrypt.hashpw(admin_senha.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                cursor2.execute(
+                    "INSERT INTO usuarios (usuario, nome, senha, perfil, primeiro_acesso) VALUES (%s, %s, %s, 'admin', 1)",
+                    (admin_user, admin_nome, senha_hash)
+                )
+                conn.commit()
+                print(f"✅ Admin padrão criado: usuário '{admin_user}' (troque a senha no primeiro acesso)")
+            else:
+                print("⚠️  Banco vazio e ADMIN_SENHA não definida — nenhum admin criado.")
+        cursor2.close()
 
         conn.commit()
         cursor.close()
