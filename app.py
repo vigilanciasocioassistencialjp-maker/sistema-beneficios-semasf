@@ -1083,21 +1083,22 @@ def gerar_pdf_assinatura(id):
         if desenhar:
             # ── CABEÇALHO ──────────────────────────────────────────
             logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
-            logo_altura = 2.8*cm
-            # Logo no canto DIREITO; texto sempre à esquerda (2*cm)
+            # Logo no canto DIREITO — largura fixa 5.5cm para não sobrepor o texto
+            logo_largura = 5.5*cm
+            logo_altura  = 1.8*cm   # bounding box; aspect real ~4.17:1 → exibe ~5.5×1.32cm
             if os.path.exists(logo_path):
                 try:
                     logo_reader = ImageReader(logo_path)
-                    logo_x = w - 2*cm - logo_altura * 3.5  # largura proporcional (aspect ~3.5:1)
+                    logo_x = w - 2*cm - logo_largura
                     canvas_obj.drawImage(logo_reader, logo_x, y - logo_altura + 0.4*cm,
-                                         height=logo_altura, width=logo_altura * 3.5,
+                                         height=logo_altura, width=logo_largura,
                                          preserveAspectRatio=True, mask='auto')
                 except Exception:
                     pass
             canvas_obj.setFont("Helvetica-Bold", 14)
             canvas_obj.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
             y -= 0.6*cm
-            canvas_obj.setFont("Helvetica-Bold", 11)
+            canvas_obj.setFont("Helvetica-Bold", 10)
             canvas_obj.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica", 9)
