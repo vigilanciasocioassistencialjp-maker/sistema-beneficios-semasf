@@ -1,392 +1,523 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<style>
+/* ── Wizard ── */
+.wizard-header {
+    background: var(--semasf-navy);
+    color: #fff;
+    border-radius: 10px 10px 0 0;
+    padding: 18px 24px 0;
+}
+
+.wizard-steps {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+}
+
+.wizard-steps li {
+    flex: 1;
+    text-align: center;
+    padding: 10px 6px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    position: relative;
+    cursor: default;
+    white-space: nowrap;
+    min-width: 90px;
+}
+
+.wizard-steps li::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+}
+
+.wizard-steps li.active {
+    color: #fff;
+}
+
+.wizard-steps li.active::after {
+    background: var(--semasf-gold);
+}
+
+.wizard-steps li.done {
+    color: rgba(255,255,255,0.75);
+}
+
+.wizard-steps li.done::after {
+    background: var(--semasf-green);
+}
+
+.wizard-step-num {
+    display: inline-flex;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+
+.wizard-steps li.active  .wizard-step-num { background: var(--semasf-gold); color: var(--semasf-navy); }
+.wizard-steps li.done    .wizard-step-num { background: var(--semasf-green); color: #fff; }
+
+.wizard-body { padding: 24px; }
+
+.wizard-pane { display: none !important; }
+.wizard-pane.active { display: block !important; }
+
+.wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e4ed;
+}
+
+.step-counter {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
-    <div class="card shadow p-4 rounded-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>Nova Solicitação de Cesta Básica</h2>
+    <div class="card shadow rounded-4 p-0 overflow-hidden">
+
+        <!-- ── Wizard Header ── -->
+        <div class="wizard-header">
+            <h5 class="mb-3 fw-bold">
+                <i class="fas fa-hand-holding-heart"></i> Nova Solicitação de Cesta Básica
+            </h5>
+            <ul class="wizard-steps" id="wizardSteps">
+                <li data-step="1" class="active">
+                    <div class="wizard-step-num">1</div><br>Dados Pessoais
+                </li>
+                <li data-step="2">
+                    <div class="wizard-step-num">2</div><br>Endereço
+                </li>
+                <li data-step="3">
+                    <div class="wizard-step-num">3</div><br>Família
+                </li>
+                <li data-step="4">
+                    <div class="wizard-step-num">4</div><br>Renda
+                </li>
+                <li data-step="5">
+                    <div class="wizard-step-num">5</div><br>Parecer
+                </li>
+            </ul>
         </div>
 
-        {% if sucesso %}
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            Solicitação salva com sucesso!
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endif %}
-
-        <form method="POST" id="solicitacaoForm">
-
-            <!-- ============================================= -->
-            <!-- SEÇÃO 1: DADOS PESSOAIS -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>1. DADOS PESSOAIS</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label required">Nome Completo</label>
-                        <input type="text" name="nome" class="form-control" id="nome" required>
-                    </div>
-
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label required">CPF</label>
-                        <input type="text" name="cpf" class="form-control" id="cpf" required maxlength="14" minlength="14">
-                        <small class="text-muted">Formato: 000.000.000-00</small>
-                        <div id="alertaCpf"></div>
-                    </div>
-
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label required">Data Nascimento</label>
-                        <input type="date" name="data_nascimento" class="form-control" id="data_nascimento" required>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label required">Telefone</label>
-                        <input type="text" name="telefone" class="form-control" id="telefone" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">E-mail</label>
-                        <input type="email" name="email" class="form-control" placeholder="Opcional">
-                    </div>
-                </div>
+        <!-- ── Form ── -->
+        <div class="wizard-body">
+            {% if sucesso %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i> Solicitação salva com sucesso!
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
+            {% endif %}
 
-            <!-- ============================================= -->
-            <!-- SEÇÃO 2: ENDEREÇO -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>2. ENDEREÇO</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label required">Endereço</label>
-                        <input type="text" name="endereco" class="form-control" placeholder="Rua, Avenida..." required>
+            <form method="POST" id="solicitacaoForm">
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 1 — DADOS PESSOAIS                          -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane active" id="pane-1">
+                    <div class="form-section">
+                        <h5>Dados Pessoais</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Nome Completo</label>
+                                <input type="text" name="nome" class="form-control" id="nome" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">CPF</label>
+                                <input type="text" name="cpf" class="form-control" id="cpf" required maxlength="14" minlength="14">
+                                <small class="text-muted">Formato: 000.000.000-00</small>
+                                <div id="alertaCpf"></div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">Data de Nascimento</label>
+                                <input type="date" name="data_nascimento" class="form-control" id="data_nascimento" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Telefone</label>
+                                <input type="text" name="telefone" class="form-control" id="telefone" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">E-mail</label>
+                                <input type="email" name="email" class="form-control" placeholder="Opcional">
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-2 mb-3">
-                        <label class="form-label required">Número</label>
-                        <input type="text" name="numero" class="form-control" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Complemento</label>
-                        <input type="text" name="complemento" class="form-control" placeholder="Casa, AP, Bloco...">
+                    <div class="wizard-nav">
+                        <span class="step-counter">Passo 1 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="2">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-5 mb-3">
-                        <label class="form-label required">Bairro</label>
-                        <select name="bairro" class="form-select" id="bairro" required>
-                            <option value="">Selecione o bairro</option>
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 2 — ENDEREÇO + CRAS                         -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-2">
+                    <div class="form-section">
+                        <h5>Endereço</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Logradouro</label>
+                                <input type="text" name="endereco" class="form-control" placeholder="Rua, Avenida..." required>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label required">Número</label>
+                                <input type="text" name="numero" class="form-control" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Complemento</label>
+                                <input type="text" name="complemento" class="form-control" placeholder="Casa, AP, Bloco...">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-5 mb-3">
+                                <label class="form-label required">Bairro</label>
+                                <select name="bairro" class="form-select" id="bairro" required>
+                                    <option value="">Selecione o bairro</option>
+                                    {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
+                                        <optgroup label="CRAS MORAR MELHOR">
+                                            <option value="MORAR MELHOR">MORAR MELHOR</option>
+                                            <option value="BELA VISTA">BELA VISTA</option>
+                                            <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
+                                            <option value="CASA PRETA">CASA PRETA</option>
+                                            <option value="DOM BOSCO">DOM BOSCO</option>
+                                            <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
+                                            <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
+                                            <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
+                                            <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
+                                            <option value="PARK AMAZONAS">PARK AMAZONAS</option>
+                                            <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
+                                            <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
+                                            <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
+                                            <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
+                                            <option value="SÃO BERNARDO">SÃO BERNARDO</option>
+                                            <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
+                                            <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
+                                        </optgroup>
+                                        <optgroup label="CRAS JARDIM DOS MIGRANTES">
+                                            <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
+                                            <option value="CENTRO">CENTRO</option>
+                                            <option value="CIDADE JARDIM">CIDADE JARDIM</option>
+                                            <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
+                                            <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
+                                            <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
+                                            <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
+                                            <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
+                                            <option value="NOVO URUPÁ">NOVO URUPÁ</option>
+                                            <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
+                                            <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
+                                            <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
+                                            <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
+                                            <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
+                                            <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
+                                            <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
+                                            <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
+                                            <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
+                                            <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
+                                            <option value="SANTIAGO">SANTIAGO</option>
+                                            <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
+                                            <option value="VAL PARAÍSO">VAL PARAÍSO</option>
+                                            <option value="UNIÃO">UNIÃO</option>
+                                            <option value="URUPÁ">URUPÁ</option>
+                                            <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
+                                            <option value="GLEBA G">GLEBA G</option>
+                                            <option value="NOVA LONDRINA">NOVA LONDRINA</option>
+                                        </optgroup>
+                                        <optgroup label="CRAS SÃO FRANCISCO">
+                                            <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
+                                            <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
+                                            <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
+                                            <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
+                                            <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
+                                            <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
+                                            <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
+                                            <option value="PRIMAVERA">PRIMAVERA</option>
+                                            <option value="RIACHUELO">RIACHUELO</option>
+                                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
+                                            <option value="SÃO PEDRO">SÃO PEDRO</option>
+                                            <option value="VILA JOTÃO">VILA JOTÃO</option>
+                                            <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
+                                            <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
+                                            <option value="TALISMÃ">TALISMÃ</option>
+                                        </optgroup>
+                                        <optgroup label="CRAS RODA MOINHO">
+                                            <option value="CAPELASSO">CAPELASSO</option>
+                                            <option value="ALTO ALEGRE">ALTO ALEGRE</option>
+                                            <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
+                                            <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
+                                            <option value="CAFEZINHO">CAFEZINHO</option>
+                                            <option value="GREENVILLE">GREENVILLE</option>
+                                            <option value="HABITAR BRASIL">HABITAR BRASIL</option>
+                                            <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
+                                            <option value="JK">JK</option>
+                                            <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
+                                            <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
+                                            <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
+                                            <option value="PARK BRASIL">PARK BRASIL</option>
+                                            <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
+                                            <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
+                                            <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
+                                            <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
+                                            <option value="UNIÃO II">UNIÃO II</option>
+                                            <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
+                                            <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
+                                        </optgroup>
+                                        <optgroup label="CASOS ESPECIAIS">
+                                            <option value="OUTRO MUNICÍPIO">OUTRO MUNICÍPIO</option>
+                                        </optgroup>
+                                    {% else %}
+                                        {% if current_user.cras == 'CRAS MORAR MELHOR' %}
+                                            <option value="MORAR MELHOR">MORAR MELHOR</option>
+                                            <option value="BELA VISTA">BELA VISTA</option>
+                                            <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
+                                            <option value="CASA PRETA">CASA PRETA</option>
+                                            <option value="DOM BOSCO">DOM BOSCO</option>
+                                            <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
+                                            <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
+                                            <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
+                                            <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
+                                            <option value="PARK AMAZONAS">PARK AMAZONAS</option>
+                                            <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
+                                            <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
+                                            <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
+                                            <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
+                                            <option value="SÃO BERNARDO">SÃO BERNARDO</option>
+                                            <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
+                                            <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
+                                        {% elif current_user.cras == 'CRAS JARDIM DOS MIGRANTES' %}
+                                            <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
+                                            <option value="CENTRO">CENTRO</option>
+                                            <option value="CIDADE JARDIM">CIDADE JARDIM</option>
+                                            <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
+                                            <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
+                                            <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
+                                            <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
+                                            <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
+                                            <option value="NOVO URUPÁ">NOVO URUPÁ</option>
+                                            <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
+                                            <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
+                                            <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
+                                            <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
+                                            <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
+                                            <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
+                                            <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
+                                            <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
+                                            <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
+                                            <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
+                                            <option value="SANTIAGO">SANTIAGO</option>
+                                            <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
+                                            <option value="VAL PARAÍSO">VAL PARAÍSO</option>
+                                            <option value="UNIÃO">UNIÃO</option>
+                                            <option value="URUPÁ">URUPÁ</option>
+                                            <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
+                                            <option value="GLEBA G">GLEBA G</option>
+                                            <option value="NOVA LONDRINA">NOVA LONDRINA</option>
+                                        {% elif current_user.cras == 'CRAS SÃO FRANCISCO' %}
+                                            <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
+                                            <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
+                                            <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
+                                            <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
+                                            <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
+                                            <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
+                                            <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
+                                            <option value="PRIMAVERA">PRIMAVERA</option>
+                                            <option value="RIACHUELO">RIACHUELO</option>
+                                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
+                                            <option value="SÃO PEDRO">SÃO PEDRO</option>
+                                            <option value="VILA JOTÃO">VILA JOTÃO</option>
+                                            <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
+                                            <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
+                                            <option value="TALISMÃ">TALISMÃ</option>
+                                        {% elif current_user.cras == 'CRAS RODA MOINHO' %}
+                                            <option value="CAPELASSO">CAPELASSO</option>
+                                            <option value="ALTO ALEGRE">ALTO ALEGRE</option>
+                                            <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
+                                            <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
+                                            <option value="CAFEZINHO">CAFEZINHO</option>
+                                            <option value="GREENVILLE">GREENVILLE</option>
+                                            <option value="HABITAR BRASIL">HABITAR BRASIL</option>
+                                            <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
+                                            <option value="JK">JK</option>
+                                            <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
+                                            <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
+                                            <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
+                                            <option value="PARK BRASIL">PARK BRASIL</option>
+                                            <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
+                                            <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
+                                            <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
+                                            <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
+                                            <option value="UNIÃO II">UNIÃO II</option>
+                                            <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
+                                            <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
+                                        {% endif %}
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">CEP</label>
+                                <input type="text" name="cep" class="form-control" id="cep" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Ponto de Referência</label>
+                                <input type="text" name="referencia" class="form-control" placeholder="Próximo a...">
+                            </div>
+                        </div>
+                    </div>
 
-                            {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
-                                <!-- GESTOR: vê todos os bairros -->
-                                <optgroup label="CRAS MORAR MELHOR">
-                                    <option value="MORAR MELHOR">MORAR MELHOR</option>
-                                    <option value="BELA VISTA">BELA VISTA</option>
-                                    <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
-                                    <option value="CASA PRETA">CASA PRETA</option>
-                                    <option value="DOM BOSCO">DOM BOSCO</option>
-                                    <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
-                                    <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
-                                    <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
-                                    <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
-                                    <option value="PARK AMAZONAS">PARK AMAZONAS</option>
-                                    <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
-                                    <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
-                                    <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
-                                    <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
-                                    <option value="SÃO BERNARDO">SÃO BERNARDO</option>
-                                    <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
-                                    <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
-                                </optgroup>
-                                <optgroup label="CRAS JARDIM DOS MIGRANTES">
-                                    <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
-                                    <option value="CENTRO">CENTRO</option>
-                                    <option value="CIDADE JARDIM">CIDADE JARDIM</option>
-                                    <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
-                                    <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                    <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
-                                    <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
-                                    <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
-                                    <option value="NOVO URUPÁ">NOVO URUPÁ</option>
-                                    <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
-                                    <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
-                                    <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
-                                    <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
-                                    <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                    <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
-                                    <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
-                                    <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
-                                    <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
-                                    <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
-                                    <option value="SANTIAGO">SANTIAGO</option>
-                                    <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
-                                    <option value="VAL PARAÍSO">VAL PARAÍSO</option>
-                                    <option value="UNIÃO">UNIÃO</option>
-                                    <option value="URUPÁ">URUPÁ</option>
-                                    <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
-                                    <option value="GLEBA G">GLEBA G</option>
-                                    <option value="NOVA LONDRINA">NOVA LONDRINA</option>
-                                </optgroup>
-                                <optgroup label="CRAS SÃO FRANCISCO">
-                                    <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
-                                    <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
-                                    <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
-                                    <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
-                                    <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
-                                    <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
-                                    <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
-                                    <option value="PRIMAVERA">PRIMAVERA</option>
-                                    <option value="RIACHUELO">RIACHUELO</option>
-                                    <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
-                                    <option value="SÃO PEDRO">SÃO PEDRO</option>
-                                    <option value="VILA JOTÃO">VILA JOTÃO</option>
-                                    <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
-                                    <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
-                                    <option value="TALISMÃ">TALISMÃ</option>
-                                </optgroup>
-                                <optgroup label="CRAS RODA MOINHO">
-                                    <option value="CAPELASSO">CAPELASSO</option>
-                                    <option value="ALTO ALEGRE">ALTO ALEGRE</option>
-                                    <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
-                                    <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
-                                    <option value="CAFEZINHO">CAFEZINHO</option>
-                                    <option value="GREENVILLE">GREENVILLE</option>
-                                    <option value="HABITAR BRASIL">HABITAR BRASIL</option>
-                                    <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
-                                    <option value="JK">JK</option>
-                                    <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
-                                    <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
-                                    <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
-                                    <option value="PARK BRASIL">PARK BRASIL</option>
-                                    <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
-                                    <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
-                                    <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
-                                    <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
-                                    <option value="UNIÃO II">UNIÃO II</option>
-                                    <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
-                                    <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
-                                </optgroup>
-                                <optgroup label="CASOS ESPECIAIS">
-                                    <option value="OUTRO MUNICÍPIO">OUTRO MUNICÍPIO</option>
-                                </optgroup>
-                            {% else %}
-                                <!-- TÉCNICO: vê apenas bairros do seu CRAS -->
-                                {% if current_user.cras == 'CRAS MORAR MELHOR' %}
-                                    <option value="MORAR MELHOR">MORAR MELHOR</option>
-                                    <option value="BELA VISTA">BELA VISTA</option>
-                                    <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
-                                    <option value="CASA PRETA">CASA PRETA</option>
-                                    <option value="DOM BOSCO">DOM BOSCO</option>
-                                    <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
-                                    <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
-                                    <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
-                                    <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
-                                    <option value="PARK AMAZONAS">PARK AMAZONAS</option>
-                                    <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
-                                    <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
-                                    <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
-                                    <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
-                                    <option value="SÃO BERNARDO">SÃO BERNARDO</option>
-                                    <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
-                                    <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
-                                {% elif current_user.cras == 'CRAS JARDIM DOS MIGRANTES' %}
-                                    <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
-                                    <option value="CENTRO">CENTRO</option>
-                                    <option value="CIDADE JARDIM">CIDADE JARDIM</option>
-                                    <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
-                                    <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                    <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
-                                    <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
-                                    <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
-                                    <option value="NOVO URUPÁ">NOVO URUPÁ</option>
-                                    <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
-                                    <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
-                                    <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
-                                    <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
-                                    <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                    <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
-                                    <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
-                                    <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
-                                    <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
-                                    <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
-                                    <option value="SANTIAGO">SANTIAGO</option>
-                                    <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
-                                    <option value="VAL PARAÍSO">VAL PARAÍSO</option>
-                                    <option value="UNIÃO">UNIÃO</option>
-                                    <option value="URUPÁ">URUPÁ</option>
-                                    <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
-                                    <option value="GLEBA G">GLEBA G</option>
-                                    <option value="NOVA LONDRINA">NOVA LONDRINA</option>
-                                {% elif current_user.cras == 'CRAS SÃO FRANCISCO' %}
-                                    <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
-                                    <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
-                                    <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
-                                    <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
-                                    <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
-                                    <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
-                                    <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
-                                    <option value="PRIMAVERA">PRIMAVERA</option>
-                                    <option value="RIACHUELO">RIACHUELO</option>
-                                    <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
-                                    <option value="SÃO PEDRO">SÃO PEDRO</option>
-                                    <option value="VILA JOTÃO">VILA JOTÃO</option>
-                                    <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
-                                    <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
-                                    <option value="TALISMÃ">TALISMÃ</option>
-                                {% elif current_user.cras == 'CRAS RODA MOINHO' %}
-                                    <option value="CAPELASSO">CAPELASSO</option>
-                                    <option value="ALTO ALEGRE">ALTO ALEGRE</option>
-                                    <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
-                                    <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
-                                    <option value="CAFEZINHO">CAFEZINHO</option>
-                                    <option value="GREENVILLE">GREENVILLE</option>
-                                    <option value="HABITAR BRASIL">HABITAR BRASIL</option>
-                                    <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
-                                    <option value="JK">JK</option>
-                                    <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
-                                    <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
-                                    <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
-                                    <option value="PARK BRASIL">PARK BRASIL</option>
-                                    <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
-                                    <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
-                                    <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
-                                    <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
-                                    <option value="UNIÃO II">UNIÃO II</option>
-                                    <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
-                                    <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
+                    <div class="form-section">
+                        <h5>CRAS e Data da Escuta</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">CRAS de Referência</label>
+                                {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
+                                    <select name="cras" class="form-select" id="cras" required>
+                                        <option value="">Selecione o CRAS</option>
+                                        <option value="CRAS MORAR MELHOR">CRAS MORAR MELHOR</option>
+                                        <option value="CRAS JARDIM DOS MIGRANTES">CRAS JARDIM DOS MIGRANTES</option>
+                                        <option value="CRAS SÃO FRANCISCO">CRAS SÃO FRANCISCO</option>
+                                        <option value="CRAS RODA MOINHO">CRAS RODA MOINHO</option>
+                                    </select>
+                                {% else %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color:#e9ecef">
                                 {% endif %}
-                            {% endif %}
-                        </select>
-                    </div>
-
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label required">CEP</label>
-                        <input type="text" name="cep" class="form-control" id="cep" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Ponto de Referência</label>
-                        <input type="text" name="referencia" class="form-control" placeholder="Próximo a...">
-                    </div>
-                </div>
-            </div>
-
-            <!-- ============================================= -->
-            <!-- SEÇÃO 3: UNIDADE DO CRAS -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>3. UNIDADE DO CRAS</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label required">CRAS de Referência</label>
-                        {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
-                            <select name="cras" class="form-select" id="cras" required>
-                                <option value="">Selecione o CRAS</option>
-                                <option value="CRAS MORAR MELHOR">CRAS MORAR MELHOR</option>
-                                <option value="CRAS JARDIM DOS MIGRANTES">CRAS JARDIM DOS MIGRANTES</option>
-                                <option value="CRAS SÃO FRANCISCO">CRAS SÃO FRANCISCO</option>
-                                <option value="CRAS RODA MOINHO">CRAS RODA MOINHO</option>
-                            </select>
-                        {% else %}
-                            <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color: #e9ecef">
-                        {% endif %}
-                        <small class="text-muted">
-                            {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
-                                Selecione o CRAS responsável
-                            {% else %}
-                                CRAS vinculado ao seu perfil (não editável)
-                            {% endif %}
-                        </small>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label required">Data da Escuta Técnica</label>
-                        <input type="date" name="data_escuta" class="form-control" id="data_escuta" required>
-                        <small class="text-muted">Preencha com a data da entrevista</small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ============================================= -->
-            <!-- SEÇÃO 4: COMPOSIÇÃO FAMILIAR -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>4. COMPOSIÇÃO FAMILIAR</h5>
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Dica:</strong> O nome e idade do beneficiário principal serão preenchidos automaticamente ao digitar os dados acima.
-                </div>
-
-                <div id="composicaoFamiliar">
-                    <div class="row membro-familia mb-2">
-                        <div class="col-md-4">
-                            <input type="text" name="membro_nome[]" class="form-control" id="membro_nome_0" placeholder="Nome completo" required>
-                        </div>
-                        <div class="col-md-2">
-                            <input type="number" name="membro_idade[]" class="form-control" id="membro_idade_0" placeholder="Idade" required>
-                        </div>
-                        <div class="col-md-3">
-                            <select name="membro_vinculo[]" class="form-select" required>
-                                <option value="">Selecione o vínculo</option>
-                                <option value="Beneficiário(a)">Beneficiário(a)</option>
-                                <option value="Cônjuge">Cônjuge</option>
-                                <option value="Filho(a)">Filho(a)</option>
-                                <option value="Pai">Pai</option>
-                                <option value="Mãe">Mãe</option>
-                                <option value="Avô/Avó">Avô/Avó</option>
-                                <option value="Neto(a)">Neto(a)</option>
-                                <option value="Irmão(ã)">Irmão(ã)</option>
-                                <option value="Outro">Outro</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <button type="button" class="btn btn-danger btn-sm remover-membro" style="display: none;">Remover</button>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Data da Escuta Técnica</label>
+                                <input type="date" name="data_escuta" class="form-control" id="data_escuta" required>
+                                <small class="text-muted">Preencha com a data da entrevista</small>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <button type="button" class="btn btn-secondary btn-sm mt-2" id="btnAdicionarMembro">+ Adicionar membro</button>
-                <button type="button" class="btn btn-info btn-sm mt-2 ms-2" id="btnUnipessoal">
-                    <i class="fas fa-user"></i> Família Unipessoal (apenas beneficiário)
-                </button>
-            </div>
-
-            <!-- ============================================= -->
-            <!-- SEÇÃO 5: RENDA -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>5. RENDA FAMILIAR</h5>
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label required">Renda Familiar (R$)</label>
-                        <input type="text" inputmode="numeric" name="renda_bruta" class="form-control" id="renda_bruta" placeholder="0,00" autocomplete="off" required>
-                        <small class="text-muted">Total de renda de todos os membros da família</small>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label required">Renda Per Capita (R$)</label>
-                        <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly>
-                        <small class="text-muted">Calculado: renda familiar ÷ total de pessoas</small>
-                        <div id="avisoRPC"></div>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label required">Benefícios Recebidos</label>
-                        <select name="beneficios" class="form-select" required>
-                            <option value="">Selecione</option>
-                            <option value="Bolsa Família">Bolsa Família</option>
-                            <option value="BPC">BPC (Benefício de Prestação Continuada)</option>
-                            <option value="Outros">Outros</option>
-                            <option value="Nenhum">Nenhum</option>
-                        </select>
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="1">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 2 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="3">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- ============================================= -->
-            <!-- SEÇÃO 6: VULNERABILIDADE -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>6. SITUAÇÃO DE VULNERABILIDADE</h5>
-                <div class="row">
-                    <div class="col-12 mb-3">
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 3 — COMPOSIÇÃO FAMILIAR                     -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-3">
+                    <div class="form-section">
+                        <h5>Composição Familiar</h5>
+                        <div class="alert alert-info py-2">
+                            <i class="fas fa-info-circle"></i>
+                            O nome e idade do beneficiário principal são preenchidos automaticamente.
+                        </div>
+
+                        <div id="composicaoFamiliar">
+                            <div class="row membro-familia mb-2">
+                                <div class="col-md-4">
+                                    <input type="text" name="membro_nome[]" class="form-control" id="membro_nome_0" placeholder="Nome completo" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" name="membro_idade[]" class="form-control" id="membro_idade_0" placeholder="Idade" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <select name="membro_vinculo[]" class="form-select" required>
+                                        <option value="">Vínculo</option>
+                                        <option value="Beneficiário(a)">Beneficiário(a)</option>
+                                        <option value="Cônjuge">Cônjuge</option>
+                                        <option value="Filho(a)">Filho(a)</option>
+                                        <option value="Pai">Pai</option>
+                                        <option value="Mãe">Mãe</option>
+                                        <option value="Avô/Avó">Avô/Avó</option>
+                                        <option value="Neto(a)">Neto(a)</option>
+                                        <option value="Irmão(ã)">Irmão(ã)</option>
+                                        <option value="Outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-danger btn-sm remover-membro" style="display:none">Remover</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnAdicionarMembro">
+                                <i class="fas fa-plus"></i> Adicionar membro
+                            </button>
+                            <button type="button" class="btn btn-outline-info btn-sm ms-2" id="btnUnipessoal">
+                                <i class="fas fa-user"></i> Família unipessoal
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="2">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 3 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="4">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 4 — RENDA + VULNERABILIDADE + SERVIÇOS      -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-4">
+                    <div class="form-section">
+                        <h5>Renda Familiar</h5>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Renda Familiar (R$)</label>
+                                <input type="text" inputmode="numeric" name="renda_bruta" class="form-control" id="renda_bruta" placeholder="0,00" autocomplete="off" required>
+                                <small class="text-muted">Total de renda de todos os membros</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Renda Per Capita (R$)</label>
+                                <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly>
+                                <small class="text-muted">Renda ÷ total de pessoas</small>
+                                <div id="avisoRPC"></div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Benefícios Recebidos</label>
+                                <select name="beneficios" class="form-select" required>
+                                    <option value="">Selecione</option>
+                                    <option value="Bolsa Família">Bolsa Família</option>
+                                    <option value="BPC">BPC (Benefício de Prestação Continuada)</option>
+                                    <option value="Outros">Outros</option>
+                                    <option value="Nenhum">Nenhum</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h5>Situação de Vulnerabilidade</h5>
                         <div class="row">
                             <div class="col-md-3">
                                 <div class="form-check">
@@ -409,21 +540,14 @@
                             <div class="col-md-3">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="Desabrigado" id="vul4">
-                                    <label class="form-check-label" for="vul4">Desabrigado/Desabrigada</label>
+                                    <label class="form-check-label" for="vul4">Desabrigado(a)</label>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- ============================================= -->
-            <!-- SEÇÃO 7: SERVIÇOS DO SUAS -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>7. SERVIÇOS DO SUAS QUE A FAMÍLIA PARTICIPA</h5>
-                <div class="row">
-                    <div class="col-12 mb-3">
+                    <div class="form-section">
+                        <h5>Serviços do SUAS que a Família Participa</h5>
                         <div class="row">
                             <div class="col-md-2">
                                 <div class="form-check">
@@ -457,25 +581,31 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- ============================================= -->
-            <!-- SEÇÃO 8: PARECER TÉCNICO -->
-            <!-- ============================================= -->
-            <div class="form-section">
-                <h5>8. PARECER TÉCNICO / HISTÓRICO FAMILIAR</h5>
-                <div class="row">
-                    <div class="col-12 mb-3">
-                        <label class="form-label required">Parecer Técnico</label>
-                        <textarea name="parecer" class="form-control" rows="5" id="parecerTexto" placeholder="Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc." required></textarea>
-                        <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="3">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 4 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="5">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Exceção Art. 64 -->
-                <div class="row">
-                    <div class="col-12">
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 5 — PARECER TÉCNICO                         -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-5">
+                    <div class="form-section">
+                        <h5>Parecer Técnico / Histórico Familiar</h5>
+                        <div class="mb-3">
+                            <label class="form-label required">Parecer Técnico</label>
+                            <textarea name="parecer" class="form-control" rows="6" id="parecerTexto"
+                                placeholder="Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc." required></textarea>
+                            <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
+                        </div>
+
                         <div class="border border-warning rounded p-3 bg-warning bg-opacity-10" id="divExcecao">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1">
@@ -485,33 +615,38 @@
                                 </label>
                             </div>
                             <small class="text-muted d-block mt-1 ms-4">
-                                Marque esta opção quando a família <strong>não atende integralmente os critérios ordinários</strong> da lei,
-                                mas a concessão é justificada por situação excepcional mediante parecer técnico social
-                                e autorização do gestor da SEMASF. O parecer acima torna-se <strong>obrigatório</strong> ao marcar esta opção.
+                                Marque quando a família não atende integralmente os critérios ordinários, mas a concessão é
+                                justificada por situação excepcional com autorização do gestor da SEMASF.
                             </small>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <button type="button" class="btn btn-success w-100 py-2" id="btnRevisar">
-                <i class="fas fa-eye"></i> <strong>Revisar e Salvar</strong>
-            </button>
-        </form>
-    </div>
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="4">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 5 de 5</span>
+                        <button type="button" class="btn btn-success px-4" id="btnRevisar">
+                            <i class="fas fa-eye me-1"></i> <strong>Revisar e Salvar</strong>
+                        </button>
+                    </div>
+                </div>
+
+            </form>
+        </div><!-- wizard-body -->
+    </div><!-- card -->
 </div>
 
 <!-- Modal de Revisão -->
 <div class="modal fade" id="modalRevisao" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white;">
+            <div class="modal-header" style="background:var(--semasf-navy);color:#fff">
                 <h5 class="modal-title">
-                    <i class="fas fa-eye"></i> Revisão da Solicitação — Confirme os dados antes de salvar
+                    <i class="fas fa-eye"></i> Revisão — Confirme os dados antes de salvar
                 </h5>
             </div>
-            <div class="modal-body" id="conteudoRevisao">
-            </div>
+            <div class="modal-body" id="conteudoRevisao"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary btn-lg" data-bs-dismiss="modal">
                     <i class="fas fa-edit"></i> Voltar e Corrigir
@@ -523,597 +658,378 @@
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // =============================================
-    // FUNÇÃO PARA ATUALIZAR O MEMBRO PRINCIPAL
-    // =============================================
-    function atualizarMembroPrincipal() {
-        const nomeBeneficiario = document.querySelector('input[name="nome"]').value;
-        const dataNascimento = document.getElementById('data_nascimento').value;
 
-        let idade = '';
-        if (dataNascimento) {
-            const nascimento = new Date(dataNascimento);
-            const hoje = new Date();
-            idade = hoje.getFullYear() - nascimento.getFullYear();
-            const mesAniversario = nascimento.getMonth();
-            const mesAtual = hoje.getMonth();
-            if (mesAtual < mesAniversario || (mesAtual === mesAniversario && hoje.getDate() < nascimento.getDate())) {
-                idade--;
-            }
-        }
+// ── Wizard navigation ──────────────────────────────────────────────
+let stepAtual = 1;
+const TOTAL_STEPS = 5;
 
-        const primeiroNome = document.getElementById('membro_nome_0');
-        const primeiraIdade = document.getElementById('membro_idade_0');
-
-        if (primeiroNome && nomeBeneficiario) {
-            primeiroNome.value = nomeBeneficiario;
-        }
-
-        if (primeiraIdade && idade) {
-            primeiraIdade.value = idade;
-        }
-    }
-
-    document.querySelector('input[name="nome"]').addEventListener('input', atualizarMembroPrincipal);
-    document.getElementById('data_nascimento').addEventListener('change', atualizarMembroPrincipal);
-    document.getElementById('data_nascimento').addEventListener('input', atualizarMembroPrincipal);
-
-    // =============================================
-    // MAPEAMENTO DE BAIRROS POR CRAS
-    // =============================================
-    const mapaBairrosCRAS = {
-        "MORAR MELHOR": "CRAS MORAR MELHOR",
-        "BELA VISTA": "CRAS MORAR MELHOR",
-        "CONDOMÍNIO JI-PARANÁ": "CRAS MORAR MELHOR",
-        "CASA PRETA": "CRAS MORAR MELHOR",
-        "DOM BOSCO": "CRAS MORAR MELHOR",
-        "DISTRITO INDUSTRIAL": "CRAS MORAR MELHOR",
-        "JARDIM AURÉLIO BERNARDES": "CRAS MORAR MELHOR",
-        "NOVO HORIZONTE": "CRAS MORAR MELHOR",
-        "PARQUE SÃO PEDRO": "CRAS MORAR MELHOR",
-        "PARK AMAZONAS": "CRAS MORAR MELHOR",
-        "RESIDENCIAL AÇAÍ": "CRAS MORAR MELHOR",
-        "RESIDENCIAL ARAÇÁ": "CRAS MORAR MELHOR",
-        "RESIDENCIAL COLINA PARK": "CRAS MORAR MELHOR",
-        "RESIDENCIAL JATOBÁ": "CRAS MORAR MELHOR",
-        "SÃO BERNARDO": "CRAS MORAR MELHOR",
-        "VILA OPERÁRIOS": "CRAS MORAR MELHOR",
-        "ÁREA RURAL DO 1º DISTRITO": "CRAS MORAR MELHOR",
-        "BOSQUE DOS IPÊS": "CRAS JARDIM DOS MIGRANTES",
-        "CENTRO": "CRAS JARDIM DOS MIGRANTES",
-        "CIDADE JARDIM": "CRAS JARDIM DOS MIGRANTES",
-        "DOIS DE ABRIL": "CRAS JARDIM DOS MIGRANTES",
-        "JARDIM DOS MIGRANTES": "CRAS JARDIM DOS MIGRANTES",
-        "JARDIM PRESIDENCIAL I": "CRAS JARDIM DOS MIGRANTES",
-        "JARDIM PRESIDENCIAL II": "CRAS JARDIM DOS MIGRANTES",
-        "JARDIM PRESIDENCIAL III": "CRAS JARDIM DOS MIGRANTES",
-        "NOVO URUPÁ": "CRAS JARDIM DOS MIGRANTES",
-        "NOVO JI-PARANÁ": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL ALDEIA DO LAGO": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL COPAS VERDES": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL GREEN PARK": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL MILÃO": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL PLANALTO I": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL PLANALTO II": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL VENEZA": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL ESPELHO D'ÁGUA": "CRAS JARDIM DOS MIGRANTES",
-        "ESPELHO ECOVILLE": "CRAS JARDIM DOS MIGRANTES",
-        "SANTIAGO": "CRAS JARDIM DOS MIGRANTES",
-        "SETOR CHACAREIRO": "CRAS JARDIM DOS MIGRANTES",
-        "VAL PARAÍSO": "CRAS JARDIM DOS MIGRANTES",
-        "UNIÃO": "CRAS JARDIM DOS MIGRANTES",
-        "URUPÁ": "CRAS JARDIM DOS MIGRANTES",
-        "VILA DE RONDÔNIA": "CRAS JARDIM DOS MIGRANTES",
-        "GLEBA G": "CRAS JARDIM DOS MIGRANTES",
-        "NOVA LONDRINA": "CRAS JARDIM DOS MIGRANTES",
-        "RESIDENCIAL RONDON": "CRAS SÃO FRANCISCO",
-        "DUQUE DE CAXIAS": "CRAS SÃO FRANCISCO",
-        "JARDIM DAS SERINGUEIRAS": "CRAS SÃO FRANCISCO",
-        "JARDIM SÃO CRISTÓVÃO": "CRAS SÃO FRANCISCO",
-        "JARDIM FLÓRIDA": "CRAS SÃO FRANCISCO",
-        "LOTEAMENTO RONDON I": "CRAS SÃO FRANCISCO",
-        "NOVA BRASÍLIA": "CRAS SÃO FRANCISCO",
-        "PRIMAVERA": "CRAS SÃO FRANCISCO",
-        "RIACHUELO": "CRAS SÃO FRANCISCO",
-        "SÃO FRANCISCO": "CRAS SÃO FRANCISCO",
-        "SÃO PEDRO": "CRAS SÃO FRANCISCO",
-        "VILA JOTÃO": "CRAS SÃO FRANCISCO",
-        "ÁREA RURAL DO 2° DISTRITO": "CRAS SÃO FRANCISCO",
-        "LINHA PIRINEUS": "CRAS SÃO FRANCISCO",
-        "TALISMÃ": "CRAS SÃO FRANCISCO",
-        "CAPELASSO": "CRAS RODA MOINHO",
-        "ALTO ALEGRE": "CRAS RODA MOINHO",
-        "BOA ESPERANÇA": "CRAS RODA MOINHO",
-        "CONJUNTO HABITACIONAL PARECIS": "CRAS RODA MOINHO",
-        "CAFEZINHO": "CRAS RODA MOINHO",
-        "GREENVILLE": "CRAS RODA MOINHO",
-        "HABITAR BRASIL": "CRAS RODA MOINHO",
-        "JORGE TEIXEIRA": "CRAS RODA MOINHO",
-        "JK": "CRAS RODA MOINHO",
-        "MÁRIO ANDREAZZA/BNH": "CRAS RODA MOINHO",
-        "NOSSA SENHORA DE FÁTIMA": "CRAS RODA MOINHO",
-        "PARQUE DOS PIONEIROS": "CRAS RODA MOINHO",
-        "PARK BRASIL": "CRAS RODA MOINHO",
-        "RESIDENCIAL CARNEIRO": "CRAS RODA MOINHO",
-        "RESIDENCIAL TERRA NOVA": "CRAS RODA MOINHO",
-        "RESIDENCIAL ORLEANS I": "CRAS RODA MOINHO",
-        "RESIDENCIAL ORLEANS II": "CRAS RODA MOINHO",
-        "UNIÃO II": "CRAS RODA MOINHO",
-        "DISTRITO NOVA COLINA": "CRAS RODA MOINHO",
-        "ALDEIAS INDÍGENAS": "CRAS RODA MOINHO",
-        "OUTRO MUNICÍPIO": "EQUIPE VOLANTE"
-    };
-
-    document.getElementById('bairro').addEventListener('change', function(e) {
-        const bairroSelecionado = e.target.value;
-        const crasElement = document.getElementById('cras');
-
-        if (mapaBairrosCRAS[bairroSelecionado]) {
-            crasElement.value = mapaBairrosCRAS[bairroSelecionado];
-            crasElement.style.backgroundColor = '#e8f5e9';
-            setTimeout(() => {
-                crasElement.style.backgroundColor = '';
-            }, 500);
-        }
-    });
-
-    document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
-
-    // MÁSCARAS
-    document.getElementById('cpf').addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        if (value.length <= 11) {
-            value = value.replace(/(\d{3})(\d)/, '$1.$2');
-            value = value.replace(/(\d{3})(\d)/, '$1.$2');
-            value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-            e.target.value = value;
-        }
-    });
-
-    document.getElementById('telefone').addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        if (value.length <= 11) {
-            value = value.replace(/(\d{2})(\d)/, '($1) $2');
-            value = value.replace(/(\d{5})(\d)/, '$1-$2');
-            e.target.value = value;
-        }
-    });
-
-    document.getElementById('cep').addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        if (value.length <= 8) {
-            value = value.replace(/(\d{5})(\d)/, '$1-$2');
-            e.target.value = value;
-        }
-    });
-
-    // CÁLCULO DE RENDA PER CAPITA
-    function calcularTotalPessoas() {
-        const membros = document.querySelectorAll('input[name="membro_nome[]"]');
-        let total = 0;
-        membros.forEach(membro => {
-            if (membro.value.trim() !== '') {
-                total++;
-            }
-        });
-        return total;
-    }
-
-    // =============================================
-    // MÁSCARA MONETÁRIA E CÁLCULO RENDA PER CAPITA
-    // =============================================
-
-    function formatarMoeda(valor) {
-        return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    
-    function mascaraMoeda(valor) {
-        // Remove tudo que não for dígito
-        let num = valor.replace(/\D/g, '');
-        if (!num) return '';
-        // Converte para número com 2 casas decimais
-        num = (parseInt(num, 10) / 100).toFixed(2);
-        // Formata: ponto nos milhares, vírgula nos centavos
-        return num
-            .replace('.', ',')
-            .replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
-    }
-
-    function desmascarar(valor) {
-        // Converte "1.621,00" → 1621.00 para cálculo
-        if (!valor) return 0;
-        return parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
-    }
-
-    const rendaBrutaInput = document.getElementById('renda_bruta');
-    rendaBrutaInput.addEventListener('input', function() {
-        const pos = this.selectionStart;
-        const antes = this.value.length;
-        this.value = mascaraMoeda(this.value);
-        // Reposicionar cursor
-        const depois = this.value.length;
-        this.setSelectionRange(pos + (depois - antes), pos + (depois - antes));
-        calcularRendaPerCapita();
-    });
-
-    function calcularRendaPerCapita() {
-        const rendaBruta = document.getElementById('renda_bruta');
-        const rendaPerCapita = document.getElementById('renda_per_capita');
-        let bruta = desmascarar(rendaBruta.value);
-        let pessoas = calcularTotalPessoas() || 1;
-        let perCapita = bruta / pessoas;
-        // Formatar per capita também com máscara
-        rendaPerCapita.value = perCapita > 0
-            ? mascaraMoeda(Math.round(perCapita * 100).toString())
-            : '';
-        verificarRendaPerCapita();
-    }
-
-
-
-    function verificarRendaPerCapita() {
-        const rpcInput = document.getElementById('renda_per_capita');
-        const excecaoCheck = document.getElementById('excecao_art64');
-        const divExcecao = document.getElementById('divExcecao');
-        const avisoRPC = document.getElementById('avisoRPC');
-        if (!rpcInput || !excecaoCheck) return;
-        const rpc = desmascarar(rpcInput.value);
-        if (rpc > limiteRPC && rpc > 0) {
-            if (avisoRPC) {
-                avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    Renda per capita (R$ ${formatarMoeda(rpc)}) ultrapassa o limite legal de <strong>R$ ${formatarMoeda(limiteRPC)}</strong>
-                    (1/4 do salário mínimo). A exceção do <strong>Art. 64</strong> é obrigatória.
-                </div>`;
-            }
-            rpcInput.classList.add('is-invalid');
-            if (divExcecao) {
-                divExcecao.classList.remove('border-warning', 'bg-warning');
-                divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
-            }
-        } else if (rpc > 0) {
-            if (avisoRPC) {
-                avisoRPC.innerHTML = `<div class="text-success mt-1">
-                    <i class="fas fa-check-circle"></i>
-                    Dentro do critério legal (limite: R$ ${formatarMoeda(limiteRPC)}).
-                </div>`;
-            }
-            rpcInput.classList.remove('is-invalid');
-            rpcInput.classList.add('is-valid');
-            if (!excecaoCheck.checked && divExcecao) {
-                divExcecao.classList.remove('border-danger', 'bg-danger');
-                divExcecao.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
-            }
-        } else {
-            if (avisoRPC) avisoRPC.innerHTML = '';
-            rpcInput.classList.remove('is-invalid', 'is-valid');
-        }
-    }
-
-    const observer = new MutationObserver(calcularRendaPerCapita);
-    observer.observe(document.getElementById('composicaoFamiliar'), { childList: true, subtree: true });
-
-    // COMPOSIÇÃO FAMILIAR
-    let membroCount = 1;
-
-    function adicionarMembro(nome = '', idade = '', vinculo = '') {
-        const container = document.getElementById('composicaoFamiliar');
-        const novoMembro = document.createElement('div');
-        novoMembro.className = 'row membro-familia mb-2';
-        novoMembro.innerHTML = `
-            <div class="col-md-4">
-                <input type="text" name="membro_nome[]" class="form-control" placeholder="Nome completo" value="${nome.replace(/"/g, '&quot;')}" required>
-            </div>
-            <div class="col-md-2">
-                <input type="number" name="membro_idade[]" class="form-control" placeholder="Idade" value="${idade}" required>
-            </div>
-            <div class="col-md-3">
-                <select name="membro_vinculo[]" class="form-select" required>
-                    <option value="">Selecione o vínculo</option>
-                    <option value="Beneficiário(a)" ${vinculo === 'Beneficiário(a)' ? 'selected' : ''}>Beneficiário(a)</option>
-                    <option value="Cônjuge" ${vinculo === 'Cônjuge' ? 'selected' : ''}>Cônjuge</option>
-                    <option value="Filho(a)" ${vinculo === 'Filho(a)' ? 'selected' : ''}>Filho(a)</option>
-                    <option value="Pai" ${vinculo === 'Pai' ? 'selected' : ''}>Pai</option>
-                    <option value="Mãe" ${vinculo === 'Mãe' ? 'selected' : ''}>Mãe</option>
-                    <option value="Avô/Avó" ${vinculo === 'Avô/Avó' ? 'selected' : ''}>Avô/Avó</option>
-                    <option value="Neto(a)" ${vinculo === 'Neto(a)' ? 'selected' : ''}>Neto(a)</option>
-                    <option value="Irmão(ã)" ${vinculo === 'Irmão(ã)' ? 'selected' : ''}>Irmão(ã)</option>
-                    <option value="Outro" ${vinculo === 'Outro' ? 'selected' : ''}>Outro</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <button type="button" class="btn btn-danger btn-sm remover-membro">Remover</button>
-            </div>
-        `;
-        container.appendChild(novoMembro);
-
-        novoMembro.querySelector('.remover-membro').addEventListener('click', function() {
-            novoMembro.remove();
-            calcularRendaPerCapita();
-        });
-    }
-
-    document.getElementById('btnAdicionarMembro').addEventListener('click', function() {
-        adicionarMembro();
-    });
-
-    document.querySelectorAll('.remover-membro').forEach(btn => {
-        btn.addEventListener('click', function() {
-            btn.closest('.membro-familia').remove();
-            calcularRendaPerCapita();
-        });
-    });
-
-    document.getElementById('btnUnipessoal').addEventListener('click', function() {
-        const container = document.getElementById('composicaoFamiliar');
-        const todosMembros = container.querySelectorAll('.membro-familia');
-        for (let i = 1; i < todosMembros.length; i++) {
-            todosMembros[i].remove();
-        }
-
-        const nomeBeneficiario = document.querySelector('input[name="nome"]').value;
-        const dataNascimento = document.getElementById('data_nascimento').value;
-        let idade = '';
-
-        if (dataNascimento) {
-            const nascimento = new Date(dataNascimento);
-            const hoje = new Date();
-            idade = hoje.getFullYear() - nascimento.getFullYear();
-            const mesAniversario = nascimento.getMonth();
-            const mesAtual = hoje.getMonth();
-            if (mesAtual < mesAniversario || (mesAtual === mesAniversario && hoje.getDate() < nascimento.getDate())) {
-                idade--;
-            }
-        }
-
-        const primeiroNome = document.getElementById('membro_nome_0');
-        const primeiraIdade = document.getElementById('membro_idade_0');
-        const primeiroVinculo = container.querySelector('select[name="membro_vinculo[]"]');
-
-        if (primeiroNome) primeiroNome.value = nomeBeneficiario;
-        if (primeiraIdade) primeiraIdade.value = idade;
-        if (primeiroVinculo) primeiroVinculo.value = 'Beneficiário(a)';
-
-        calcularRendaPerCapita();
-
-        alert('✓ Composição familiar ajustada para família unipessoal (apenas o beneficiário)');
-    });
-
-    // =============================================
-    // VALIDAÇÃO DE CPF E VERIFICAÇÃO DE HISTÓRICO
-    // =============================================
-    
-    function validarCPF(cpf) {
-        cpf = cpf.replace(/\D/g, '');
-        
-        if (cpf.length !== 11) return false;
-        if (/^(\d)\1{10}$/.test(cpf)) return false;
-        
-        let soma = 0;
-        for (let i = 0; i < 9; i++) {
-            soma += parseInt(cpf.charAt(i)) * (10 - i);
-        }
-        let resto = (soma * 10) % 11;
-        if (resto === 10) resto = 0;
-        if (resto !== parseInt(cpf.charAt(9))) return false;
-        
-        soma = 0;
-        for (let i = 0; i < 10; i++) {
-            soma += parseInt(cpf.charAt(i)) * (11 - i);
-        }
-        resto = (soma * 10) % 11;
-        if (resto === 10) resto = 0;
-        if (resto !== parseInt(cpf.charAt(10))) return false;
-        
-        return true;
-    }
-
-    function verificarHistoricoCPF(cpf) {
-        fetch(`/api/verificar_cpf/${cpf}`)
-            .then(response => response.json())
-            .then(data => {
-                const alertaDiv = document.getElementById('alertaCpf');
-                
-                if (!alertaDiv) return;
-                
-                if (data.erro) {
-                    alertaDiv.innerHTML = `<div class="alert alert-danger mt-2">❌ ${data.erro}</div>`;
-                    return;
-                }
-                
-                if (!data.valido) {
-                    alertaDiv.innerHTML = `<div class="alert alert-danger mt-2">❌ CPF inválido!</div>`;
-                    document.getElementById('cpf').style.borderColor = 'red';
-                    return;
-                }
-                
-                document.getElementById('cpf').style.borderColor = 'green';
-                
-                if (data.alerta === 'vermelho') {
-                    alertaDiv.innerHTML = `
-                        <div class="alert alert-danger mt-2">
-                            🚨 <strong>ATENÇÃO!</strong> Este CPF já recebeu ${data.total_recebido} cesta(s).
-                            Última entrega há ${data.dias_desde_ultima} dias!
-                            ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
-                            ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
-                        </div>`;
-                } else if (data.alerta === 'amarelo') {
-                    alertaDiv.innerHTML = `
-                        <div class="alert alert-warning mt-2">
-                            ⚠️ Este CPF já recebeu ${data.total_recebido} cesta(s).
-                            ${data.ultima_entrega ? `Última: ${data.ultima_entrega}` : ''}
-                            ${data.nome ? `<br>Beneficiário: ${data.nome}` : ''}
-                            ${data.pendente ? '<br>⚠️ Existe uma solicitação em andamento!' : ''}
-                        </div>`;
-                } else {
-                    alertaDiv.innerHTML = `<div class="alert alert-success mt-2">✅ Primeira solicitação para este CPF.</div>`;
-                }
-            })
-            .catch(error => {
-                console.error('Erro:', error);
-            });
-    }
-
-    // Evento de validação ao sair do campo CPF
-    document.getElementById('cpf').addEventListener('blur', function() {
-        const cpfLimpo = this.value.replace(/\D/g, '');
-        
-        if (cpfLimpo.length === 11) {
-            if (!validarCPF(this.value)) {
-                document.getElementById('alertaCpf').innerHTML = `
-                    <div class="alert alert-danger mt-2">❌ CPF inválido! Verifique o número digitado.</div>`;
-                this.style.borderColor = 'red';
+function irParaStep(destino) {
+    // Valida campos obrigatórios do passo atual antes de avançar
+    if (destino > stepAtual) {
+        const paneAtual = document.getElementById('pane-' + stepAtual);
+        const campos = paneAtual.querySelectorAll('input[required], select[required], textarea[required]');
+        let valido = true;
+        campos.forEach(c => {
+            if (!c.value.trim()) {
+                c.classList.add('is-invalid');
+                if (valido) c.focus();
+                valido = false;
             } else {
-                verificarHistoricoCPF(cpfLimpo);
+                c.classList.remove('is-invalid');
             }
+        });
+        if (!valido) {
+            paneAtual.querySelector('.is-invalid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
         }
+    }
+
+    // Esconde pane atual, mostra destino
+    document.getElementById('pane-' + stepAtual).classList.remove('active');
+    document.getElementById('pane-' + destino).classList.add('active');
+
+    // Atualiza indicadores
+    document.querySelectorAll('#wizardSteps li').forEach(li => {
+        const s = parseInt(li.dataset.step);
+        li.classList.remove('active', 'done');
+        if (s === destino) li.classList.add('active');
+        else if (s < destino) li.classList.add('done');
     });
 
-// =============================================
-// VALIDAÇÃO RENDA PER CAPITA vs CRITÉRIO LEGAL
-// =============================================
-let limiteRPC = 405.25; // valor padrão (1621/4), será atualizado via API
+    stepAtual = destino;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-// Buscar limite atual do servidor
-fetch('/api/configuracoes')
-    .then(r => r.json())
-    .then(data => { limiteRPC = data.limite_renda_per_capita; })
-    .catch(() => {});
+document.querySelectorAll('.btn-wizard-next').forEach(btn => {
+    btn.addEventListener('click', () => irParaStep(parseInt(btn.dataset.next)));
+});
+document.querySelectorAll('.btn-wizard-prev').forEach(btn => {
+    btn.addEventListener('click', () => irParaStep(parseInt(btn.dataset.prev)));
+});
 
-// Destacar visualmente quando Art. 64 for marcado
-document.getElementById('excecao_art64') && document.getElementById('excecao_art64').addEventListener('change', function() {
+// ── Remover is-invalid ao digitar ──────────────────────────────────
+document.getElementById('solicitacaoForm').addEventListener('input', e => {
+    if (e.target.required) e.target.classList.remove('is-invalid');
+});
+
+// ── Membro principal sincronizado com dados pessoais ───────────────
+function calcularIdade(dataIso) {
+    if (!dataIso) return '';
+    const nasc = new Date(dataIso);
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    if (hoje.getMonth() < nasc.getMonth() ||
+        (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
+    return idade;
+}
+
+function atualizarMembroPrincipal() {
+    const nome  = document.querySelector('input[name="nome"]').value;
+    const nasc  = document.getElementById('data_nascimento').value;
+    const pNome = document.getElementById('membro_nome_0');
+    const pIdade= document.getElementById('membro_idade_0');
+    if (pNome  && nome)  pNome.value  = nome;
+    if (pIdade && nasc)  pIdade.value = calcularIdade(nasc);
+}
+document.querySelector('input[name="nome"]').addEventListener('input', atualizarMembroPrincipal);
+document.getElementById('data_nascimento').addEventListener('change', atualizarMembroPrincipal);
+
+// ── Mapeamento bairro → CRAS ───────────────────────────────────────
+const mapaBairrosCRAS = {
+    "MORAR MELHOR":"CRAS MORAR MELHOR","BELA VISTA":"CRAS MORAR MELHOR",
+    "CONDOMÍNIO JI-PARANÁ":"CRAS MORAR MELHOR","CASA PRETA":"CRAS MORAR MELHOR",
+    "DOM BOSCO":"CRAS MORAR MELHOR","DISTRITO INDUSTRIAL":"CRAS MORAR MELHOR",
+    "JARDIM AURÉLIO BERNARDES":"CRAS MORAR MELHOR","NOVO HORIZONTE":"CRAS MORAR MELHOR",
+    "PARQUE SÃO PEDRO":"CRAS MORAR MELHOR","PARK AMAZONAS":"CRAS MORAR MELHOR",
+    "RESIDENCIAL AÇAÍ":"CRAS MORAR MELHOR","RESIDENCIAL ARAÇÁ":"CRAS MORAR MELHOR",
+    "RESIDENCIAL COLINA PARK":"CRAS MORAR MELHOR","RESIDENCIAL JATOBÁ":"CRAS MORAR MELHOR",
+    "SÃO BERNARDO":"CRAS MORAR MELHOR","VILA OPERÁRIOS":"CRAS MORAR MELHOR",
+    "ÁREA RURAL DO 1º DISTRITO":"CRAS MORAR MELHOR",
+    "BOSQUE DOS IPÊS":"CRAS JARDIM DOS MIGRANTES","CENTRO":"CRAS JARDIM DOS MIGRANTES",
+    "CIDADE JARDIM":"CRAS JARDIM DOS MIGRANTES","DOIS DE ABRIL":"CRAS JARDIM DOS MIGRANTES",
+    "JARDIM DOS MIGRANTES":"CRAS JARDIM DOS MIGRANTES","JARDIM PRESIDENCIAL I":"CRAS JARDIM DOS MIGRANTES",
+    "JARDIM PRESIDENCIAL II":"CRAS JARDIM DOS MIGRANTES","JARDIM PRESIDENCIAL III":"CRAS JARDIM DOS MIGRANTES",
+    "NOVO URUPÁ":"CRAS JARDIM DOS MIGRANTES","NOVO JI-PARANÁ":"CRAS JARDIM DOS MIGRANTES",
+    "RESIDENCIAL ALDEIA DO LAGO":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL COPAS VERDES":"CRAS JARDIM DOS MIGRANTES",
+    "RESIDENCIAL GREEN PARK":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL MILÃO":"CRAS JARDIM DOS MIGRANTES",
+    "RESIDENCIAL PLANALTO I":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL PLANALTO II":"CRAS JARDIM DOS MIGRANTES",
+    "RESIDENCIAL VENEZA":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL ESPELHO D'ÁGUA":"CRAS JARDIM DOS MIGRANTES",
+    "ESPELHO ECOVILLE":"CRAS JARDIM DOS MIGRANTES","SANTIAGO":"CRAS JARDIM DOS MIGRANTES",
+    "SETOR CHACAREIRO":"CRAS JARDIM DOS MIGRANTES","VAL PARAÍSO":"CRAS JARDIM DOS MIGRANTES",
+    "UNIÃO":"CRAS JARDIM DOS MIGRANTES","URUPÁ":"CRAS JARDIM DOS MIGRANTES",
+    "VILA DE RONDÔNIA":"CRAS JARDIM DOS MIGRANTES","GLEBA G":"CRAS JARDIM DOS MIGRANTES",
+    "NOVA LONDRINA":"CRAS JARDIM DOS MIGRANTES",
+    "RESIDENCIAL RONDON":"CRAS SÃO FRANCISCO","DUQUE DE CAXIAS":"CRAS SÃO FRANCISCO",
+    "JARDIM DAS SERINGUEIRAS":"CRAS SÃO FRANCISCO","JARDIM SÃO CRISTÓVÃO":"CRAS SÃO FRANCISCO",
+    "JARDIM FLÓRIDA":"CRAS SÃO FRANCISCO","LOTEAMENTO RONDON I":"CRAS SÃO FRANCISCO",
+    "NOVA BRASÍLIA":"CRAS SÃO FRANCISCO","PRIMAVERA":"CRAS SÃO FRANCISCO",
+    "RIACHUELO":"CRAS SÃO FRANCISCO","SÃO FRANCISCO":"CRAS SÃO FRANCISCO",
+    "SÃO PEDRO":"CRAS SÃO FRANCISCO","VILA JOTÃO":"CRAS SÃO FRANCISCO",
+    "ÁREA RURAL DO 2° DISTRITO":"CRAS SÃO FRANCISCO","LINHA PIRINEUS":"CRAS SÃO FRANCISCO",
+    "TALISMÃ":"CRAS SÃO FRANCISCO",
+    "CAPELASSO":"CRAS RODA MOINHO","ALTO ALEGRE":"CRAS RODA MOINHO",
+    "BOA ESPERANÇA":"CRAS RODA MOINHO","CONJUNTO HABITACIONAL PARECIS":"CRAS RODA MOINHO",
+    "CAFEZINHO":"CRAS RODA MOINHO","GREENVILLE":"CRAS RODA MOINHO",
+    "HABITAR BRASIL":"CRAS RODA MOINHO","JORGE TEIXEIRA":"CRAS RODA MOINHO",
+    "JK":"CRAS RODA MOINHO","MÁRIO ANDREAZZA/BNH":"CRAS RODA MOINHO",
+    "NOSSA SENHORA DE FÁTIMA":"CRAS RODA MOINHO","PARQUE DOS PIONEIROS":"CRAS RODA MOINHO",
+    "PARK BRASIL":"CRAS RODA MOINHO","RESIDENCIAL CARNEIRO":"CRAS RODA MOINHO",
+    "RESIDENCIAL TERRA NOVA":"CRAS RODA MOINHO","RESIDENCIAL ORLEANS I":"CRAS RODA MOINHO",
+    "RESIDENCIAL ORLEANS II":"CRAS RODA MOINHO","UNIÃO II":"CRAS RODA MOINHO",
+    "DISTRITO NOVA COLINA":"CRAS RODA MOINHO","ALDEIAS INDÍGENAS":"CRAS RODA MOINHO",
+    "OUTRO MUNICÍPIO":"EQUIPE VOLANTE"
+};
+
+const bairroSel = document.getElementById('bairro');
+if (bairroSel) {
+    bairroSel.addEventListener('change', function() {
+        const crasEl = document.getElementById('cras');
+        if (crasEl && mapaBairrosCRAS[this.value]) {
+            crasEl.value = mapaBairrosCRAS[this.value];
+            crasEl.style.backgroundColor = '#e8f5e9';
+            setTimeout(() => crasEl.style.backgroundColor = '', 600);
+        }
+    });
+}
+
+// Data escuta = hoje
+const de = document.getElementById('data_escuta');
+if (de && !de.value) de.value = new Date().toISOString().slice(0,10);
+
+// ── Máscaras ───────────────────────────────────────────────────────
+document.getElementById('cpf').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+    this.value = v;
+});
+document.getElementById('telefone').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d)/,'$1-$2');
+    this.value = v;
+});
+document.getElementById('cep').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{5})(\d)/,'$1-$2');
+    this.value = v;
+});
+
+// ── Composição familiar ────────────────────────────────────────────
+function adicionarMembro(nome='',idade='',vinculo='') {
+    const container = document.getElementById('composicaoFamiliar');
+    const div = document.createElement('div');
+    div.className = 'row membro-familia mb-2';
+    div.innerHTML = `
+        <div class="col-md-4">
+            <input type="text" name="membro_nome[]" class="form-control" placeholder="Nome completo" value="${nome.replace(/"/g,'&quot;')}" required>
+        </div>
+        <div class="col-md-2">
+            <input type="number" name="membro_idade[]" class="form-control" placeholder="Idade" value="${idade}" required>
+        </div>
+        <div class="col-md-3">
+            <select name="membro_vinculo[]" class="form-select" required>
+                <option value="">Vínculo</option>
+                ${['Beneficiário(a)','Cônjuge','Filho(a)','Pai','Mãe','Avô/Avó','Neto(a)','Irmão(ã)','Outro']
+                    .map(v=>`<option${v===vinculo?' selected':''}>${v}</option>`).join('')}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-danger btn-sm remover-membro">Remover</button>
+        </div>`;
+    container.appendChild(div);
+    div.querySelector('.remover-membro').addEventListener('click', () => { div.remove(); calcularRPC(); });
+}
+
+document.getElementById('btnAdicionarMembro').addEventListener('click', () => adicionarMembro());
+document.querySelectorAll('.remover-membro').forEach(btn =>
+    btn.addEventListener('click', () => { btn.closest('.membro-familia').remove(); calcularRPC(); })
+);
+document.getElementById('btnUnipessoal').addEventListener('click', function() {
+    const container = document.getElementById('composicaoFamiliar');
+    [...container.querySelectorAll('.membro-familia')].slice(1).forEach(m => m.remove());
+    const nasc = document.getElementById('data_nascimento').value;
+    document.getElementById('membro_nome_0').value  = document.querySelector('input[name="nome"]').value;
+    document.getElementById('membro_idade_0').value = calcularIdade(nasc);
+    container.querySelector('select[name="membro_vinculo[]"]').value = 'Beneficiário(a)';
+    calcularRPC();
+});
+new MutationObserver(calcularRPC).observe(document.getElementById('composicaoFamiliar'), {childList:true,subtree:true});
+
+// ── Renda ──────────────────────────────────────────────────────────
+function mascaraMoeda(v) {
+    let n = v.replace(/\D/g,'');
+    if (!n) return '';
+    return (parseInt(n)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
+}
+function desmascarar(v) {
+    if (!v) return 0;
+    return parseFloat(v.replace(/\./g,'').replace(',','.')) || 0;
+}
+function formatarMoeda(v) {
+    return v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function calcularTotalPessoas() {
+    return [...document.querySelectorAll('input[name="membro_nome[]"]')].filter(i=>i.value.trim()).length || 1;
+}
+
+let limiteRPC = 405.25;
+fetch('/api/configuracoes').then(r=>r.json()).then(d=>{ limiteRPC = d.limite_renda_per_capita; }).catch(()=>{});
+
+const rendaBrutaInput = document.getElementById('renda_bruta');
+rendaBrutaInput.addEventListener('input', function() {
+    const pos = this.selectionStart, antes = this.value.length;
+    this.value = mascaraMoeda(this.value);
+    const depois = this.value.length;
+    this.setSelectionRange(pos+(depois-antes), pos+(depois-antes));
+    calcularRPC();
+});
+
+function calcularRPC() {
+    const bruta = desmascarar(document.getElementById('renda_bruta').value);
+    const pessoas = calcularTotalPessoas();
+    const rpc = bruta / pessoas;
+    const rpcInput = document.getElementById('renda_per_capita');
+    rpcInput.value = rpc > 0 ? mascaraMoeda(Math.round(rpc*100).toString()) : '';
+    verificarRPC();
+}
+
+function verificarRPC() {
+    const rpcInput = document.getElementById('renda_per_capita');
+    const avisoRPC = document.getElementById('avisoRPC');
+    const divExcecao = document.getElementById('divExcecao');
+    const excecao = document.getElementById('excecao_art64');
+    const rpc = desmascarar(rpcInput.value);
+    if (rpc > limiteRPC && rpc > 0) {
+        avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1 small">
+            <i class="fas fa-exclamation-triangle"></i>
+            R$ ${formatarMoeda(rpc)} ultrapassa o limite legal de R$ ${formatarMoeda(limiteRPC)} (Art. 34). Marque a exceção do Art. 64.
+        </div>`;
+        rpcInput.classList.add('is-invalid');
+        divExcecao?.classList.replace('border-warning','border-danger');
+    } else if (rpc > 0) {
+        avisoRPC.innerHTML = `<div class="text-success mt-1 small"><i class="fas fa-check-circle"></i> Dentro do critério (limite: R$ ${formatarMoeda(limiteRPC)}).</div>`;
+        rpcInput.classList.remove('is-invalid');
+        rpcInput.classList.add('is-valid');
+        if (!excecao?.checked) divExcecao?.classList.replace('border-danger','border-warning');
+    } else {
+        avisoRPC.innerHTML = '';
+        rpcInput.classList.remove('is-invalid','is-valid');
+    }
+}
+
+document.getElementById('excecao_art64')?.addEventListener('change', function() {
     const caixa = document.getElementById('divExcecao');
     const parecer = document.getElementById('parecerTexto');
     if (this.checked) {
-        caixa.classList.remove('border-warning', 'bg-warning', 'bg-opacity-10');
-        caixa.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
-        if (parecer) {
-            parecer.placeholder = 'OBRIGATÓRIO: Descreva a justificativa para a concessão excepcional com base no Art. 64 da Lei Municipal nº 3.603/2022...';
-            parecer.rows = 6;
-        }
+        caixa.classList.replace('border-warning','border-danger');
+        caixa.classList.replace('bg-warning','bg-danger');
+        if (parecer) { parecer.placeholder = 'OBRIGATÓRIO: Justificativa para concessão excepcional (Art. 64)...'; parecer.rows = 7; }
     } else {
-        caixa.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10');
-        caixa.classList.add('border-warning', 'bg-warning', 'bg-opacity-10');
-        if (parecer) {
-            parecer.placeholder = 'Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc.';
-            parecer.rows = 5;
-        }
+        caixa.classList.replace('border-danger','border-warning');
+        caixa.classList.replace('bg-danger','bg-warning');
+        if (parecer) { parecer.placeholder = 'Descreva a situação da família...'; parecer.rows = 6; }
     }
 });
 
-// =============================================
-// TELA DE REVISÃO
-// =============================================
+// ── Validação CPF ──────────────────────────────────────────────────
+function validarCPF(cpf) {
+    cpf = cpf.replace(/\D/g,'');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let s=0; for(let i=0;i<9;i++) s+=parseInt(cpf[i])*(10-i);
+    let r=(s*10)%11; if(r===10)r=0; if(r!==parseInt(cpf[9])) return false;
+    s=0; for(let i=0;i<10;i++) s+=parseInt(cpf[i])*(11-i);
+    r=(s*10)%11; if(r===10)r=0; return r===parseInt(cpf[10]);
+}
+
+document.getElementById('cpf').addEventListener('blur', function() {
+    const limpo = this.value.replace(/\D/g,'');
+    if (limpo.length !== 11) return;
+    if (!validarCPF(this.value)) {
+        document.getElementById('alertaCpf').innerHTML = '<div class="alert alert-danger mt-2 py-1 small">❌ CPF inválido!</div>';
+        this.classList.add('is-invalid');
+        return;
+    }
+    this.classList.remove('is-invalid');
+    fetch(`/api/verificar_cpf/${limpo}`)
+        .then(r=>r.json())
+        .then(data => {
+            const div = document.getElementById('alertaCpf');
+            if (!data.valido) { div.innerHTML='<div class="alert alert-danger mt-2 py-1 small">❌ CPF inválido!</div>'; return; }
+            if (data.alerta==='vermelho') {
+                div.innerHTML=`<div class="alert alert-danger mt-2 py-1 small">🚨 ${data.total_recebido} cesta(s) recebida(s). Última há ${data.dias_desde_ultima} dia(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}</div>`;
+            } else if (data.alerta==='amarelo') {
+                div.innerHTML=`<div class="alert alert-warning mt-2 py-1 small">⚠️ ${data.total_recebido} cesta(s) recebida(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}</div>`;
+            } else {
+                div.innerHTML='<div class="alert alert-success mt-2 py-1 small">✅ Primeira solicitação para este CPF.</div>';
+            }
+        }).catch(()=>{});
+});
+
+// ── Revisão e envio ────────────────────────────────────────────────
 document.getElementById('btnRevisar').addEventListener('click', function() {
-    // Validações antes de abrir a revisão
     const form = document.getElementById('solicitacaoForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-    if (!document.getElementById('data_escuta').value) {
-        document.getElementById('data_escuta').value = new Date().toISOString().slice(0,10);
-    }
 
-    // Validar renda per capita (campo readonly, validado manualmente)
-    const rpcInput = document.getElementById('renda_per_capita');
-    const rpcValor = desmascarar(rpcInput.value);
+    // Validar passo 5 (parecer)
+    const pane5 = document.getElementById('pane-5');
+    const obrigatorios = pane5.querySelectorAll('input[required],select[required],textarea[required]');
+    let ok = true;
+    obrigatorios.forEach(c=>{ if(!c.value.trim()){ c.classList.add('is-invalid'); ok=false; } });
+    if (!ok) return;
+
+    const rpcValor = desmascarar(document.getElementById('renda_per_capita').value);
     if (rpcValor <= 0) {
-        rpcInput.classList.add('is-invalid');
-        document.getElementById('renda_bruta').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        alert('⚠️ Preencha a Renda Familiar para calcular a renda per capita antes de salvar.');
-        return;
+        alert('⚠️ Volte ao Passo 4 e preencha a Renda Familiar.');
+        irParaStep(4); return;
     }
-
     const excecao = document.getElementById('excecao_art64');
     const parecer = document.getElementById('parecerTexto');
-    if (rpcValor > limiteRPC && rpcValor > 0 && excecao && !excecao.checked) {
-        const divExcecao = document.getElementById('divExcecao');
-        if (divExcecao) {
-            divExcecao.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
-            divExcecao.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite de R$ ${formatarMoeda(limiteRPC)}.\n\nMarque a exceção do Art. 64 antes de salvar.`);
+    if (rpcValor > limiteRPC && !excecao?.checked) {
+        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite. Marque a exceção do Art. 64.`);
         return;
     }
-    if (excecao && excecao.checked && parecer && parecer.value.trim().length < 20) {
-        parecer.focus();
-        parecer.classList.add('is-invalid');
-        alert('⚠️ Ao marcar a exceção do Art. 64, o Parecer Técnico é obrigatório.');
-        return;
+    if (excecao?.checked && parecer.value.trim().length < 20) {
+        parecer.classList.add('is-invalid'); parecer.focus();
+        alert('⚠️ O Parecer Técnico é obrigatório ao marcar o Art. 64.'); return;
     }
 
-    // Montar conteúdo da revisão
-    // Converte data de "YYYY-MM-DD" para "DD/MM/YYYY"
-    function formatarData(dataIso) {
-        if (!dataIso) return 'Não informado';
-        const partes = dataIso.split('-');
-        if (partes.length !== 3) return dataIso;
-        return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    function fmtData(iso) {
+        if(!iso) return 'Não informado';
+        const p=iso.split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso;
     }
-
-    const nome = document.querySelector('input[name="nome"]').value;
-    const cpf = document.getElementById('cpf').value;
-    const dataNasc = formatarData(document.querySelector('input[name="data_nascimento"]').value);
-    const telefone = document.querySelector('input[name="telefone"]').value;
-    const emailVal = document.querySelector('input[name="email"]').value;
-    const endereco = document.querySelector('input[name="endereco"]').value;
-    const numero = document.querySelector('input[name="numero"]').value;
-    const complemento = document.querySelector('input[name="complemento"]').value;
-    const bairro = document.getElementById('bairro').value;
-    const cras = document.getElementById('cras').value;
-    const rendaBruta = document.getElementById('renda_bruta').value;
-    const rendaRPC = document.getElementById('renda_per_capita').value;
-    const beneficios = document.querySelector('select[name="beneficios"]').value;
-    const dataEscuta = formatarData(document.getElementById('data_escuta').value);
-    const parecerTxt = parecer ? parecer.value : '';
-    const excecaoMarcada = excecao && excecao.checked;
-
-    // Membros familiares
-    const nomes = [...document.querySelectorAll('input[name="membro_nome[]"]')].map(i => i.value).filter(v => v.trim());
-    const idades = [...document.querySelectorAll('input[name="membro_idade[]"]')].map(i => i.value);
-    const vinculos = [...document.querySelectorAll('select[name="membro_vinculo[]"]')].map(s => s.value);
-    let tabelaMembros = nomes.map((n, i) =>
-        `<tr><td>${n}</td><td>${idades[i]||''}</td><td>${vinculos[i]||''}</td></tr>`
-    ).join('');
-
-    // Vulnerabilidades e serviços marcados
-    const vuls = [...document.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value).join(', ') || 'Nenhuma';
-    const servs = [...document.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value).join(', ') || 'Nenhum';
-
-    const excecaoHtml = excecaoMarcada
-        ? `<div class="alert alert-danger py-2"><i class="fas fa-exclamation-triangle"></i> <strong>Concessão com base no Art. 64 — Lei Municipal nº 3.603/2022</strong></div>`
-        : '';
+    const nomes = [...document.querySelectorAll('input[name="membro_nome[]"]')].map(i=>i.value).filter(v=>v.trim());
+    const idades= [...document.querySelectorAll('input[name="membro_idade[]"]')].map(i=>i.value);
+    const vinculos=[...document.querySelectorAll('select[name="membro_vinculo[]"]')].map(s=>s.value);
+    const vuls  = [...document.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c=>c.value).join(', ') || 'Nenhuma';
+    const servs = [...document.querySelectorAll('input[name="servicos_suas"]:checked')].map(c=>c.value).join(', ') || 'Nenhum';
+    const excecaoHtml = excecao?.checked
+        ? `<div class="alert alert-danger py-2"><i class="fas fa-exclamation-triangle"></i> <strong>Concessão com base no Art. 64 — Lei Municipal nº 3.603/2022</strong></div>` : '';
 
     document.getElementById('conteudoRevisao').innerHTML = `
         <div class="row">
             <div class="col-md-6">
                 <div class="card mb-3">
-                    <div class="card-header bg-primary text-white"><strong>Dados do Beneficiário</strong></div>
+                    <div class="card-header"><strong>Dados Pessoais</strong></div>
                     <div class="card-body">
-                        <p><strong>Nome:</strong> ${nome}</p>
-                        <p><strong>CPF:</strong> ${cpf}</p>
-                        <p><strong>Data Nascimento:</strong> ${dataNasc}</p>
-                        <p><strong>Telefone:</strong> ${telefone}</p>
-                        <p><strong>E-mail:</strong> ${emailVal || 'Não informado'}</p>
+                        <p><strong>Nome:</strong> ${document.querySelector('input[name="nome"]').value}</p>
+                        <p><strong>CPF:</strong> ${document.getElementById('cpf').value}</p>
+                        <p><strong>Nascimento:</strong> ${fmtData(document.querySelector('input[name="data_nascimento"]').value)}</p>
+                        <p><strong>Telefone:</strong> ${document.querySelector('input[name="telefone"]').value}</p>
+                        <p><strong>E-mail:</strong> ${document.querySelector('input[name="email"]').value || '—'}</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="card mb-3">
-                    <div class="card-header bg-primary text-white"><strong>Endereço</strong></div>
+                    <div class="card-header"><strong>Endereço</strong></div>
                     <div class="card-body">
-                        <p><strong>Endereço:</strong> ${endereco}, ${numero} ${complemento ? '- '+complemento : ''}</p>
-                        <p><strong>Bairro:</strong> ${bairro}</p>
-                        <p><strong>CRAS:</strong> ${cras}</p>
-                        <p><strong>Data da Escuta:</strong> ${dataEscuta}</p>
+                        <p><strong>Logradouro:</strong> ${document.querySelector('input[name="endereco"]').value}, ${document.querySelector('input[name="numero"]').value}</p>
+                        <p><strong>Bairro:</strong> ${document.getElementById('bairro').value}</p>
+                        <p><strong>CRAS:</strong> ${document.getElementById('cras').value}</p>
+                        <p><strong>Data Escuta:</strong> ${fmtData(document.getElementById('data_escuta').value)}</p>
                     </div>
                 </div>
             </div>
@@ -1121,22 +1037,22 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
         <div class="row">
             <div class="col-md-6">
                 <div class="card mb-3">
-                    <div class="card-header bg-success text-white"><strong>Composição Familiar (${nomes.length} pessoa(s))</strong></div>
+                    <div class="card-header"><strong>Composição Familiar (${nomes.length} pessoa(s))</strong></div>
                     <div class="card-body p-2">
                         <table class="table table-sm mb-0">
                             <thead><tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr></thead>
-                            <tbody>${tabelaMembros}</tbody>
+                            <tbody>${nomes.map((n,i)=>`<tr><td>${n}</td><td>${idades[i]||''}</td><td>${vinculos[i]||''}</td></tr>`).join('')}</tbody>
                         </table>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="card mb-3">
-                    <div class="card-header bg-success text-white"><strong>Renda e Benefícios</strong></div>
+                    <div class="card-header"><strong>Renda e Benefícios</strong></div>
                     <div class="card-body">
-                        <p><strong>Renda Familiar:</strong> R$ ${rendaBruta}</p>
-                        <p><strong>Renda Per Capita:</strong> R$ ${rendaRPC}</p>
-                        <p><strong>Benefícios:</strong> ${beneficios}</p>
+                        <p><strong>Renda Familiar:</strong> R$ ${document.getElementById('renda_bruta').value}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ ${document.getElementById('renda_per_capita').value}</p>
+                        <p><strong>Benefícios:</strong> ${document.querySelector('select[name="beneficios"]').value}</p>
                         <p><strong>Vulnerabilidades:</strong> ${vuls}</p>
                         <p><strong>Serviços SUAS:</strong> ${servs}</p>
                     </div>
@@ -1144,27 +1060,24 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-header bg-warning"><strong>Parecer Técnico</strong></div>
-            <div class="card-body"><p>${parecerTxt || 'Não informado'}</p></div>
+            <div class="card-header"><strong>Parecer Técnico</strong></div>
+            <div class="card-body"><p>${parecer.value}</p></div>
         </div>
         ${excecaoHtml}
-        <div class="alert alert-info">
+        <div class="alert alert-info small">
             <i class="fas fa-info-circle"></i>
-            <strong>Confira todos os dados acima.</strong> Após confirmar, a solicitação será salva e não poderá ser desfeita sem o perfil de administrador.
+            Após confirmar, a solicitação será salva e um PDF poderá ser gerado.
         </div>`;
 
     new bootstrap.Modal(document.getElementById('modalRevisao')).show();
 });
 
-// Confirmar e submeter o formulário real
 document.getElementById('btnConfirmarSalvar').addEventListener('click', function() {
-    const form = document.getElementById('solicitacaoForm');
-    // Desmascarar antes de enviar
-    const rb = document.getElementById('renda_bruta');
+    const rb  = document.getElementById('renda_bruta');
     const rpc = document.getElementById('renda_per_capita');
-    if (rb) rb.value = desmascarar(rb.value).toFixed(2);
+    if (rb)  rb.value  = desmascarar(rb.value).toFixed(2);
     if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
-    form.submit();
+    document.getElementById('solicitacaoForm').submit();
 });
 
 }); // fim DOMContentLoaded

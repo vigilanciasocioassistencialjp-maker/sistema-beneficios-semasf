@@ -63,6 +63,7 @@
         </div>
         
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label><strong>Data da Entrega:</strong></label>
             <input type="date" name="data_entrega" value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
             

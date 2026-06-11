@@ -16,15 +16,15 @@
         </a>
     </div>
 
-    <!-- Filtros em linha -->
-    <div class="row mb-4 g-2">
+    <!-- Filtros server-side -->
+    <form method="GET" action="{{ url_for('solicitacoes') }}" class="row mb-4 g-2 align-items-end">
         <div class="col-md-3">
             <label class="form-label fw-bold small text-muted">FILTRAR POR STATUS</label>
-            <select id="filtroStatus" class="form-select" onchange="filtrarTabela()">
-                <option value="todos">Todos os Status</option>
-                <option value="Cadastrada">🟡 Cadastrada</option>
-                <option value="Entregue">✅ Entregue</option>
-                <option value="Ausente">❌ Ausente</option>
+            <select name="busca_status" class="form-select" onchange="this.form.submit()">
+                <option value="">Todos os Status</option>
+                <option value="Cadastrada" {% if busca_status == 'Cadastrada' %}selected{% endif %}>🟡 Cadastrada</option>
+                <option value="Entregue"   {% if busca_status == 'Entregue'   %}selected{% endif %}>✅ Entregue</option>
+                <option value="Ausente"    {% if busca_status == 'Ausente'    %}selected{% endif %}>❌ Ausente</option>
             </select>
         </div>
         <div class="col-md-6">
@@ -33,10 +33,22 @@
                 <span class="input-group-text bg-white">
                     <i class="fas fa-search text-muted"></i>
                 </span>
-                <input type="text" id="filtroNome" class="form-control" placeholder="Digite o nome do beneficiário..." onkeyup="filtrarTabela()">
+                <input type="text" name="busca_nome" class="form-control"
+                       placeholder="Digite o nome do beneficiário..."
+                       value="{{ busca_nome }}">
             </div>
         </div>
-    </div>
+        <div class="col-md-auto">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-search"></i> Buscar
+            </button>
+            {% if busca_nome or busca_status %}
+            <a href="{{ url_for('solicitacoes') }}" class="btn btn-secondary ms-1">
+                <i class="fas fa-eraser"></i> Limpar
+            </a>
+            {% endif %}
+        </div>
+    </form>
 
     <!-- Tabela -->
     <div class="table-responsive">
@@ -83,7 +95,7 @@
                             <a href="/ver_solicitacao/{{ s[0] }}" class="btn btn-outline-secondary" title="Visualizar">
                                 <i class="fas fa-eye"></i>
                             </a>
-                            <a href="/gerar_pdf/{{ s[0] }}" class="btn btn-outline-primary" title="Gerar PDF" target="_blank">
+                            <a href="/gerar_pdf/{{ s[0] }}" class="btn btn-outline-primary btn-gerar-pdf" title="Gerar PDF" target="_blank">
                                 <i class="fas fa-print"></i>
                             </a>
 
@@ -98,9 +110,12 @@
                                 <i class="fas fa-check-circle"></i>
                             </button>
                             {% elif s[7] == 'Ausente' %}
-                            <button type="button" class="btn btn-secondary" disabled title="Ausente - Perdeu a cesta, necessário nova solicitação">
-                                <i class="fas fa-times-circle"></i>
-                            </button>
+                            <a href="/reagendar/{{ s[0] }}"
+                               class="btn btn-outline-warning"
+                               title="Reagendar — cria nova solicitação para este beneficiário"
+                               onclick="return confirm('Reagendar {{ s[2] }}?\n\nUma nova solicitação será criada com os dados deste beneficiário.')">
+                                <i class="fas fa-calendar-plus"></i>
+                            </a>
                             {% endif %}
                         </div>
                     </td>
@@ -123,7 +138,7 @@
         <ul class="pagination justify-content-center">
             {% if pagina_atual > 1 %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, busca_nome=busca_nome, busca_status=busca_status) }}">
                     <i class="fas fa-chevron-left"></i> Anterior
                 </a>
             </li>
@@ -131,13 +146,13 @@
 
             {% for p in range(1, total_paginas + 1) %}
             <li class="page-item {% if p == pagina_atual %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, busca_nome=busca_nome, busca_status=busca_status) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
             {% if pagina_atual < total_paginas %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, busca_nome=busca_nome, busca_status=busca_status) }}">
                     Próxima <i class="fas fa-chevron-right"></i>
                 </a>
             </li>
@@ -205,22 +220,6 @@
 
 {% block extra_js %}
 <script>
-function filtrarTabela() {
-    const statusFiltro = document.getElementById('filtroStatus').value;
-    const nomeFiltro = document.getElementById('filtroNome').value.toLowerCase();
-    const linhas = document.querySelectorAll('#tabelaSolicitacoes tbody tr');
-
-    linhas.forEach(linha => {
-        const status = linha.getAttribute('data-status');
-        const nome = linha.getAttribute('data-nome');
-
-        let mostrarStatus = statusFiltro === 'todos' || status === statusFiltro;
-        let mostrarNome = nome.includes(nomeFiltro);
-
-        linha.style.display = (mostrarStatus && mostrarNome) ? '' : 'none';
-    });
-}
-
 // =============================================
 // MODAL DE ENTREGA
 // =============================================
@@ -304,6 +303,19 @@ function abrirModalEntrega(id, nome) {
     }
 }
 
+// Indicador de carregamento nos botões de PDF
+document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const icon = this.querySelector('i');
+        icon.className = 'fas fa-spinner fa-spin';
+        this.title = 'Gerando PDF...';
+        setTimeout(() => {
+            icon.className = 'fas fa-print';
+            this.title = 'Gerar PDF';
+        }, 4000);
+    });
+});
+
 // Limpar modal ao fechar
 const modalElement = document.getElementById('modalEntrega');
 if (modalElement) {
@@ -339,7 +351,10 @@ if (formEntrega) {
             return false;
         }
 
-        if (!confirm('Confirmar registro da entrega? Esta ação não pode ser desfeita.')) {
+        const msgConfirm = status === 'Ausente'
+            ? `⚠️ Confirmar AUSÊNCIA de "${document.getElementById('beneficiarioNome').textContent}"?\n\nIsso indica que o beneficiário não compareceu para receber a cesta. Esta ação não pode ser desfeita.`
+            : `✅ Confirmar entrega para "${document.getElementById('beneficiarioNome').textContent}"?\n\nEsta ação não pode ser desfeita.`;
+        if (!confirm(msgConfirm)) {
             return false;
         }
 

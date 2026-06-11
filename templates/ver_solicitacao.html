@@ -13,12 +13,20 @@
             <a href="/solicitacoes" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar para lista
             </a>
-            <a href="/gerar_pdf/{{ solicitacao[0] }}" class="btn btn-primary" target="_blank">
-                <i class="fas fa-print"></i> Gerar PDF
+            <a href="/gerar_pdf/{{ solicitacao[0] }}" class="btn btn-primary btn-gerar-pdf" target="_blank">
+                <i class="fas fa-print"></i> <span class="pdf-label">Gerar PDF</span>
             </a>
-            {% if current_user.perfil in ['admin', 'gestor'] or current_user.id == solicitacao[22] %}
+            {% set ja_entregue = solicitacao[21] in ('Entregue', 'Ausente') %}
+            {% set eh_autor = current_user.id == solicitacao[22] %}
+            {% if current_user.perfil in ['admin', 'gestor'] or (eh_autor and not ja_entregue) %}
             <a href="/editar_solicitacao/{{ solicitacao[0] }}" class="btn btn-warning">
                 <i class="fas fa-edit"></i> Editar
+            </a>
+            {% endif %}
+            {% if solicitacao[21] == 'Ausente' %}
+            <a href="/reagendar/{{ solicitacao[0] }}" class="btn btn-outline-warning"
+               onclick="return confirm('Reagendar {{ solicitacao[1] }}?\n\nUma nova solicitação será criada com os dados deste beneficiário.')">
+                <i class="fas fa-calendar-plus"></i> Reagendar
             </a>
             {% endif %}
         </div>
@@ -175,6 +183,63 @@
             Solicitação não encontrada!
         </div>
         {% endif %}
+
+        <!-- ── Histórico de edições ── -->
+        {% if historico %}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#collapseHistorico">
+                <span><i class="fas fa-history"></i> Histórico de Edições
+                    <span class="badge bg-secondary ms-1">{{ historico|length }}</span>
+                </span>
+                <i class="fas fa-chevron-down small"></i>
+            </div>
+            <div class="collapse" id="collapseHistorico">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Usuário</th>
+                                    <th>Campo</th>
+                                    <th>Valor anterior</th>
+                                    <th>Novo valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in historico %}
+                                <tr>
+                                    <td class="text-nowrap">{{ h[4] }}</td>
+                                    <td>{{ h[3] }}</td>
+                                    <td><strong>{{ h[0] }}</strong></td>
+                                    <td class="text-danger small">{{ h[1] or '—' }}</td>
+                                    <td class="text-success small">{{ h[2] or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
+{% block extra_js %}
+<script>
+document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const icon = this.querySelector('i');
+        const label = this.querySelector('.pdf-label');
+        icon.className = 'fas fa-spinner fa-spin';
+        if (label) label.textContent = ' Gerando...';
+        setTimeout(() => {
+            icon.className = 'fas fa-print';
+            if (label) label.textContent = ' Gerar PDF';
+        }, 4000);
+    });
+});
+</script>
+{% endblock %}
 {% endblock %}

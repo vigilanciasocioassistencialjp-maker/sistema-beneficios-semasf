@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash, get_flashed_messages, session, jsonify
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
-from banco import criar_banco, get_db_connection
+from banco import criar_banco, get_db_connection, _devolver_conexao
 import os
 import json
 from datetime import datetime, timezone, timedelta
@@ -20,6 +21,8 @@ from cryptography.fernet import Fernet
 import hashlib
 import gzip
 import base64
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -34,6 +37,14 @@ app = Flask(__name__)
 
 # 🔒 Secret key
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+
+# 🛡️ Proteção CSRF global
+csrf = CSRFProtect(app)
+
+# ⏱️ Sessão expira após 8 horas de inatividade
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
@@ -57,13 +68,6 @@ else:
 
 # Criar o Fernet
 fernet = Fernet(CHAVE_CRIPTO.encode())
-
-# 🛡️ CSRF token (compatibilidade com base.html)
-@app.context_processor
-def inject_csrf_token():
-    if 'csrf_token' not in session:
-        session['csrf_token'] = secrets.token_hex(16)
-    return dict(csrf_token=lambda: session['csrf_token'])
 
 # =====================================================
 # FUNÇÕES DE CPF
@@ -165,7 +169,7 @@ EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', 'sistema.cestas.semasf
 SENDGRID_API_KEY   = os.environ.get('SENDGRID_API_KEY', '')
 
 def gerar_backup_json():
-    conn = get_db_connection()
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM solicitacoes")
     cols_sol = [d[0] for d in cursor.description]
@@ -273,8 +277,33 @@ def adicionar_headers_no_cache(response):
         response.headers['Expires'] = '0'
     return response
 
+class _PooledConn:
+    """Wrapper que devolve a conexão ao pool quando .close() é chamado."""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
+        _devolver_conexao(self._conn)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 def get_db():
-    return get_db_connection()
+    return _PooledConn(get_db_connection())
 
 # =====================================================
 # LOGIN
@@ -283,6 +312,7 @@ def get_db():
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+login_manager.login_message = None
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -326,7 +356,8 @@ def login():
         
         if dados and bcrypt.checkpw(senha.encode('utf-8'), dados[1].encode('utf-8')):
             user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None, dados[5] if len(dados) > 5 else dados[0])
-            login_user(user)
+            login_user(user, remember=False)
+            session.permanent = True
             if ip in tentativas_login: del tentativas_login[ip]
             logger.info(f"Login: {dados[0]}")
             if dados[3] == 1:
@@ -538,27 +569,64 @@ def inicio():
 def solicitacoes(pagina=1):
     registros_por_pagina = 20
     offset = (pagina - 1) * registros_por_pagina
+
+    # Parâmetros de busca server-side
+    busca_nome   = request.args.get('busca_nome', '').strip()
+    busca_status = request.args.get('busca_status', '').strip()
+
+    # Monta cláusulas WHERE dinamicamente
+    filtros = []
+    params  = []
+
+    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+        filtros.append("cras = %s")
+        params.append(current_user.cras)
+
+    if busca_nome:
+        filtros.append("nome ILIKE %s")
+        params.append(f"%{busca_nome}%")
+
+    if busca_status:
+        filtros.append("status = %s")
+        params.append(busca_status)
+
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+
     conexao = get_db()
-    cursor = conexao.cursor()
-    if current_user.perfil in ['admin', 'gestor', 'creas']:
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes")
-        total_registros = cursor.fetchone()[0]
-        cursor.execute("SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status FROM solicitacoes ORDER BY id DESC LIMIT %s OFFSET %s", (registros_por_pagina, offset))
-    else:
-        cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cras = %s", (current_user.cras,))
-        total_registros = cursor.fetchone()[0]
-        cursor.execute("SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status FROM solicitacoes WHERE cras = %s ORDER BY id DESC LIMIT %s OFFSET %s", (current_user.cras, registros_por_pagina, offset))
-    total_paginas = (total_registros + registros_por_pagina - 1) // registros_por_pagina
+    cursor  = conexao.cursor()
+
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where}", params)
+    total_registros = cursor.fetchone()[0]
+
+    cursor.execute(
+        f"SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status "
+        f"FROM solicitacoes {where} ORDER BY id DESC LIMIT %s OFFSET %s",
+        params + [registros_por_pagina, offset]
+    )
     dados = cursor.fetchall()
     conexao.close()
+
+    total_paginas = max(1, (total_registros + registros_por_pagina - 1) // registros_por_pagina)
+
     dados_formatados = []
     for row in dados:
         row = list(row)
         if row[3]:
-            cpf_real = descriptografar_cpf(row[3])
-            row[3] = formatar_cpf(cpf_real)
+            row[3] = formatar_cpf(descriptografar_cpf(row[3]))
         dados_formatados.append(tuple(row))
-    return render_template("solicitacoes.html", solicitacoes=dados_formatados, user_perfil=current_user.perfil, datetime=datetime, pagina_atual=pagina, total_paginas=total_paginas, total_registros=total_registros, current_user=current_user)
+
+    return render_template(
+        "solicitacoes.html",
+        solicitacoes=dados_formatados,
+        user_perfil=current_user.perfil,
+        datetime=datetime,
+        pagina_atual=pagina,
+        total_paginas=total_paginas,
+        total_registros=total_registros,
+        busca_nome=busca_nome,
+        busca_status=busca_status,
+        current_user=current_user
+    )
 
 # =====================================================
 # VER SOLICITAÇÕES
@@ -585,15 +653,13 @@ def ver_solicitacao(id):
         WHERE s.id = %s
     """, (id,))
     s = cursor.fetchone()
-    conexao.close()
-    if not s: return "Não encontrada", 404
-    
+    if not s:
+        conexao.close()
+        return "Não encontrada", 404
+
     s = list(s)
-    # Corrigir CPF
     if s[2]:
-        cpf_real = descriptografar_cpf(s[2])
-        s[2] = formatar_cpf(cpf_real)
-    # Corrigir data de nascimento (índice 3)
+        s[2] = formatar_cpf(descriptografar_cpf(s[2]))
     if s[3]:
         try:
             if '-' in str(s[3]):
@@ -602,8 +668,26 @@ def ver_solicitacao(id):
                     s[3] = f"{partes[2]}/{partes[1]}/{partes[0]}"
         except:
             pass
-    
-    return render_template("ver_solicitacao.html", solicitacao=s, json=json, datetime=datetime, current_user=current_user)
+
+    # Histórico de edições
+    cursor.execute("""
+        SELECT campo, valor_antes, valor_depois, usuario, data_hora
+        FROM historico_edicoes
+        WHERE solicitacao_id = %s
+        ORDER BY data_hora DESC
+        LIMIT 50
+    """, (id,))
+    historico = cursor.fetchall()
+    conexao.close()
+
+    return render_template(
+        "ver_solicitacao.html",
+        solicitacao=s,
+        historico=historico,
+        json=json,
+        datetime=datetime,
+        current_user=current_user
+    )
 
 # =====================================================
 # EDITAR SOLICITAÇÃO
@@ -629,13 +713,18 @@ def editar_solicitacao(id):
     s['cpf'] = formatar_cpf(descriptografar_cpf(s['cpf'])) if s['cpf'] else ''
 
     # Verificar permissão
-    pode_editar = (
-        current_user.perfil in ['admin', 'gestor'] or
-        current_user.id == s['tecnico']
-    )
+    eh_admin_gestor = current_user.perfil in ['admin', 'gestor']
+    eh_autor        = current_user.id == s['tecnico']
+    ja_entregue     = s.get('status') in ('Entregue', 'Ausente')
+
+    pode_editar = eh_admin_gestor or (eh_autor and not ja_entregue)
+
     if not pode_editar:
         conexao.close()
-        flash('❌ Você não tem permissão para editar esta solicitação.', 'danger')
+        if ja_entregue:
+            flash('❌ Esta solicitação já teve a entrega registrada e não pode mais ser editada por técnicos.', 'danger')
+        else:
+            flash('❌ Você não tem permissão para editar esta solicitação.', 'danger')
         return redirect(url_for('ver_solicitacao', id=id))
 
     if request.method == "POST":
@@ -671,6 +760,21 @@ def editar_solicitacao(id):
                     'vinculo': membros_vinculos[i] if i < len(membros_vinculos) else ''
                 })
 
+        novos = {
+            'nome': nome, 'data_nascimento': data_nasc,
+            'telefone': telefone, 'email': email,
+            'endereco': endereco, 'numero': numero,
+            'complemento': complemento, 'bairro': bairro,
+            'cep': cep, 'referencia': referencia, 'cras': cras,
+            'data_escuta': data_escuta,
+            'renda_bruta': str(renda_bruta), 'renda_per_capita': str(renda_rpc),
+            'beneficios': beneficios,
+            'vulnerabilidade': ", ".join(vuls),
+            'servicos_suas': ", ".join(servicos),
+            'parecer': parecer,
+            'excecao_art64': str(excecao),
+        }
+
         cursor.execute("""
             UPDATE solicitacoes SET
                 nome=%s, data_nascimento=%s, telefone=%s, email=%s,
@@ -690,6 +794,29 @@ def editar_solicitacao(id):
             ", ".join(vuls), ", ".join(servicos), parecer,
             excecao, id
         ))
+
+        # ── Registrar histórico de alterações ──
+        agora = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')
+        labels = {
+            'nome': 'Nome', 'data_nascimento': 'Data de nascimento',
+            'telefone': 'Telefone', 'email': 'E-mail',
+            'endereco': 'Endereço', 'numero': 'Número',
+            'complemento': 'Complemento', 'bairro': 'Bairro',
+            'cep': 'CEP', 'referencia': 'Referência', 'cras': 'CRAS',
+            'data_escuta': 'Data da escuta', 'renda_bruta': 'Renda bruta',
+            'renda_per_capita': 'Renda per capita', 'beneficios': 'Benefícios',
+            'vulnerabilidade': 'Vulnerabilidade', 'servicos_suas': 'Serviços SUAS',
+            'parecer': 'Parecer técnico', 'excecao_art64': 'Exceção Art.64',
+        }
+        for campo, novo_val in novos.items():
+            antigo = str(s.get(campo, '') or '')
+            if antigo != str(novo_val or ''):
+                cursor.execute("""
+                    INSERT INTO historico_edicoes
+                        (solicitacao_id, usuario, campo, valor_antes, valor_depois, data_hora)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (id, current_user.id, labels.get(campo, campo), antigo, str(novo_val), agora))
+
         conexao.commit()
         conexao.close()
         logger.info(f"Solicitação {id} editada por {current_user.id}")
@@ -922,14 +1049,26 @@ def gerar_pdf_assinatura(id):
 
         if desenhar:
             # ── CABEÇALHO ──────────────────────────────────────────
+            logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
+            logo_altura = 2.2*cm
+            texto_x = 2*cm
+            if os.path.exists(logo_path):
+                try:
+                    logo_reader = ImageReader(logo_path)
+                    canvas_obj.drawImage(logo_reader, 2*cm, y - logo_altura + 0.3*cm,
+                                         height=logo_altura, width=logo_altura,
+                                         preserveAspectRatio=True, mask='auto')
+                    texto_x = 2*cm + logo_altura + 0.4*cm
+                except Exception:
+                    pass
             canvas_obj.setFont("Helvetica-Bold", 14)
-            canvas_obj.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+            canvas_obj.drawString(texto_x, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica-Bold", 11)
-            canvas_obj.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
+            canvas_obj.drawString(texto_x, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica", 9)
-            canvas_obj.drawString(2*cm, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
+            canvas_obj.drawString(texto_x, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
             y -= 0.4*cm
             canvas_obj.line(2*cm, y, w - 2*cm, y)
             y -= 0.6*cm
@@ -1217,14 +1356,63 @@ def registrar_entrega(id):
     return redirect(url_for("solicitacoes"))
 
 # =====================================================
+# REAGENDAR AUSENTE
+# =====================================================
+
+@app.route("/reagendar/<int:id>")
+@login_required
+def reagendar(id):
+    """Cria nova solicitação a partir de uma que ficou Ausente."""
+    conexao = get_db()
+    cursor  = conexao.cursor()
+    cursor.execute("""
+        SELECT tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email,
+               endereco, numero, complemento, bairro, cep, referencia, cras,
+               data_escuta, total_pessoas, composicao_familiar, renda_bruta,
+               renda_per_capita, beneficios, vulnerabilidade, servicos_suas,
+               parecer, excecao_art64
+        FROM solicitacoes WHERE id = %s AND status = 'Ausente'
+    """, (id,))
+    orig = cursor.fetchone()
+    if not orig:
+        conexao.close()
+        flash("Solicitação não encontrada ou não está com status Ausente.", "danger")
+        return redirect(url_for("solicitacoes"))
+
+    hoje = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y')
+    cursor.execute("""
+        INSERT INTO solicitacoes
+            (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email,
+             endereco, numero, complemento, bairro, cep, referencia, cras,
+             data_escuta, total_pessoas, composicao_familiar, renda_bruta,
+             renda_per_capita, beneficios, vulnerabilidade, servicos_suas,
+             parecer, excecao_art64, status, data_solicitacao)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Cadastrada',%s)
+        RETURNING id
+    """, orig + (hoje,))
+    novo_id = cursor.fetchone()[0]
+    conexao.commit()
+    conexao.close()
+
+    logger.info(f"Reagendamento: original={id}, novo={novo_id}, tecnico={current_user.id}")
+    flash(f"✅ Nova solicitação #{novo_id} criada com sucesso (reagendamento de #{id}).", "success")
+    return redirect(url_for("ver_solicitacao", id=novo_id))
+
+
+# =====================================================
 # DASHBOARD
 # =====================================================
 
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for('solicitacoes'))
+
     conexao = get_db()
-    cursor = conexao.cursor()
+    cursor  = conexao.cursor()
+
+    # Totais gerais
     cursor.execute("SELECT COUNT(*) FROM solicitacoes")
     total = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Entregue'")
@@ -1233,8 +1421,43 @@ def dashboard():
     ausentes = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cadastrada'")
     pendentes = cursor.fetchone()[0]
+
+    # Por CRAS (para gráfico de barras)
+    cursor.execute("""
+        SELECT cras,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status='Entregue' THEN 1 ELSE 0 END) AS entregues,
+               SUM(CASE WHEN status='Ausente'  THEN 1 ELSE 0 END) AS ausentes
+        FROM solicitacoes
+        GROUP BY cras ORDER BY total DESC
+    """)
+    por_cras = cursor.fetchall()
+
+    # Últimos 6 meses (para gráfico de linha)
+    cursor.execute("""
+        SELECT TO_CHAR(TO_DATE(SUBSTRING(data_solicitacao, 7, 4) || '-' ||
+                                SUBSTRING(data_solicitacao, 4, 2) || '-01', 'YYYY-MM-DD'), 'YYYY-MM') AS mes,
+               COUNT(*) AS total
+        FROM solicitacoes
+        WHERE data_solicitacao ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
+        GROUP BY mes ORDER BY mes DESC LIMIT 6
+    """)
+    por_mes_raw = cursor.fetchall()
+    por_mes = list(reversed(por_mes_raw))
+
     conexao.close()
-    return render_template("dashboard.html", total_solicitacoes=total, total_entregues=entregues, total_ausentes=ausentes, total_pendentes=pendentes, datetime=datetime, current_user=current_user)
+
+    return render_template(
+        "dashboard.html",
+        total_solicitacoes=total,
+        total_entregues=entregues,
+        total_ausentes=ausentes,
+        total_pendentes=pendentes,
+        por_cras=por_cras,
+        por_mes=por_mes,
+        datetime=datetime,
+        current_user=current_user
+    )
 
 # =====================================================
 # RELATÓRIO
@@ -1530,6 +1753,15 @@ def _nome_mes_extenso(mes):
         return mes
 
 def _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo):
+    logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
+    logo_h = 1.8*cm
+    if os.path.exists(logo_path):
+        try:
+            c.drawImage(ImageReader(logo_path), 2*cm, h - 2*cm - logo_h + 0.2*cm,
+                        height=logo_h, width=logo_h,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
     c.setFont("Helvetica-Bold", 14)
     c.setFillColorRGB(0.12, 0.24, 0.45)
     c.drawCentredString(w/2, h - 2*cm, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
@@ -1572,6 +1804,78 @@ def _rodape_relatorio(c, w, mes):
     c.setFillColorRGB(0.4, 0.4, 0.4)
     c.drawString(2*cm, 1*cm, f"Relatório gerado em {agora.strftime('%d/%m/%Y às %H:%M:%S')} (horário de Rondônia)")
     c.drawRightString(w - 2*cm, 1*cm, "SEMASF Ji-Paraná - Sistema de Cestas Básicas")
+
+# =====================================================
+# EXPORTAÇÃO EXCEL
+# =====================================================
+
+@app.route("/relatorio/excel")
+@login_required
+def exportar_excel():
+    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+        return "Acesso negado", 403
+
+    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
+
+    conexao = get_db()
+    cursor  = conexao.cursor()
+    cursor.execute("""
+        SELECT id, nome, cpf, bairro, cras, tecnico, status,
+               data_solicitacao, data_entrega, tecnico_entrega,
+               renda_per_capita, total_pessoas, excecao_art64, observacoes_entrega
+        FROM solicitacoes
+        WHERE data_solicitacao LIKE %s
+        ORDER BY id DESC
+    """, (f"{mes}%",))
+    linhas = cursor.fetchall()
+    conexao.close()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Cestas {mes}"
+
+    # Estilo cabeçalho
+    azul_escuro = PatternFill("solid", fgColor="1B2F5E")
+    fonte_branca = Font(bold=True, color="FFFFFF")
+    cabecalhos = [
+        "ID", "Nome", "CPF", "Bairro", "CRAS", "Técnico",
+        "Status", "Data Solicitação", "Data Entrega", "Técnico Entrega",
+        "Renda Per Capita", "Nº Pessoas", "Exceção Art.64", "Observações"
+    ]
+    for col, titulo in enumerate(cabecalhos, 1):
+        cel = ws.cell(row=1, column=col, value=titulo)
+        cel.font   = fonte_branca
+        cel.fill   = azul_escuro
+        cel.alignment = Alignment(horizontal="center")
+
+    # Dados
+    for row_idx, row in enumerate(linhas, 2):
+        row = list(row)
+        # Descriptografar CPF
+        if row[2]:
+            row[2] = formatar_cpf(descriptografar_cpf(row[2]))
+        # Booleano legível
+        row[12] = "Sim" if row[12] else "Não"
+        for col_idx, valor in enumerate(row, 1):
+            ws.cell(row=row_idx, column=col_idx, value=valor)
+
+    # Ajustar largura das colunas
+    for col in ws.columns:
+        max_len = max((len(str(cel.value)) for cel in col if cel.value), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    nome_arquivo = f"cestas_semasf_{mes}.xlsx"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=nome_arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 @app.route("/relatorio/pdf/<tipo>")
 @login_required

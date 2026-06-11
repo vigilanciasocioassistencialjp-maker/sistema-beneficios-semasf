@@ -64,6 +64,7 @@
         </div>
         
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label><strong>Justificativa para Reprovação:</strong></label><br><br>
             <textarea 
                 name="justificativa" 

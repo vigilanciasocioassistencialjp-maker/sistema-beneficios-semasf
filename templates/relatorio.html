@@ -25,12 +25,15 @@
                     </select>
                 </div>
                 {% if current_user.perfil in ['admin', 'gestor', 'creas'] %}
-                <div class="col-md-auto ms-auto">
+                <div class="col-md-auto ms-auto d-flex gap-2 flex-wrap">
                     <a href="{{ url_for('relatorio_pdf', tipo='completo', mes=mes) }}" class="btn btn-danger">
                         <i class="fas fa-file-pdf"></i> PDF Completo
                     </a>
                     <a href="{{ url_for('relatorio_pdf', tipo='resumido', mes=mes) }}" class="btn btn-outline-danger">
                         <i class="fas fa-file-pdf"></i> PDF Resumido
+                    </a>
+                    <a href="{{ url_for('exportar_excel', mes=mes) }}" class="btn btn-success">
+                        <i class="fas fa-file-excel"></i> Exportar Excel
                     </a>
                 </div>
                 {% endif %}

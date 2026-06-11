@@ -1,33 +1,52 @@
 import os
 import psycopg2
+from psycopg2 import pool as pg_pool
 
 # =====================================================
-# CONEXÃO COM SUPABASE POSTGRESQL
+# POOL DE CONEXÕES COM SUPABASE POSTGRESQL
 # =====================================================
 
-def get_db_connection():
-    """Retorna conexão com o banco Supabase PostgreSQL"""
-    
+_pool = None
+
+def _criar_pool():
+    """Cria o pool de conexões (chamado na inicialização)"""
+    global _pool
     database_url = os.environ.get('DATABASE_URL')
-    
     if not database_url:
         raise Exception("❌ Variável de ambiente 'DATABASE_URL' não encontrada!")
-    
+    _pool = pg_pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dsn=database_url,
+        connect_timeout=10,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+    )
+    print("✅ Pool de conexões criado (1–10 conexões)!")
+
+def get_db_connection():
+    """Retorna uma conexão do pool. Deve ser fechada com conn.close() após uso."""
+    global _pool
+    if _pool is None or _pool.closed:
+        _criar_pool()
     try:
-        conn = psycopg2.connect(
-            database_url,
-            connect_timeout=10,
-            keepalives=1,
-            keepalives_idle=30,
-            keepalives_interval=10,
-            keepalives_count=5
-        )
-        print("✅ Conectado ao Supabase PostgreSQL!")
+        conn = _pool.getconn()
+        conn.autocommit = False
         return conn
-        
     except Exception as e:
-        print(f"❌ Erro fatal na conexão com Supabase: {e}")
+        print(f"❌ Erro ao obter conexão do pool: {e}")
         raise e
+
+def _devolver_conexao(conn):
+    """Devolve a conexão ao pool (uso interno)."""
+    global _pool
+    if _pool and not _pool.closed:
+        try:
+            _pool.putconn(conn)
+        except Exception:
+            pass
 
 
 # =====================================================
@@ -35,8 +54,13 @@ def get_db_connection():
 # =====================================================
 
 def criar_banco():
-    """Cria as tabelas se não existirem no Supabase"""
-    
+    """Cria o pool e as tabelas se não existirem no Supabase"""
+
+    # Garante que o pool existe antes de qualquer uso
+    global _pool
+    if _pool is None or _pool.closed:
+        _criar_pool()
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -117,6 +141,18 @@ def criar_banco():
             print("✅ Coluna cpf_hash adicionada!")
 
         # =====================================================
+        # MIGRAÇÃO: Índice para busca rápida por cpf_hash
+        # =====================================================
+        cursor.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = 'solicitacoes' AND indexname = 'idx_solicitacoes_cpf_hash'
+        """)
+        if not cursor.fetchone():
+            print("⚠️  Índice idx_solicitacoes_cpf_hash não encontrado. Criando...")
+            cursor.execute("CREATE INDEX idx_solicitacoes_cpf_hash ON solicitacoes (cpf_hash)")
+            print("✅ Índice idx_solicitacoes_cpf_hash criado!")
+
+        # =====================================================
         # MIGRAÇÃO: Adiciona observacoes_entrega
         # =====================================================
         cursor.execute("""
@@ -128,6 +164,19 @@ def criar_banco():
             print("⚠️  Coluna observacoes_entrega não encontrada. Adicionando...")
             cursor.execute("ALTER TABLE solicitacoes ADD COLUMN observacoes_entrega TEXT")
             print("✅ Coluna observacoes_entrega adicionada!")
+
+        # Tabela de histórico de edições
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS historico_edicoes (
+                id SERIAL PRIMARY KEY,
+                solicitacao_id INTEGER NOT NULL,
+                usuario TEXT NOT NULL,
+                campo TEXT NOT NULL,
+                valor_antes TEXT,
+                valor_depois TEXT,
+                data_hora TEXT NOT NULL
+            )
+        ''')
 
         # Tabela de configurações do sistema
         cursor.execute('''
@@ -150,11 +199,11 @@ def criar_banco():
 
         conn.commit()
         cursor.close()
-        conn.close()
-        
+        _devolver_conexao(conn)
+
         print("✅ Tabelas criadas/verificadas no Supabase!")
         print("🎉 Banco de dados pronto para uso!")
-        
+
     except Exception as e:
         print(f"❌ Erro ao criar tabelas: {e}")
         raise e
