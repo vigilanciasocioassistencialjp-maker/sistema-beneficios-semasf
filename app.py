@@ -476,10 +476,12 @@ def verificar_cpf(cpf):
 def get_bairros_por_cras():
     """Retorna dict {cras: [bairros]} ordenado, lido da tabela cras_bairros."""
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT cras, bairro FROM cras_bairros ORDER BY cras, bairro")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT cras, bairro FROM cras_bairros ORDER BY cras, bairro")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     resultado = {}
     for cras, bairro in rows:
         resultado.setdefault(cras, []).append(bairro)
@@ -488,10 +490,12 @@ def get_bairros_por_cras():
 def get_lista_cras():
     """Retorna lista de CRAS distintos, ordenados."""
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT cras FROM cras_bairros ORDER BY cras")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT cras FROM cras_bairros ORDER BY cras")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     return [r[0] for r in rows]
 
 # =====================================================
@@ -2208,39 +2212,47 @@ def api_configuracoes():
 def configuracoes():
     if current_user.perfil not in ['admin', 'gestor']:
         return redirect(url_for("dashboard"))
+    erro = sucesso = None
     conn = get_db()
     cursor = conn.cursor()
-    erro = sucesso = None
-    if request.method == "POST" and current_user.perfil == 'admin':
-        novo_salario = request.form.get("salario_minimo", "").strip().replace(",", ".")
-        try:
-            valor = float(novo_salario)
-            if valor <= 0:
-                raise ValueError
-            cursor.execute("""
-                INSERT INTO configuracoes (chave, valor, descricao, atualizado_em)
-                VALUES ('salario_minimo', %s, 'Salário mínimo nacional vigente (R$)', %s)
-                ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = EXCLUDED.atualizado_em
-            """, (str(valor), datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')))
-            conn.commit()
-            logger.info(f"Salário mínimo atualizado para R$ {valor} por {current_user.id}")
-            sucesso = f"✅ Salário mínimo atualizado para R$ {valor:.2f}! Novo limite de renda per capita: R$ {valor/4:.2f}"
-        except ValueError:
-            erro = "❌ Valor inválido. Digite um número positivo (ex: 1518.00)"
-    cursor.execute("SELECT chave, valor, descricao, atualizado_em FROM configuracoes ORDER BY chave")
-    configs = cursor.fetchall()
-    conn.close()
-    salario = get_salario_minimo()
-    bairros_por_cras = get_bairros_por_cras()
-    lista_cras = get_lista_cras()
-    # Para configurações: dict {cras: [(id, bairro), ...]} com IDs reais
-    conn2 = get_db()
-    cur2  = conn2.cursor()
-    cur2.execute("SELECT id, cras, bairro FROM cras_bairros ORDER BY cras, bairro")
-    bairros_com_id = {}
-    for bid, bcras, bbairro in cur2.fetchall():
-        bairros_com_id.setdefault(bcras, []).append((bid, bbairro))
-    conn2.close()
+    try:
+        if request.method == "POST" and current_user.perfil == 'admin':
+            novo_salario = request.form.get("salario_minimo", "").strip().replace(",", ".")
+            try:
+                valor = float(novo_salario)
+                if valor <= 0:
+                    raise ValueError
+                cursor.execute("""
+                    INSERT INTO configuracoes (chave, valor, descricao, atualizado_em)
+                    VALUES ('salario_minimo', %s, 'Salário mínimo nacional vigente (R$)', %s)
+                    ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = EXCLUDED.atualizado_em
+                """, (str(valor), datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')))
+                conn.commit()
+                logger.info(f"Salário mínimo atualizado para R$ {valor} por {current_user.id}")
+                sucesso = f"✅ Salário mínimo atualizado para R$ {valor:.2f}! Novo limite de renda per capita: R$ {valor/4:.2f}"
+            except ValueError:
+                erro = "❌ Valor inválido. Digite um número positivo (ex: 1518.00)"
+
+        # Tudo numa só conexão
+        cursor.execute("SELECT chave, valor, descricao, atualizado_em FROM configuracoes ORDER BY chave")
+        configs = cursor.fetchall()
+
+        cursor.execute("SELECT valor FROM configuracoes WHERE chave = 'salario_minimo'")
+        row = cursor.fetchone()
+        salario = float(row[0]) if row else 1621.00
+
+        cursor.execute("SELECT id, cras, bairro FROM cras_bairros ORDER BY cras, bairro")
+        bairros_por_cras = {}
+        bairros_com_id   = {}
+        lista_cras_set   = []
+        for bid, bcras, bbairro in cursor.fetchall():
+            bairros_por_cras.setdefault(bcras, []).append(bbairro)
+            bairros_com_id.setdefault(bcras, []).append((bid, bbairro))
+            if bcras not in lista_cras_set:
+                lista_cras_set.append(bcras)
+    finally:
+        conn.close()
+
     return render_template("configuracoes.html",
         configs=configs,
         salario_minimo=salario,
@@ -2249,7 +2261,7 @@ def configuracoes():
         sucesso=sucesso,
         bairros_por_cras=bairros_por_cras,
         bairros_com_id=bairros_com_id,
-        lista_cras=lista_cras,
+        lista_cras=lista_cras_set,
         current_user=current_user
     )
 
