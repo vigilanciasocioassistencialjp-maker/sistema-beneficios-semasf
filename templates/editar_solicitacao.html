@@ -73,7 +73,19 @@
                 <div class="row">
                     <div class="col-md-5 mb-3">
                         <label class="form-label required">Bairro</label>
-                        <input type="text" name="bairro" class="form-control" value="{{ s.bairro }}" required>
+                        <select name="bairro" id="bairro_editar" class="form-select" required>
+                            <option value="">Selecione o bairro</option>
+                            {% for cras_nome, bairros in bairros_por_cras.items() %}
+                            <optgroup label="{{ cras_nome }}">
+                                {% for b in bairros %}
+                                <option value="{{ b }}" {% if s.bairro == b %}selected{% endif %}>{{ b }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endfor %}
+                            <optgroup label="CASOS ESPECIAIS">
+                                <option value="OUTRO MUNICÍPIO" {% if s.bairro == 'OUTRO MUNICÍPIO' %}selected{% endif %}>OUTRO MUNICÍPIO</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">CEP</label>
@@ -81,12 +93,10 @@
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">CRAS</label>
-                        <select name="cras" class="form-select">
-                            <option value="CRAS MORAR MELHOR" {% if s.cras == 'CRAS MORAR MELHOR' %}selected{% endif %}>CRAS MORAR MELHOR</option>
-                            <option value="CRAS JARDIM DOS MIGRANTES" {% if s.cras == 'CRAS JARDIM DOS MIGRANTES' %}selected{% endif %}>CRAS JARDIM DOS MIGRANTES</option>
-                            <option value="CRAS SÃO FRANCISCO" {% if s.cras == 'CRAS SÃO FRANCISCO' %}selected{% endif %}>CRAS SÃO FRANCISCO</option>
-                            <option value="CRAS RODA MOINHO" {% if s.cras == 'CRAS RODA MOINHO' %}selected{% endif %}>CRAS RODA MOINHO</option>
-                            <option value="CREAS" {% if s.cras == 'CREAS' %}selected{% endif %}>CREAS</option>
+                        <select name="cras" id="cras_editar" class="form-select">
+                            {% for c in bairros_por_cras.keys() %}
+                            <option value="{{ c }}" {% if s.cras == c %}selected{% endif %}>{{ c }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
@@ -170,7 +180,7 @@
                 <h5>6. SITUAÇÃO DE VULNERABILIDADE</h5>
                 <div class="row">
                     {% set vuls_atuais = s.vulnerabilidade.split(', ') if s.vulnerabilidade else [] %}
-                    {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Idoso', 'Pessoa com deficiência', 'Gestante/Nutriz', 'Criança em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                    {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
                     <div class="col-md-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}"
@@ -187,7 +197,7 @@
                 <h5>7. SERVIÇOS SUAS VINCULADOS</h5>
                 <div class="row">
                     {% set servicos_atuais = s.servicos_suas.split(', ') if s.servicos_suas else [] %}
-                    {% for serv in ['PAIF', 'PAEFI', 'SCFV', 'BPC', 'Bolsa Família', 'Acolhimento Institucional', 'Serviço de Abordagem Social', 'Nenhum'] %}
+                    {% for serv in ['PAIF', 'PAEFI', 'SCFV', 'Criança Feliz', 'Centro DIA', 'BPC', 'Bolsa Família', 'Acolhimento Institucional', 'Serviço de Abordagem Social', 'Medidas Socioeducativas em Meio Aberto (adolescente)', 'Nenhum'] %}
                     <div class="col-md-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="servicos_suas" value="{{ serv }}"
@@ -240,6 +250,27 @@
 
 {% block extra_js %}
 <script>
+    // Mapeamento bairro → CRAS gerado do banco
+    const mapaBairrosCRAS = {
+        {% for cras_nome, bairros in bairros_por_cras.items() %}
+            {% for b in bairros %}"{{ b }}":"{{ cras_nome }}",
+            {% endfor %}
+        {% endfor %}
+        "OUTRO MUNICÍPIO":"EQUIPE VOLANTE"
+    };
+    const bairroSel = document.getElementById('bairro_editar');
+    const crasSel   = document.getElementById('cras_editar');
+    if (bairroSel && crasSel) {
+        bairroSel.addEventListener('change', function() {
+            const cras = mapaBairrosCRAS[this.value];
+            if (cras) {
+                for (let opt of crasSel.options) {
+                    if (opt.value === cras) { opt.selected = true; break; }
+                }
+            }
+        });
+    }
+
     // Máscara monetária
     function mascaraMoeda(valor) {
         let num = valor.replace(/\D/g, '');

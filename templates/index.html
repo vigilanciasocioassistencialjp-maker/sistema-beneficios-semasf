@@ -200,181 +200,20 @@
                                 <select name="bairro" class="form-select" id="bairro" required>
                                     <option value="">Selecione o bairro</option>
                                     {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
-                                        <optgroup label="CRAS MORAR MELHOR">
-                                            <option value="MORAR MELHOR">MORAR MELHOR</option>
-                                            <option value="BELA VISTA">BELA VISTA</option>
-                                            <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
-                                            <option value="CASA PRETA">CASA PRETA</option>
-                                            <option value="DOM BOSCO">DOM BOSCO</option>
-                                            <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
-                                            <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
-                                            <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
-                                            <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
-                                            <option value="PARK AMAZONAS">PARK AMAZONAS</option>
-                                            <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
-                                            <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
-                                            <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
-                                            <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
-                                            <option value="SÃO BERNARDO">SÃO BERNARDO</option>
-                                            <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
-                                            <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
+                                        {% for cras_nome, bairros in bairros_por_cras.items() %}
+                                        <optgroup label="{{ cras_nome }}">
+                                            {% for b in bairros %}
+                                            <option value="{{ b }}">{{ b }}</option>
+                                            {% endfor %}
                                         </optgroup>
-                                        <optgroup label="CRAS JARDIM DOS MIGRANTES">
-                                            <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
-                                            <option value="CENTRO">CENTRO</option>
-                                            <option value="CIDADE JARDIM">CIDADE JARDIM</option>
-                                            <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
-                                            <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                            <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
-                                            <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
-                                            <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
-                                            <option value="NOVO URUPÁ">NOVO URUPÁ</option>
-                                            <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
-                                            <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
-                                            <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
-                                            <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
-                                            <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                            <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
-                                            <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
-                                            <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
-                                            <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
-                                            <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
-                                            <option value="SANTIAGO">SANTIAGO</option>
-                                            <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
-                                            <option value="VAL PARAÍSO">VAL PARAÍSO</option>
-                                            <option value="UNIÃO">UNIÃO</option>
-                                            <option value="URUPÁ">URUPÁ</option>
-                                            <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
-                                            <option value="GLEBA G">GLEBA G</option>
-                                            <option value="NOVA LONDRINA">NOVA LONDRINA</option>
-                                        </optgroup>
-                                        <optgroup label="CRAS SÃO FRANCISCO">
-                                            <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
-                                            <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
-                                            <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
-                                            <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
-                                            <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
-                                            <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
-                                            <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
-                                            <option value="PRIMAVERA">PRIMAVERA</option>
-                                            <option value="RIACHUELO">RIACHUELO</option>
-                                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
-                                            <option value="SÃO PEDRO">SÃO PEDRO</option>
-                                            <option value="VILA JOTÃO">VILA JOTÃO</option>
-                                            <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
-                                            <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
-                                            <option value="TALISMÃ">TALISMÃ</option>
-                                        </optgroup>
-                                        <optgroup label="CRAS RODA MOINHO">
-                                            <option value="CAPELASSO">CAPELASSO</option>
-                                            <option value="ALTO ALEGRE">ALTO ALEGRE</option>
-                                            <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
-                                            <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
-                                            <option value="CAFEZINHO">CAFEZINHO</option>
-                                            <option value="GREENVILLE">GREENVILLE</option>
-                                            <option value="HABITAR BRASIL">HABITAR BRASIL</option>
-                                            <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
-                                            <option value="JK">JK</option>
-                                            <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
-                                            <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
-                                            <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
-                                            <option value="PARK BRASIL">PARK BRASIL</option>
-                                            <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
-                                            <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
-                                            <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
-                                            <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
-                                            <option value="UNIÃO II">UNIÃO II</option>
-                                            <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
-                                            <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
-                                        </optgroup>
+                                        {% endfor %}
                                         <optgroup label="CASOS ESPECIAIS">
                                             <option value="OUTRO MUNICÍPIO">OUTRO MUNICÍPIO</option>
                                         </optgroup>
                                     {% else %}
-                                        {% if current_user.cras == 'CRAS MORAR MELHOR' %}
-                                            <option value="MORAR MELHOR">MORAR MELHOR</option>
-                                            <option value="BELA VISTA">BELA VISTA</option>
-                                            <option value="CONDOMÍNIO JI-PARANÁ">CONDOMÍNIO JI-PARANÁ</option>
-                                            <option value="CASA PRETA">CASA PRETA</option>
-                                            <option value="DOM BOSCO">DOM BOSCO</option>
-                                            <option value="DISTRITO INDUSTRIAL">DISTRITO INDUSTRIAL</option>
-                                            <option value="JARDIM AURÉLIO BERNARDES">JARDIM AURÉLIO BERNARDES</option>
-                                            <option value="NOVO HORIZONTE">NOVO HORIZONTE</option>
-                                            <option value="PARQUE SÃO PEDRO">PARQUE SÃO PEDRO</option>
-                                            <option value="PARK AMAZONAS">PARK AMAZONAS</option>
-                                            <option value="RESIDENCIAL AÇAÍ">RESIDENCIAL AÇAÍ</option>
-                                            <option value="RESIDENCIAL ARAÇÁ">RESIDENCIAL ARAÇÁ</option>
-                                            <option value="RESIDENCIAL COLINA PARK">RESIDENCIAL COLINA PARK</option>
-                                            <option value="RESIDENCIAL JATOBÁ">RESIDENCIAL JATOBÁ</option>
-                                            <option value="SÃO BERNARDO">SÃO BERNARDO</option>
-                                            <option value="VILA OPERÁRIOS">VILA OPERÁRIOS</option>
-                                            <option value="ÁREA RURAL DO 1º DISTRITO">ÁREA RURAL DO 1º DISTRITO</option>
-                                        {% elif current_user.cras == 'CRAS JARDIM DOS MIGRANTES' %}
-                                            <option value="BOSQUE DOS IPÊS">BOSQUE DOS IPÊS</option>
-                                            <option value="CENTRO">CENTRO</option>
-                                            <option value="CIDADE JARDIM">CIDADE JARDIM</option>
-                                            <option value="DOIS DE ABRIL">DOIS DE ABRIL</option>
-                                            <option value="JARDIM DOS MIGRANTES">JARDIM DOS MIGRANTES</option>
-                                            <option value="JARDIM PRESIDENCIAL I">JARDIM PRESIDENCIAL I</option>
-                                            <option value="JARDIM PRESIDENCIAL II">JARDIM PRESIDENCIAL II</option>
-                                            <option value="JARDIM PRESIDENCIAL III">JARDIM PRESIDENCIAL III</option>
-                                            <option value="NOVO URUPÁ">NOVO URUPÁ</option>
-                                            <option value="NOVO JI-PARANÁ">NOVO JI-PARANÁ</option>
-                                            <option value="RESIDENCIAL ALDEIA DO LAGO">RESIDENCIAL ALDEIA DO LAGO</option>
-                                            <option value="RESIDENCIAL COPAS VERDES">RESIDENCIAL COPAS VERDES</option>
-                                            <option value="RESIDENCIAL GREEN PARK">RESIDENCIAL GREEN PARK</option>
-                                            <option value="RESIDENCIAL MILÃO">RESIDENCIAL MILÃO</option>
-                                            <option value="RESIDENCIAL PLANALTO I">RESIDENCIAL PLANALTO I</option>
-                                            <option value="RESIDENCIAL PLANALTO II">RESIDENCIAL PLANALTO II</option>
-                                            <option value="RESIDENCIAL VENEZA">RESIDENCIAL VENEZA</option>
-                                            <option value="RESIDENCIAL ESPELHO D'ÁGUA">RESIDENCIAL ESPELHO D'ÁGUA</option>
-                                            <option value="ESPELHO ECOVILLE">ESPELHO ECOVILLE</option>
-                                            <option value="SANTIAGO">SANTIAGO</option>
-                                            <option value="SETOR CHACAREIRO">SETOR CHACAREIRO</option>
-                                            <option value="VAL PARAÍSO">VAL PARAÍSO</option>
-                                            <option value="UNIÃO">UNIÃO</option>
-                                            <option value="URUPÁ">URUPÁ</option>
-                                            <option value="VILA DE RONDÔNIA">VILA DE RONDÔNIA</option>
-                                            <option value="GLEBA G">GLEBA G</option>
-                                            <option value="NOVA LONDRINA">NOVA LONDRINA</option>
-                                        {% elif current_user.cras == 'CRAS SÃO FRANCISCO' %}
-                                            <option value="RESIDENCIAL RONDON">RESIDENCIAL RONDON</option>
-                                            <option value="DUQUE DE CAXIAS">DUQUE DE CAXIAS</option>
-                                            <option value="JARDIM DAS SERINGUEIRAS">JARDIM DAS SERINGUEIRAS</option>
-                                            <option value="JARDIM SÃO CRISTÓVÃO">JARDIM SÃO CRISTÓVÃO</option>
-                                            <option value="JARDIM FLÓRIDA">JARDIM FLÓRIDA</option>
-                                            <option value="LOTEAMENTO RONDON I">LOTEAMENTO RONDON I</option>
-                                            <option value="NOVA BRASÍLIA">NOVA BRASÍLIA</option>
-                                            <option value="PRIMAVERA">PRIMAVERA</option>
-                                            <option value="RIACHUELO">RIACHUELO</option>
-                                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
-                                            <option value="SÃO PEDRO">SÃO PEDRO</option>
-                                            <option value="VILA JOTÃO">VILA JOTÃO</option>
-                                            <option value="ÁREA RURAL DO 2° DISTRITO">ÁREA RURAL DO 2° DISTRITO</option>
-                                            <option value="LINHA PIRINEUS">LINHA PIRINEUS</option>
-                                            <option value="TALISMÃ">TALISMÃ</option>
-                                        {% elif current_user.cras == 'CRAS RODA MOINHO' %}
-                                            <option value="CAPELASSO">CAPELASSO</option>
-                                            <option value="ALTO ALEGRE">ALTO ALEGRE</option>
-                                            <option value="BOA ESPERANÇA">BOA ESPERANÇA</option>
-                                            <option value="CONJUNTO HABITACIONAL PARECIS">CONJUNTO HABITACIONAL PARECIS</option>
-                                            <option value="CAFEZINHO">CAFEZINHO</option>
-                                            <option value="GREENVILLE">GREENVILLE</option>
-                                            <option value="HABITAR BRASIL">HABITAR BRASIL</option>
-                                            <option value="JORGE TEIXEIRA">JORGE TEIXEIRA</option>
-                                            <option value="JK">JK</option>
-                                            <option value="MÁRIO ANDREAZZA/BNH">MÁRIO ANDREAZZA/BNH</option>
-                                            <option value="NOSSA SENHORA DE FÁTIMA">NOSSA SENHORA DE FÁTIMA</option>
-                                            <option value="PARQUE DOS PIONEIROS">PARQUE DOS PIONEIROS</option>
-                                            <option value="PARK BRASIL">PARK BRASIL</option>
-                                            <option value="RESIDENCIAL CARNEIRO">RESIDENCIAL CARNEIRO</option>
-                                            <option value="RESIDENCIAL TERRA NOVA">RESIDENCIAL TERRA NOVA</option>
-                                            <option value="RESIDENCIAL ORLEANS I">RESIDENCIAL ORLEANS I</option>
-                                            <option value="RESIDENCIAL ORLEANS II">RESIDENCIAL ORLEANS II</option>
-                                            <option value="UNIÃO II">UNIÃO II</option>
-                                            <option value="DISTRITO NOVA COLINA">DISTRITO NOVA COLINA</option>
-                                            <option value="ALDEIAS INDÍGENAS">ALDEIAS INDÍGENAS</option>
-                                        {% endif %}
+                                        {% for b in bairros_por_cras.get(current_user.cras, []) %}
+                                        <option value="{{ b }}">{{ b }}</option>
+                                        {% endfor %}
                                     {% endif %}
                                 </select>
                             </div>
@@ -397,10 +236,9 @@
                                 {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
                                     <select name="cras" class="form-select" id="cras" required>
                                         <option value="">Selecione o CRAS</option>
-                                        <option value="CRAS MORAR MELHOR">CRAS MORAR MELHOR</option>
-                                        <option value="CRAS JARDIM DOS MIGRANTES">CRAS JARDIM DOS MIGRANTES</option>
-                                        <option value="CRAS SÃO FRANCISCO">CRAS SÃO FRANCISCO</option>
-                                        <option value="CRAS RODA MOINHO">CRAS RODA MOINHO</option>
+                                        {% for c in bairros_por_cras.keys() %}
+                                        <option value="{{ c }}">{{ c }}</option>
+                                        {% endfor %}
                                     </select>
                                 {% else %}
                                     <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color:#e9ecef">
@@ -519,66 +357,28 @@
                     <div class="form-section">
                         <h5>Situação de Vulnerabilidade</h5>
                         <div class="row">
-                            <div class="col-md-3">
+                            {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                            <div class="col-md-3 mb-1">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="Extrema pobreza" id="vul1">
-                                    <label class="form-check-label" for="vul1">Extrema pobreza</label>
+                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}">
+                                    <label class="form-check-label">{{ vul }}</label>
                                 </div>
                             </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="Desemprego" id="vul2">
-                                    <label class="form-check-label" for="vul2">Desemprego</label>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="Doença" id="vul3">
-                                    <label class="form-check-label" for="vul3">Doença na família</label>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="Desabrigado" id="vul4">
-                                    <label class="form-check-label" for="vul4">Desabrigado(a)</label>
-                                </div>
-                            </div>
+                            {% endfor %}
                         </div>
                     </div>
 
                     <div class="form-section">
                         <h5>Serviços do SUAS que a Família Participa</h5>
                         <div class="row">
-                            <div class="col-md-2">
+                            {% for serv in ['PAIF', 'PAEFI', 'SCFV', 'Criança Feliz', 'Centro DIA', 'BPC', 'Bolsa Família', 'Acolhimento Institucional', 'Serviço de Abordagem Social', 'Medidas Socioeducativas em Meio Aberto (adolescente)', 'Nenhum'] %}
+                            <div class="col-md-3 mb-1">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="PAIF" id="serv1">
-                                    <label class="form-check-label" for="serv1">PAIF</label>
+                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="{{ serv }}">
+                                    <label class="form-check-label">{{ serv }}</label>
                                 </div>
                             </div>
-                            <div class="col-md-2">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="PAEFI" id="serv2">
-                                    <label class="form-check-label" for="serv2">PAEFI</label>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="SCFV" id="serv3">
-                                    <label class="form-check-label" for="serv3">SCFV</label>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="Criança Feliz" id="serv4">
-                                    <label class="form-check-label" for="serv4">Criança Feliz</label>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="Centro DIA" id="serv5">
-                                    <label class="form-check-label" for="serv5">Centro DIA</label>
-                                </div>
-                            </div>
+                            {% endfor %}
                         </div>
                     </div>
 
@@ -739,49 +539,12 @@ function atualizarMembroPrincipal() {
 document.querySelector('input[name="nome"]').addEventListener('input', atualizarMembroPrincipal);
 document.getElementById('data_nascimento').addEventListener('change', atualizarMembroPrincipal);
 
-// ── Mapeamento bairro → CRAS ───────────────────────────────────────
+// ── Mapeamento bairro → CRAS (gerado dinamicamente do banco) ──────
 const mapaBairrosCRAS = {
-    "MORAR MELHOR":"CRAS MORAR MELHOR","BELA VISTA":"CRAS MORAR MELHOR",
-    "CONDOMÍNIO JI-PARANÁ":"CRAS MORAR MELHOR","CASA PRETA":"CRAS MORAR MELHOR",
-    "DOM BOSCO":"CRAS MORAR MELHOR","DISTRITO INDUSTRIAL":"CRAS MORAR MELHOR",
-    "JARDIM AURÉLIO BERNARDES":"CRAS MORAR MELHOR","NOVO HORIZONTE":"CRAS MORAR MELHOR",
-    "PARQUE SÃO PEDRO":"CRAS MORAR MELHOR","PARK AMAZONAS":"CRAS MORAR MELHOR",
-    "RESIDENCIAL AÇAÍ":"CRAS MORAR MELHOR","RESIDENCIAL ARAÇÁ":"CRAS MORAR MELHOR",
-    "RESIDENCIAL COLINA PARK":"CRAS MORAR MELHOR","RESIDENCIAL JATOBÁ":"CRAS MORAR MELHOR",
-    "SÃO BERNARDO":"CRAS MORAR MELHOR","VILA OPERÁRIOS":"CRAS MORAR MELHOR",
-    "ÁREA RURAL DO 1º DISTRITO":"CRAS MORAR MELHOR",
-    "BOSQUE DOS IPÊS":"CRAS JARDIM DOS MIGRANTES","CENTRO":"CRAS JARDIM DOS MIGRANTES",
-    "CIDADE JARDIM":"CRAS JARDIM DOS MIGRANTES","DOIS DE ABRIL":"CRAS JARDIM DOS MIGRANTES",
-    "JARDIM DOS MIGRANTES":"CRAS JARDIM DOS MIGRANTES","JARDIM PRESIDENCIAL I":"CRAS JARDIM DOS MIGRANTES",
-    "JARDIM PRESIDENCIAL II":"CRAS JARDIM DOS MIGRANTES","JARDIM PRESIDENCIAL III":"CRAS JARDIM DOS MIGRANTES",
-    "NOVO URUPÁ":"CRAS JARDIM DOS MIGRANTES","NOVO JI-PARANÁ":"CRAS JARDIM DOS MIGRANTES",
-    "RESIDENCIAL ALDEIA DO LAGO":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL COPAS VERDES":"CRAS JARDIM DOS MIGRANTES",
-    "RESIDENCIAL GREEN PARK":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL MILÃO":"CRAS JARDIM DOS MIGRANTES",
-    "RESIDENCIAL PLANALTO I":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL PLANALTO II":"CRAS JARDIM DOS MIGRANTES",
-    "RESIDENCIAL VENEZA":"CRAS JARDIM DOS MIGRANTES","RESIDENCIAL ESPELHO D'ÁGUA":"CRAS JARDIM DOS MIGRANTES",
-    "ESPELHO ECOVILLE":"CRAS JARDIM DOS MIGRANTES","SANTIAGO":"CRAS JARDIM DOS MIGRANTES",
-    "SETOR CHACAREIRO":"CRAS JARDIM DOS MIGRANTES","VAL PARAÍSO":"CRAS JARDIM DOS MIGRANTES",
-    "UNIÃO":"CRAS JARDIM DOS MIGRANTES","URUPÁ":"CRAS JARDIM DOS MIGRANTES",
-    "VILA DE RONDÔNIA":"CRAS JARDIM DOS MIGRANTES","GLEBA G":"CRAS JARDIM DOS MIGRANTES",
-    "NOVA LONDRINA":"CRAS JARDIM DOS MIGRANTES",
-    "RESIDENCIAL RONDON":"CRAS SÃO FRANCISCO","DUQUE DE CAXIAS":"CRAS SÃO FRANCISCO",
-    "JARDIM DAS SERINGUEIRAS":"CRAS SÃO FRANCISCO","JARDIM SÃO CRISTÓVÃO":"CRAS SÃO FRANCISCO",
-    "JARDIM FLÓRIDA":"CRAS SÃO FRANCISCO","LOTEAMENTO RONDON I":"CRAS SÃO FRANCISCO",
-    "NOVA BRASÍLIA":"CRAS SÃO FRANCISCO","PRIMAVERA":"CRAS SÃO FRANCISCO",
-    "RIACHUELO":"CRAS SÃO FRANCISCO","SÃO FRANCISCO":"CRAS SÃO FRANCISCO",
-    "SÃO PEDRO":"CRAS SÃO FRANCISCO","VILA JOTÃO":"CRAS SÃO FRANCISCO",
-    "ÁREA RURAL DO 2° DISTRITO":"CRAS SÃO FRANCISCO","LINHA PIRINEUS":"CRAS SÃO FRANCISCO",
-    "TALISMÃ":"CRAS SÃO FRANCISCO",
-    "CAPELASSO":"CRAS RODA MOINHO","ALTO ALEGRE":"CRAS RODA MOINHO",
-    "BOA ESPERANÇA":"CRAS RODA MOINHO","CONJUNTO HABITACIONAL PARECIS":"CRAS RODA MOINHO",
-    "CAFEZINHO":"CRAS RODA MOINHO","GREENVILLE":"CRAS RODA MOINHO",
-    "HABITAR BRASIL":"CRAS RODA MOINHO","JORGE TEIXEIRA":"CRAS RODA MOINHO",
-    "JK":"CRAS RODA MOINHO","MÁRIO ANDREAZZA/BNH":"CRAS RODA MOINHO",
-    "NOSSA SENHORA DE FÁTIMA":"CRAS RODA MOINHO","PARQUE DOS PIONEIROS":"CRAS RODA MOINHO",
-    "PARK BRASIL":"CRAS RODA MOINHO","RESIDENCIAL CARNEIRO":"CRAS RODA MOINHO",
-    "RESIDENCIAL TERRA NOVA":"CRAS RODA MOINHO","RESIDENCIAL ORLEANS I":"CRAS RODA MOINHO",
-    "RESIDENCIAL ORLEANS II":"CRAS RODA MOINHO","UNIÃO II":"CRAS RODA MOINHO",
-    "DISTRITO NOVA COLINA":"CRAS RODA MOINHO","ALDEIAS INDÍGENAS":"CRAS RODA MOINHO",
+    {% for cras_nome, bairros in bairros_por_cras.items() %}
+        {% for b in bairros %}"{{ b }}":"{{ cras_nome }}",
+        {% endfor %}
+    {% endfor %}
     "OUTRO MUNICÍPIO":"EQUIPE VOLANTE"
 };
 

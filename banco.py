@@ -178,6 +178,73 @@ def criar_banco():
             )
         ''')
 
+        # Tabela de mapeamento CRAS → Bairros (editável pelo admin/gestor)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cras_bairros (
+                id SERIAL PRIMARY KEY,
+                cras TEXT NOT NULL,
+                bairro TEXT NOT NULL UNIQUE
+            )
+        ''')
+
+        # Popula cras_bairros com dados iniciais se estiver vazia
+        cursor.execute("SELECT COUNT(*) FROM cras_bairros")
+        if cursor.fetchone()[0] == 0:
+            print("⚠️  Tabela cras_bairros vazia. Populando com dados iniciais...")
+            bairros_iniciais = [
+                ('CRAS MORAR MELHOR','MORAR MELHOR'),('CRAS MORAR MELHOR','BELA VISTA'),
+                ('CRAS MORAR MELHOR','CONDOMÍNIO JI-PARANÁ'),('CRAS MORAR MELHOR','CASA PRETA'),
+                ('CRAS MORAR MELHOR','DOM BOSCO'),('CRAS MORAR MELHOR','DISTRITO INDUSTRIAL'),
+                ('CRAS MORAR MELHOR','JARDIM AURÉLIO BERNARDES'),('CRAS MORAR MELHOR','NOVO HORIZONTE'),
+                ('CRAS MORAR MELHOR','PARQUE SÃO PEDRO'),('CRAS MORAR MELHOR','PARK AMAZONAS'),
+                ('CRAS MORAR MELHOR','RESIDENCIAL AÇAÍ'),('CRAS MORAR MELHOR','RESIDENCIAL ARAÇÁ'),
+                ('CRAS MORAR MELHOR','RESIDENCIAL COLINA PARK'),('CRAS MORAR MELHOR','RESIDENCIAL JATOBÁ'),
+                ('CRAS MORAR MELHOR','SÃO BERNARDO'),('CRAS MORAR MELHOR','VILA OPERÁRIOS'),
+                ('CRAS MORAR MELHOR','ÁREA RURAL DO 1º DISTRITO'),
+                ('CRAS JARDIM DOS MIGRANTES','BOSQUE DOS IPÊS'),('CRAS JARDIM DOS MIGRANTES','CENTRO'),
+                ('CRAS JARDIM DOS MIGRANTES','CIDADE JARDIM'),('CRAS JARDIM DOS MIGRANTES','DOIS DE ABRIL'),
+                ('CRAS JARDIM DOS MIGRANTES','JARDIM DOS MIGRANTES'),('CRAS JARDIM DOS MIGRANTES','JARDIM PRESIDENCIAL I'),
+                ('CRAS JARDIM DOS MIGRANTES','JARDIM PRESIDENCIAL II'),('CRAS JARDIM DOS MIGRANTES','JARDIM PRESIDENCIAL III'),
+                ('CRAS JARDIM DOS MIGRANTES','NOVO URUPÁ'),('CRAS JARDIM DOS MIGRANTES','NOVO JI-PARANÁ'),
+                ('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL ALDEIA DO LAGO'),('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL COPAS VERDES'),
+                ('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL GREEN PARK'),('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL MILÃO'),
+                ('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL PLANALTO I'),('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL PLANALTO II'),
+                ('CRAS JARDIM DOS MIGRANTES','RESIDENCIAL VENEZA'),("CRAS JARDIM DOS MIGRANTES","RESIDENCIAL ESPELHO D'ÁGUA"),
+                ('CRAS JARDIM DOS MIGRANTES','ESPELHO ECOVILLE'),('CRAS JARDIM DOS MIGRANTES','SANTIAGO'),
+                ('CRAS JARDIM DOS MIGRANTES','SETOR CHACAREIRO'),('CRAS JARDIM DOS MIGRANTES','VAL PARAÍSO'),
+                ('CRAS JARDIM DOS MIGRANTES','UNIÃO'),('CRAS JARDIM DOS MIGRANTES','URUPÁ'),
+                ('CRAS JARDIM DOS MIGRANTES','VILA DE RONDÔNIA'),('CRAS JARDIM DOS MIGRANTES','GLEBA G'),
+                ('CRAS JARDIM DOS MIGRANTES','NOVA LONDRINA'),
+                ('CRAS SÃO FRANCISCO','RESIDENCIAL RONDON'),('CRAS SÃO FRANCISCO','DUQUE DE CAXIAS'),
+                ('CRAS SÃO FRANCISCO','JARDIM DAS SERINGUEIRAS'),('CRAS SÃO FRANCISCO','JARDIM SÃO CRISTÓVÃO'),
+                ('CRAS SÃO FRANCISCO','JARDIM FLÓRIDA'),('CRAS SÃO FRANCISCO','LOTEAMENTO RONDON I'),
+                ('CRAS SÃO FRANCISCO','NOVA BRASÍLIA'),('CRAS SÃO FRANCISCO','PRIMAVERA'),
+                ('CRAS SÃO FRANCISCO','RIACHUELO'),('CRAS SÃO FRANCISCO','SÃO FRANCISCO'),
+                ('CRAS SÃO FRANCISCO','SÃO PEDRO'),('CRAS SÃO FRANCISCO','VILA JOTÃO'),
+                ('CRAS SÃO FRANCISCO','ÁREA RURAL DO 2° DISTRITO'),('CRAS SÃO FRANCISCO','LINHA PIRINEUS'),
+                ('CRAS SÃO FRANCISCO','TALISMÃ'),
+                ('CRAS RODA MOINHO','CAPELASSO'),('CRAS RODA MOINHO','ALTO ALEGRE'),
+                ('CRAS RODA MOINHO','BOA ESPERANÇA'),('CRAS RODA MOINHO','CONJUNTO HABITACIONAL PARECIS'),
+                ('CRAS RODA MOINHO','CAFEZINHO'),('CRAS RODA MOINHO','GREENVILLE'),
+                ('CRAS RODA MOINHO','HABITAR BRASIL'),('CRAS RODA MOINHO','JORGE TEIXEIRA'),
+                ('CRAS RODA MOINHO','JK'),('CRAS RODA MOINHO','MÁRIO ANDREAZZA/BNH'),
+                ('CRAS RODA MOINHO','NOSSA SENHORA DE FÁTIMA'),('CRAS RODA MOINHO','PARQUE DOS PIONEIROS'),
+                ('CRAS RODA MOINHO','PARK BRASIL'),('CRAS RODA MOINHO','RESIDENCIAL CARNEIRO'),
+                ('CRAS RODA MOINHO','RESIDENCIAL TERRA NOVA'),('CRAS RODA MOINHO','RESIDENCIAL ORLEANS I'),
+                ('CRAS RODA MOINHO','RESIDENCIAL ORLEANS II'),('CRAS RODA MOINHO','UNIÃO II'),
+                ('CRAS RODA MOINHO','DISTRITO NOVA COLINA'),('CRAS RODA MOINHO','ALDEIAS INDÍGENAS'),
+            ]
+            cursor.executemany(
+                "INSERT INTO cras_bairros (cras, bairro) VALUES (%s,%s) ON CONFLICT (bairro) DO NOTHING",
+                bairros_iniciais
+            )
+            print("✅ Bairros iniciais inseridos!")
+
+        # MIGRAÇÃO: renomear perfil 'tecnico' → 'cras'
+        cursor.execute("UPDATE usuarios SET perfil = 'cras' WHERE perfil = 'tecnico'")
+        if cursor.rowcount > 0:
+            print(f"✅ {cursor.rowcount} usuário(s) migrado(s): perfil 'tecnico' → 'cras'")
+
         # Tabela de configurações do sistema
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS configuracoes (

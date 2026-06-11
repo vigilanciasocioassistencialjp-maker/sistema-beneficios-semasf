@@ -53,7 +53,7 @@
                             </label>
                             <select name="perfil" id="perfil" class="form-select" required>
                                 <option value="">Selecione...</option>
-                                <option value="tecnico">🔵 Técnico CRAS</option>
+                                <option value="cras">🔵 Técnico CRAS</option>
                                 <option value="creas">🟠 Técnico CREAS</option>
                                 <option value="gestor">🔴 Gestor Secretaria</option>
                                 <option value="admin">🟣 Administrador</option>
@@ -76,10 +76,9 @@
                             </label>
                             <select name="cras" class="form-select">
                                 <option value="">Selecione o CRAS</option>
-                                <option value="CRAS MORAR MELHOR">CRAS MORAR MELHOR</option>
-                                <option value="CRAS JARDIM DOS MIGRANTES">CRAS JARDIM DOS MIGRANTES</option>
-                                <option value="CRAS SÃO FRANCISCO">CRAS SÃO FRANCISCO</option>
-                                <option value="CRAS RODA MOINHO">CRAS RODA MOINHO</option>
+                                {% for c in lista_cras %}
+                                <option value="{{ c }}">{{ c }}</option>
+                                {% endfor %}
                             </select>
                             <div class="mt-2">
                                 <small class="text-muted">
@@ -115,7 +114,7 @@
     const crasSelect = document.querySelector('select[name="cras"]');
 
     function atualizarCras() {
-        if (perfilSelect.value === 'tecnico') {
+        if (perfilSelect.value === 'cras') {
             divCras.style.display = 'block';
         } else {
             divCras.style.display = 'none';

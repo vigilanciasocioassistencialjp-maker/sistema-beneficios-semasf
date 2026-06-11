@@ -114,6 +114,100 @@
             </div>
         </div>
 
+        <!-- Gerenciamento de Bairros por CRAS -->
+        <div class="card border-primary mt-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-map-marker-alt"></i> Bairros por CRAS</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Gerencie quais bairros pertencem a cada CRAS. Alterações refletem imediatamente nos formulários de cadastro e edição.
+                </p>
+
+                <!-- Adicionar novo bairro -->
+                <form action="/configuracoes/bairro/adicionar" method="POST" class="row g-2 align-items-end mb-4">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold"><i class="fas fa-plus-circle text-success"></i> Novo bairro</label>
+                        <input type="text" name="bairro" class="form-control" placeholder="Nome do bairro (em maiúsculas)" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">CRAS de destino</label>
+                        <select name="cras" class="form-select" required>
+                            <option value="">Selecione o CRAS</option>
+                            {% for c in lista_cras %}
+                            <option value="{{ c }}">{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> Adicionar Bairro
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Lista de bairros agrupados por CRAS -->
+                <div class="accordion" id="accordionBairros">
+                    {% for cras_nome, itens in bairros_com_id.items() %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed fw-bold" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#collapse_{{ loop.index }}">
+                                <i class="fas fa-building me-2 text-primary"></i>
+                                {{ cras_nome }}
+                                <span class="badge bg-primary ms-2">{{ itens|length }} bairros</span>
+                            </button>
+                        </h2>
+                        <div id="collapse_{{ loop.index }}" class="accordion-collapse collapse">
+                            <div class="accordion-body p-2">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <tbody>
+                                            {% for bid, bairro in itens %}
+                                            <tr>
+                                                <td class="align-middle">{{ bairro }}</td>
+                                                <td class="text-end">
+                                                    <div class="d-inline-flex gap-1">
+                                                        <!-- Mover para outro CRAS -->
+                                                        <form action="/configuracoes/bairro/mover" method="POST" class="d-inline-flex gap-1">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <select name="novo_cras" class="form-select form-select-sm" style="width:180px;" required>
+                                                                <option value="">Mover para...</option>
+                                                                {% for c in lista_cras %}
+                                                                {% if c != cras_nome %}
+                                                                <option value="{{ c }}">{{ c }}</option>
+                                                                {% endif %}
+                                                                {% endfor %}
+                                                            </select>
+                                                            <button type="submit" class="btn btn-sm btn-outline-primary"
+                                                                    onclick="return confirm('Mover {{ bairro }}?')">
+                                                                <i class="fas fa-exchange-alt"></i>
+                                                            </button>
+                                                        </form>
+                                                        <!-- Remover -->
+                                                        <form action="/configuracoes/bairro/remover" method="POST" class="d-inline">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                                    onclick="return confirm('Remover {{ bairro }} do sistema?')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
         <!-- Backup -->
         <div class="card border-success mt-4">
             <div class="card-header bg-success text-white">

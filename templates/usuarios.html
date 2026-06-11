@@ -62,47 +62,56 @@
                             </form>
                           </td>
                         <td>
+                            {% set pode_editar_este = current_user.perfil == 'admin' or (current_user.perfil == 'gestor' and u[3] != 'admin') %}
+                            {% if pode_editar_este %}
                             <form action="/usuario/editar_perfil/{{ u[0] }}" method="POST" class="d-inline">
                                 <div class="input-group input-group-sm">
-                                    <select name="perfil" class="form-select" style="width: 120px;">
-                                        <option value="tecnico" {% if u[3] == 'tecnico' %}selected{% endif %}>Técnico</option>
+                                    <select name="perfil" class="form-select" style="width: 150px;">
+                                        <option value="cras"  {% if u[3] == 'cras'  %}selected{% endif %}>Técnico CRAS</option>
+                                        <option value="creas" {% if u[3] == 'creas' %}selected{% endif %}>Técnico CREAS</option>
                                         <option value="gestor" {% if u[3] == 'gestor' %}selected{% endif %}>Gestor</option>
+                                        {% if current_user.perfil == 'admin' %}
                                         <option value="admin" {% if u[3] == 'admin' %}selected{% endif %}>Admin</option>
+                                        {% endif %}
                                     </select>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-save"></i>
-                                    </button>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
                                 </div>
                             </form>
-                          </td>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ u[3] }}</span>
+                            {% endif %}
+                        </td>
                         <td>
-                            {% if u[3] == 'tecnico' %}
+                            {% if u[3] == 'cras' and pode_editar_este %}
                             <form action="/usuario/editar_cras/{{ u[0] }}" method="POST" class="d-inline">
                                 <div class="input-group input-group-sm">
                                     <select name="cras" class="form-select" style="width: 200px;">
-                                        <option value="CRAS MORAR MELHOR" {% if u[4] == 'CRAS MORAR MELHOR' %}selected{% endif %}>CRAS MORAR MELHOR</option>
-                                        <option value="CRAS JARDIM DOS MIGRANTES" {% if u[4] == 'CRAS JARDIM DOS MIGRANTES' %}selected{% endif %}>CRAS JARDIM DOS MIGRANTES</option>
-                                        <option value="CRAS SÃO FRANCISCO" {% if u[4] == 'CRAS SÃO FRANCISCO' %}selected{% endif %}>CRAS SÃO FRANCISCO</option>
-                                        <option value="CRAS RODA MOINHO" {% if u[4] == 'CRAS RODA MOINHO' %}selected{% endif %}>CRAS RODA MOINHO</option>
+                                        <option value="">— Selecione —</option>
+                                        {% for c in lista_cras %}
+                                        <option value="{{ c }}" {% if u[4] == c %}selected{% endif %}>{{ c }}</option>
+                                        {% endfor %}
                                     </select>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-save"></i>
-                                    </button>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
                                 </div>
                             </form>
+                            {% elif u[3] == 'cras' %}
+                                <span class="text-muted small">{{ u[4] or '—' }}</span>
                             {% else %}
                                 <span class="text-muted">—</span>
                             {% endif %}
-                          </td>
+                        </td>
                         <td>
-                            {% if u[1] != current_user.id %}
-                            <a href="/usuario/excluir/{{ u[0] }}" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir este usuário?')">
+                            {% if u[1] != current_user.id and current_user.perfil == 'admin' %}
+                            <a href="/usuario/excluir/{{ u[0] }}" class="btn btn-sm btn-danger"
+                               onclick="return confirm('Tem certeza que deseja excluir este usuário?')">
                                 <i class="fas fa-trash"></i> Excluir
                             </a>
-                            {% else %}
+                            {% elif u[1] == current_user.id %}
                                 <span class="text-muted">(Você)</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
                             {% endif %}
-                          </td>
+                        </td>
                       </tr>
                     {% endfor %}
                 </tbody>

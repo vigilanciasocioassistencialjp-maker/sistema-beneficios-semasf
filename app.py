@@ -470,6 +470,31 @@ def verificar_cpf(cpf):
         return jsonify({'erro': str(e)}), 500
 
 # =====================================================
+# HELPERS - BAIRROS/CRAS (lidos do banco)
+# =====================================================
+
+def get_bairros_por_cras():
+    """Retorna dict {cras: [bairros]} ordenado, lido da tabela cras_bairros."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT cras, bairro FROM cras_bairros ORDER BY cras, bairro")
+    rows = cursor.fetchall()
+    conn.close()
+    resultado = {}
+    for cras, bairro in rows:
+        resultado.setdefault(cras, []).append(bairro)
+    return resultado
+
+def get_lista_cras():
+    """Retorna lista de CRAS distintos, ordenados."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT cras FROM cras_bairros ORDER BY cras")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+# =====================================================
 # PÁGINA PRINCIPAL - NOVA SOLICITAÇÃO
 # =====================================================
 
@@ -557,7 +582,9 @@ def inicio():
         logger.info(f"Solicitação cadastrada: {nome}")
         flash('✅ Solicitação cadastrada!', 'success')
         return redirect(url_for("solicitacoes"))
-    return render_template("index.html", sucesso=False)
+    bairros_por_cras = get_bairros_por_cras()
+    return render_template("index.html", sucesso=False,
+                           bairros_por_cras=bairros_por_cras)
 
 # =====================================================
 # LISTAR SOLICITAÇÕES (CPF DESCRIPTOGRAFADO)
@@ -712,17 +739,17 @@ def editar_solicitacao(id):
     # Descriptografar CPF para exibição
     s['cpf'] = formatar_cpf(descriptografar_cpf(s['cpf'])) if s['cpf'] else ''
 
-    # Verificar permissão
-    eh_admin_gestor = current_user.perfil in ['admin', 'gestor']
-    eh_autor        = current_user.id == s['tecnico']
-    ja_entregue     = s.get('status') in ('Entregue', 'Ausente')
+    # Verificar permissão: só o autor (status Cadastrada) ou admin
+    eh_admin   = current_user.perfil == 'admin'
+    eh_autor   = current_user.id == s['tecnico']
+    ja_entregue = s.get('status') in ('Entregue', 'Ausente')
 
-    pode_editar = eh_admin_gestor or (eh_autor and not ja_entregue)
+    pode_editar = eh_admin or (eh_autor and not ja_entregue)
 
     if not pode_editar:
         conexao.close()
         if ja_entregue:
-            flash('❌ Esta solicitação já teve a entrega registrada e não pode mais ser editada por técnicos.', 'danger')
+            flash('❌ Esta solicitação já teve a entrega registrada e não pode mais ser editada.', 'danger')
         else:
             flash('❌ Você não tem permissão para editar esta solicitação.', 'danger')
         return redirect(url_for('ver_solicitacao', id=id))
@@ -824,7 +851,9 @@ def editar_solicitacao(id):
         return redirect(url_for('ver_solicitacao', id=id))
 
     conexao.close()
-    return render_template("editar_solicitacao.html", s=s, current_user=current_user)
+    bairros_por_cras = get_bairros_por_cras()
+    return render_template("editar_solicitacao.html", s=s, current_user=current_user,
+                           bairros_por_cras=bairros_por_cras)
 
 
 
@@ -1050,25 +1079,25 @@ def gerar_pdf_assinatura(id):
         if desenhar:
             # ── CABEÇALHO ──────────────────────────────────────────
             logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
-            logo_altura = 2.2*cm
-            texto_x = 2*cm
+            logo_altura = 2.8*cm
+            # Logo no canto DIREITO; texto sempre à esquerda (2*cm)
             if os.path.exists(logo_path):
                 try:
                     logo_reader = ImageReader(logo_path)
-                    canvas_obj.drawImage(logo_reader, 2*cm, y - logo_altura + 0.3*cm,
-                                         height=logo_altura, width=logo_altura,
+                    logo_x = w - 2*cm - logo_altura * 3.5  # largura proporcional (aspect ~3.5:1)
+                    canvas_obj.drawImage(logo_reader, logo_x, y - logo_altura + 0.4*cm,
+                                         height=logo_altura, width=logo_altura * 3.5,
                                          preserveAspectRatio=True, mask='auto')
-                    texto_x = 2*cm + logo_altura + 0.4*cm
                 except Exception:
                     pass
             canvas_obj.setFont("Helvetica-Bold", 14)
-            canvas_obj.drawString(texto_x, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+            canvas_obj.drawString(2*cm, y, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica-Bold", 11)
-            canvas_obj.drawString(texto_x, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
+            canvas_obj.drawString(2*cm, y, "Secretaria Municipal de Assistência Social e Família - SEMASF")
             y -= 0.6*cm
             canvas_obj.setFont("Helvetica", 9)
-            canvas_obj.drawString(texto_x, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
+            canvas_obj.drawString(2*cm, y, "TERMO DE CONCESSÃO DE CESTA BÁSICA")
             y -= 0.4*cm
             canvas_obj.line(2*cm, y, w - 2*cm, y)
             y -= 0.6*cm
@@ -1812,7 +1841,7 @@ def _rodape_relatorio(c, w, mes):
 @app.route("/relatorio/excel")
 @login_required
 def exportar_excel():
-    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras']:
         return "Acesso negado", 403
 
     mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
@@ -1880,7 +1909,7 @@ def exportar_excel():
 @app.route("/relatorio/pdf/<tipo>")
 @login_required
 def relatorio_pdf(tipo):
-    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras']:
         return "Acesso negado", 403
 
     mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
@@ -1976,13 +2005,16 @@ def relatorio_pdf(tipo):
 @app.route("/usuarios")
 @login_required
 def listar_usuarios():
-    if current_user.perfil != 'admin': return redirect(url_for("dashboard"))
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for("dashboard"))
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios ORDER BY id")
     usuarios = cursor.fetchall()
     conexao.close()
-    return render_template("usuarios.html", usuarios=usuarios, current_user=current_user)
+    lista_cras = get_lista_cras()
+    return render_template("usuarios.html", usuarios=usuarios, current_user=current_user,
+                           lista_cras=lista_cras)
 
 @app.route("/usuario/novo", methods=["GET", "POST"])
 @login_required
@@ -1991,7 +2023,7 @@ def novo_usuario():
         senha = request.form.get("senha", "")
         perfil = request.form.get("perfil", "")
         # CRAS só faz sentido para técnico de CRAS; demais perfis ficam NULL
-        cras = request.form.get("cras") if perfil == "tecnico" else None
+        cras = request.form.get("cras") if perfil == "cras" else None
         if len(senha) < 6:
             flash("Mínimo 6 caracteres!", "danger")
         else:
@@ -2014,7 +2046,8 @@ def novo_usuario():
                 conexao.rollback()
             finally:
                 conexao.close()
-    return render_template("novo_usuario.html")
+    lista_cras = get_lista_cras()
+    return render_template("novo_usuario.html", lista_cras=lista_cras)
 
 @app.route("/usuario/excluir/<int:id>")
 @login_required
@@ -2049,27 +2082,55 @@ def editar_usuario(id):
 @app.route("/usuario/editar_perfil/<int:id>", methods=["POST"])
 @login_required
 def editar_perfil_usuario(id):
-    if current_user.perfil != 'admin':
+    if current_user.perfil not in ['admin', 'gestor']:
         return "Acesso negado", 403
-    perfil = request.form.get("perfil", "")
-    if perfil not in ['tecnico', 'creas', 'gestor', 'admin']:
+    perfil_novo = request.form.get("perfil", "")
+    perfis_validos = ['cras', 'creas', 'gestor', 'admin']
+    if perfil_novo not in perfis_validos:
         flash("Perfil inválido.", "danger")
         return redirect(url_for("listar_usuarios"))
+    # Gestor não pode promover/rebaixar admins nem criar novos admins
+    if current_user.perfil == 'gestor':
+        conexao = get_db()
+        cursor = conexao.cursor()
+        cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id,))
+        row = cursor.fetchone()
+        conexao.close()
+        if row and row[0] == 'admin':
+            flash("❌ Gestores não podem alterar perfil de administradores.", "danger")
+            return redirect(url_for("listar_usuarios"))
+        if perfil_novo == 'admin':
+            flash("❌ Gestores não podem criar administradores.", "danger")
+            return redirect(url_for("listar_usuarios"))
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (perfil, id))
+    # Se deixou de ser técnico CRAS, limpa o CRAS vinculado
+    if perfil_novo != 'cras':
+        cursor.execute("UPDATE usuarios SET perfil = %s, cras = NULL WHERE id = %s", (perfil_novo, id))
+    else:
+        cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (perfil_novo, id))
     conexao.commit()
     conexao.close()
-    logger.info(f"Perfil do usuário ID={id} alterado para {perfil} por {current_user.id}")
+    logger.info(f"Perfil do usuário ID={id} alterado para {perfil_novo} por {current_user.id}")
     flash("✅ Perfil atualizado!", "success")
     return redirect(url_for("listar_usuarios"))
 
 @app.route("/usuario/editar_cras/<int:id>", methods=["POST"])
 @login_required
 def editar_cras_usuario(id):
-    if current_user.perfil != 'admin':
+    if current_user.perfil not in ['admin', 'gestor']:
         return "Acesso negado", 403
     cras = request.form.get("cras", "").strip() or None
+    # Gestor não pode alterar admins
+    if current_user.perfil == 'gestor':
+        conexao = get_db()
+        cursor = conexao.cursor()
+        cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id,))
+        row = cursor.fetchone()
+        conexao.close()
+        if row and row[0] == 'admin':
+            flash("❌ Gestores não podem alterar dados de administradores.", "danger")
+            return redirect(url_for("listar_usuarios"))
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("UPDATE usuarios SET cras = %s WHERE id = %s", (cras, id))
@@ -2145,18 +2206,17 @@ def api_configuracoes():
 @app.route("/configuracoes", methods=["GET", "POST"])
 @login_required
 def configuracoes():
-    if current_user.perfil != 'admin':
+    if current_user.perfil not in ['admin', 'gestor']:
         return redirect(url_for("dashboard"))
     conn = get_db()
     cursor = conn.cursor()
     erro = sucesso = None
-    if request.method == "POST":
+    if request.method == "POST" and current_user.perfil == 'admin':
         novo_salario = request.form.get("salario_minimo", "").strip().replace(",", ".")
         try:
             valor = float(novo_salario)
             if valor <= 0:
                 raise ValueError
-            from datetime import datetime
             cursor.execute("""
                 INSERT INTO configuracoes (chave, valor, descricao, atualizado_em)
                 VALUES ('salario_minimo', %s, 'Salário mínimo nacional vigente (R$)', %s)
@@ -2171,14 +2231,86 @@ def configuracoes():
     configs = cursor.fetchall()
     conn.close()
     salario = get_salario_minimo()
+    bairros_por_cras = get_bairros_por_cras()
+    lista_cras = get_lista_cras()
+    # Para configurações: dict {cras: [(id, bairro), ...]} com IDs reais
+    conn2 = get_db()
+    cur2  = conn2.cursor()
+    cur2.execute("SELECT id, cras, bairro FROM cras_bairros ORDER BY cras, bairro")
+    bairros_com_id = {}
+    for bid, bcras, bbairro in cur2.fetchall():
+        bairros_com_id.setdefault(bcras, []).append((bid, bbairro))
+    conn2.close()
     return render_template("configuracoes.html",
         configs=configs,
         salario_minimo=salario,
         limite_rpc=round(salario / 4, 2),
         erro=erro,
         sucesso=sucesso,
+        bairros_por_cras=bairros_por_cras,
+        bairros_com_id=bairros_com_id,
+        lista_cras=lista_cras,
         current_user=current_user
     )
+
+@app.route("/configuracoes/bairro/adicionar", methods=["POST"])
+@login_required
+def bairro_adicionar():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    bairro = request.form.get("bairro", "").strip().upper()
+    cras   = request.form.get("cras", "").strip()
+    if not bairro or not cras:
+        flash("❌ Preencha o nome do bairro e selecione o CRAS.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO cras_bairros (cras, bairro) VALUES (%s, %s)", (cras, bairro))
+        conn.commit()
+        logger.info(f"Bairro '{bairro}' adicionado ao {cras} por {current_user.id}")
+        flash(f"✅ Bairro '{bairro}' adicionado ao {cras}!", "success")
+    except Exception:
+        conn.rollback()
+        flash(f"❌ Bairro '{bairro}' já existe no sistema.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("configuracoes"))
+
+@app.route("/configuracoes/bairro/mover", methods=["POST"])
+@login_required
+def bairro_mover():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    bairro_id = request.form.get("bairro_id", "")
+    novo_cras  = request.form.get("novo_cras", "").strip()
+    if not bairro_id or not novo_cras:
+        flash("❌ Dados inválidos.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cras_bairros SET cras = %s WHERE id = %s", (novo_cras, bairro_id))
+    conn.commit()
+    conn.close()
+    flash(f"✅ Bairro movido para {novo_cras}!", "success")
+    return redirect(url_for("configuracoes"))
+
+@app.route("/configuracoes/bairro/remover", methods=["POST"])
+@login_required
+def bairro_remover():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    bairro_id = request.form.get("bairro_id", "")
+    if not bairro_id:
+        flash("❌ Bairro não identificado.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cras_bairros WHERE id = %s", (bairro_id,))
+    conn.commit()
+    conn.close()
+    flash("✅ Bairro removido.", "success")
+    return redirect(url_for("configuracoes"))
 
 # =====================================================
 # BACKUP MANUAL (rota admin)
