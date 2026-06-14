@@ -227,6 +227,8 @@
                                 <i class="fas fa-crown"></i> Administrador
                             {% elif current_user.perfil == 'gestor' %}
                                 <i class="fas fa-chart-line"></i> Gestor
+                            {% elif current_user.perfil == 'cras_volante' %}
+                                <i class="fas fa-road"></i> Equipe Volante
                             {% else %}
                                 <i class="fas fa-clipboard-list"></i> Técnico
                             {% endif %}

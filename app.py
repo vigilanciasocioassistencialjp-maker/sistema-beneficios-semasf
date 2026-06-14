@@ -609,7 +609,7 @@ def solicitacoes(pagina=1):
     filtros = []
     params  = []
 
-    if current_user.perfil not in ['admin', 'gestor', 'creas']:
+    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante']:
         filtros.append("cras = %s")
         params.append(current_user.cras)
 
@@ -1846,7 +1846,7 @@ def _rodape_relatorio(c, w, mes):
 @app.route("/relatorio/excel")
 @login_required
 def exportar_excel():
-    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras']:
+    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante', 'cras']:
         return "Acesso negado", 403
 
     mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
@@ -1914,7 +1914,7 @@ def exportar_excel():
 @app.route("/relatorio/pdf/<tipo>")
 @login_required
 def relatorio_pdf(tipo):
-    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras']:
+    if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante', 'cras']:
         return "Acesso negado", 403
 
     mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
@@ -2090,7 +2090,7 @@ def editar_perfil_usuario(id):
     if current_user.perfil not in ['admin', 'gestor']:
         return "Acesso negado", 403
     perfil_novo = request.form.get("perfil", "")
-    perfis_validos = ['cras', 'creas', 'gestor', 'admin']
+    perfis_validos = ['cras', 'creas', 'cras_volante', 'gestor', 'admin']
     if perfil_novo not in perfis_validos:
         flash("Perfil inválido.", "danger")
         return redirect(url_for("listar_usuarios"))

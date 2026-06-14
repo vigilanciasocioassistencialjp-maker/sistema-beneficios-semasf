@@ -180,7 +180,7 @@
                 <h5>6. SITUAÇÃO DE VULNERABILIDADE</h5>
                 <div class="row">
                     {% set vuls_atuais = s.vulnerabilidade.split(', ') if s.vulnerabilidade else [] %}
-                    {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                    {% for vul in ['Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
                     <div class="col-md-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}"

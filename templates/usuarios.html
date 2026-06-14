@@ -69,6 +69,7 @@
                                     <select name="perfil" class="form-select" style="width: 150px;">
                                         <option value="cras"  {% if u[3] == 'cras'  %}selected{% endif %}>Técnico CRAS</option>
                                         <option value="creas" {% if u[3] == 'creas' %}selected{% endif %}>Técnico CREAS</option>
+                                        <option value="cras_volante" {% if u[3] == 'cras_volante' %}selected{% endif %}>Equipe Volante</option>
                                         <option value="gestor" {% if u[3] == 'gestor' %}selected{% endif %}>Gestor</option>
                                         {% if current_user.perfil == 'admin' %}
                                         <option value="admin" {% if u[3] == 'admin' %}selected{% endif %}>Admin</option>

@@ -199,7 +199,7 @@
                                 <label class="form-label required">Bairro</label>
                                 <select name="bairro" class="form-select" id="bairro" required>
                                     <option value="">Selecione o bairro</option>
-                                    {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
+                                    {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante'] %}
                                         {% for cras_nome, bairros in bairros_por_cras.items() %}
                                         <optgroup label="{{ cras_nome }}">
                                             {% for b in bairros %}
@@ -233,7 +233,7 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label required">CRAS de Referência</label>
-                                {% if current_user.perfil in ['gestor', 'admin', 'creas'] %}
+                                {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante'] %}
                                     <select name="cras" class="form-select" id="cras" required>
                                         <option value="">Selecione o CRAS</option>
                                         {% for c in bairros_por_cras.keys() %}
@@ -357,7 +357,7 @@
                     <div class="form-section">
                         <h5>Situação de Vulnerabilidade</h5>
                         <div class="row">
-                            {% for vul in ['Extrema pobreza', 'Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                            {% for vul in ['Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
                             <div class="col-md-3 mb-1">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}">

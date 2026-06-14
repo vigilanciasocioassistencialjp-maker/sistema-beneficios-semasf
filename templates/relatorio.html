@@ -24,7 +24,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                {% if current_user.perfil in ['admin', 'gestor', 'creas'] %}
+                {% if current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante'] %}
                 <div class="col-md-auto ms-auto d-flex gap-2 flex-wrap">
                     <a href="{{ url_for('relatorio_pdf', tipo='completo', mes=mes) }}" class="btn btn-danger">
                         <i class="fas fa-file-pdf"></i> PDF Completo
