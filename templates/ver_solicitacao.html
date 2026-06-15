@@ -23,11 +23,13 @@
                 <i class="fas fa-edit"></i> Editar
             </a>
             {% endif %}
-            {% if solicitacao[21] == 'Ausente' %}
-            <a href="/reagendar/{{ solicitacao[0] }}" class="btn btn-outline-warning"
-               onclick="return confirm('Reagendar {{ solicitacao[1] }}?\n\nUma nova solicitação será criada com os dados deste beneficiário.')">
-                <i class="fas fa-calendar-plus"></i> Reagendar
-            </a>
+            {% if solicitacao[21] == 'Ausente' and current_user.perfil != 'gestor' %}
+            <form method="POST" action="/nova_tentativa/{{ solicitacao[0] }}" class="d-inline">
+                <button type="submit" class="btn btn-outline-warning"
+                        onclick="return confirm('Reabrir solicitação #{{ solicitacao[0] }} para nova tentativa de entrega?')">
+                    <i class="fas fa-redo"></i> Nova Tentativa
+                </button>
+            </form>
             {% endif %}
         </div>
 
@@ -150,6 +152,11 @@
                                 {% endif %}">
                                 {{ solicitacao[21] }}
                             </span>
+                            {% if solicitacao[27] and solicitacao[27] > 1 %}
+                            <span class="badge bg-secondary ms-1">
+                                <i class="fas fa-redo"></i> Tentativa {{ solicitacao[27] }}
+                            </span>
+                            {% endif %}
                         </p>
 
                         {% if solicitacao[18] %}

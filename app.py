@@ -674,10 +674,11 @@ def ver_solicitacao(id):
             s.data_solicitacao, s.email, s.endereco, s.numero, 
             s.complemento, s.bairro, s.cep, s.referencia, s.cras, 
             s.renda_bruta, s.renda_per_capita, s.beneficios, 
-            s.vulnerabilidade, s.data_entrega, s.tecnico_entrega, 
-            s.parecer, s.status, s.tecnico, s.composicao_familiar, 
+            s.vulnerabilidade, s.data_entrega, s.tecnico_entrega,
+            s.parecer, s.status, s.tecnico, s.composicao_familiar,
             s.servicos_suas, u_escuta.nome as tecnico_escuta_nome,
-            u_entrega.nome as tecnico_entrega_nome
+            u_entrega.nome as tecnico_entrega_nome,
+            s.num_tentativas
         FROM solicitacoes s 
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario 
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario 
@@ -1390,47 +1391,46 @@ def registrar_entrega(id):
     return redirect(url_for("solicitacoes"))
 
 # =====================================================
-# REAGENDAR AUSENTE
+# NOVA TENTATIVA DE ENTREGA
 # =====================================================
 
-@app.route("/reagendar/<int:id>")
+@app.route("/nova_tentativa/<int:id>", methods=["POST"])
 @login_required
-def reagendar(id):
-    """Cria nova solicitação a partir de uma que ficou Ausente."""
+def nova_tentativa(id):
+    """Reseta status para Cadastrada e incrementa contador de tentativas."""
     conexao = get_db()
     cursor  = conexao.cursor()
-    cursor.execute("""
-        SELECT tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email,
-               endereco, numero, complemento, bairro, cep, referencia, cras,
-               data_escuta, total_pessoas, composicao_familiar, renda_bruta,
-               renda_per_capita, beneficios, vulnerabilidade, servicos_suas,
-               parecer, excecao_art64
-        FROM solicitacoes WHERE id = %s AND status = 'Ausente'
-    """, (id,))
-    orig = cursor.fetchone()
-    if not orig:
+    cursor.execute("SELECT status, num_tentativas FROM solicitacoes WHERE id = %s", (id,))
+    row = cursor.fetchone()
+    if not row or row[0] != 'Ausente':
         conexao.close()
         flash("Solicitação não encontrada ou não está com status Ausente.", "danger")
         return redirect(url_for("solicitacoes"))
 
-    hoje = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y')
+    tentativa_atual = (row[1] or 1) + 1
+    data_hora = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
+
     cursor.execute("""
-        INSERT INTO solicitacoes
-            (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email,
-             endereco, numero, complemento, bairro, cep, referencia, cras,
-             data_escuta, total_pessoas, composicao_familiar, renda_bruta,
-             renda_per_capita, beneficios, vulnerabilidade, servicos_suas,
-             parecer, excecao_art64, status, data_solicitacao)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Cadastrada',%s)
-        RETURNING id
-    """, orig + (hoje,))
-    novo_id = cursor.fetchone()[0]
+        UPDATE solicitacoes
+        SET status = 'Cadastrada',
+            data_entrega = NULL,
+            tecnico_entrega = NULL,
+            observacoes_entrega = NULL,
+            num_tentativas = %s
+        WHERE id = %s
+    """, (tentativa_atual, id))
+
+    cursor.execute("""
+        INSERT INTO historico_edicoes (solicitacao_id, usuario, campo, valor_antes, valor_depois, data_hora)
+        VALUES (%s, %s, 'status', 'Ausente', %s, %s)
+    """, (id, current_user.id, f'Cadastrada (tentativa {tentativa_atual})', data_hora))
+
     conexao.commit()
     conexao.close()
 
-    logger.info(f"Reagendamento: original={id}, novo={novo_id}, tecnico={current_user.id}")
-    flash(f"✅ Nova solicitação #{novo_id} criada com sucesso (reagendamento de #{id}).", "success")
-    return redirect(url_for("ver_solicitacao", id=novo_id))
+    logger.info(f"Nova tentativa: ID={id}, tentativa={tentativa_atual}, tecnico={current_user.id}")
+    flash(f"✅ Solicitação #{id} reaberta para nova tentativa de entrega (tentativa {tentativa_atual}).", "success")
+    return redirect(url_for("ver_solicitacao", id=id))
 
 
 # =====================================================
