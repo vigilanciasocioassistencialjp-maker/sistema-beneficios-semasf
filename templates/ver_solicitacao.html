@@ -169,9 +169,10 @@
                             <em>Entrega ainda não registrada</em>
                         </p>
                         {% if current_user.perfil != 'gestor' %}
-                        <a href="/solicitacoes" class="btn btn-sm btn-success mt-2">
+                        <button type="button" class="btn btn-sm btn-success mt-2"
+                                data-bs-toggle="modal" data-bs-target="#modalEntregaVer">
                             <i class="fas fa-truck"></i> Registrar Entrega
-                        </a>
+                        </button>
                         {% endif %}
                         {% endif %}
                     </div>
@@ -226,8 +227,87 @@
         {% endif %}
     </div>
 </div>
+<!-- Modal Registrar Entrega -->
+<div class="modal fade" id="modalEntregaVer" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-truck"></i> Registrar Entrega</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEntregaVer" method="POST" action="/registrar_entrega/{{ solicitacao[0] }}">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-user"></i> Beneficiário:</strong> {{ solicitacao[1] }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Status da Entrega *</label>
+                        <select class="form-select" name="status_entrega" id="status_entrega_ver" required>
+                            <option value="">Selecione...</option>
+                            <option value="Entregue">✅ Entregue</option>
+                            <option value="Ausente">❌ Ausente</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Data *</label>
+                        <input type="date" class="form-control" name="data_entrega" id="data_entrega_ver" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Observações</label>
+                        <textarea class="form-control" name="observacoes" rows="3"
+                                  placeholder="Motivo da ausência, observações..."></textarea>
+                    </div>
+                    <div class="alert alert-warning small" id="avisoEntregueVer" style="display:none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Atenção:</strong> A entrega é definitiva e não poderá ser desfeita.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% block extra_js %}
 <script>
+// Preenche data de hoje ao abrir o modal
+document.getElementById('modalEntregaVer').addEventListener('show.bs.modal', function() {
+    const hoje = new Date();
+    const data = hoje.getFullYear() + '-' +
+                 String(hoje.getMonth()+1).padStart(2,'0') + '-' +
+                 String(hoje.getDate()).padStart(2,'0');
+    document.getElementById('data_entrega_ver').value = data;
+    document.getElementById('status_entrega_ver').value = '';
+    document.getElementById('avisoEntregueVer').style.display = 'none';
+});
+
+// Mostra aviso apenas para Entregue
+document.getElementById('status_entrega_ver').addEventListener('change', function() {
+    document.getElementById('avisoEntregueVer').style.display = this.value === 'Entregue' ? 'block' : 'none';
+});
+
+// Envia via AJAX e recarrega a página para mostrar o resultado
+document.getElementById('formEntregaVer').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const status = document.getElementById('status_entrega_ver').value;
+    const data   = document.getElementById('data_entrega_ver').value;
+    if (!status || !data) return;
+
+    const formData = new FormData(this);
+    fetch(this.action, { method: 'POST', body: formData })
+        .then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Erro ao registrar. Tente novamente.');
+            }
+        })
+        .catch(() => alert('Erro ao registrar. Tente novamente.'));
+});
+
 document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
     btn.addEventListener('click', function() {
         const icon = this.querySelector('i');
