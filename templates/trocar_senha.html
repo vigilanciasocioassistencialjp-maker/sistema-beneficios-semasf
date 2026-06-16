@@ -62,7 +62,12 @@
                             <label class="form-label">
                                 <i class="fas fa-key"></i> Senha Atual
                             </label>
-                            <input type="password" name="senha_atual" class="form-control" required>
+                            <div class="input-group">
+                                <input type="password" name="senha_atual" class="form-control" required>
+                                <button type="button" class="btn btn-outline-secondary btn-ver-senha" tabindex="-1">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
                         </div>
                         {% endif %}
 
@@ -70,7 +75,12 @@
                             <label class="form-label">
                                 <i class="fas fa-lock"></i> Nova Senha
                             </label>
-                            <input type="password" name="nova_senha" class="form-control" id="nova_senha" required>
+                            <div class="input-group">
+                                <input type="password" name="nova_senha" class="form-control" id="nova_senha" required>
+                                <button type="button" class="btn btn-outline-secondary btn-ver-senha" tabindex="-1">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
                             <div class="password-requirements">
                                 <i class="fas fa-info-circle"></i> Mínimo de 6 caracteres, 1 maiúscula e 1 número
                             </div>
@@ -80,7 +90,12 @@
                             <label class="form-label">
                                 <i class="fas fa-check-circle"></i> Confirmar Nova Senha
                             </label>
-                            <input type="password" name="confirmar_senha" class="form-control" id="confirmar_senha" required>
+                            <div class="input-group">
+                                <input type="password" name="confirmar_senha" class="form-control" id="confirmar_senha" required>
+                                <button type="button" class="btn btn-outline-secondary btn-ver-senha" tabindex="-1">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-success w-100 py-2">
@@ -104,6 +119,21 @@
 </div>
 
 <script>
+    // Botão mostrar/ocultar senha
+    document.querySelectorAll('.btn-ver-senha').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const input = this.previousElementSibling;
+            const icon  = this.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fas fa-eye-slash';
+            } else {
+                input.type = 'password';
+                icon.className = 'fas fa-eye';
+            }
+        });
+    });
+
     // Validação em tempo real da confirmação de senha
     document.getElementById('confirmar_senha')?.addEventListener('input', function() {
         const novaSenha = document.getElementById('nova_senha').value;
