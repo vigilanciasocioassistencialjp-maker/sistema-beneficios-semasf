@@ -843,6 +843,94 @@ document.getElementById('btnConfirmarSalvar').addEventListener('click', function
     document.getElementById('solicitacaoForm').submit();
 });
 
+// ── Rascunho automático (localStorage) ────────────────────────────
+// Salva os dados do formulário a cada 10 segundos e ao digitar
+// para evitar perda se o servidor dormir ou a página recarregar.
+
+const RASCUNHO_KEY = 'rascunho_solicitacao';
+const form = document.getElementById('solicitacaoForm');
+
+// Campos de texto/select simples a salvar
+const CAMPOS_SIMPLES = [
+    'nome','cpf','data_nascimento','telefone','email',
+    'endereco','numero','complemento','bairro','cep','referencia','cras',
+    'data_escuta','renda_bruta','renda_per_capita','beneficios','parecer'
+];
+
+function salvarRascunho() {
+    try {
+        const dados = {};
+        CAMPOS_SIMPLES.forEach(nome => {
+            const el = form.querySelector(`[name="${nome}"]`);
+            if (el) dados[nome] = el.value;
+        });
+        // Checkboxes vulnerabilidade e serviços
+        dados.vulnerabilidade = [...form.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value);
+        dados.servicos_suas   = [...form.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value);
+        dados.excecao_art64   = form.querySelector('#excecao_art64')?.checked || false;
+        localStorage.setItem(RASCUNHO_KEY, JSON.stringify(dados));
+    } catch(e) {}
+}
+
+function restaurarRascunho() {
+    try {
+        const raw = localStorage.getItem(RASCUNHO_KEY);
+        if (!raw) return;
+        const dados = JSON.parse(raw);
+        let algumCampo = false;
+
+        CAMPOS_SIMPLES.forEach(nome => {
+            if (!dados[nome]) return;
+            const el = form.querySelector(`[name="${nome}"]`);
+            if (el && !el.value) { el.value = dados[nome]; algumCampo = true; }
+        });
+        if (dados.vulnerabilidade?.length) {
+            dados.vulnerabilidade.forEach(v => {
+                const cb = form.querySelector(`input[name="vulnerabilidade"][value="${v}"]`);
+                if (cb) { cb.checked = true; algumCampo = true; }
+            });
+        }
+        if (dados.servicos_suas?.length) {
+            dados.servicos_suas.forEach(v => {
+                const cb = form.querySelector(`input[name="servicos_suas"][value="${v}"]`);
+                if (cb) { cb.checked = true; algumCampo = true; }
+            });
+        }
+        if (dados.excecao_art64) {
+            const cb = form.querySelector('#excecao_art64');
+            if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); algumCampo = true; }
+        }
+
+        if (algumCampo) {
+            const aviso = document.createElement('div');
+            aviso.className = 'alert alert-info alert-dismissible fade show mb-3';
+            aviso.innerHTML = `<i class="fas fa-history"></i> <strong>Rascunho restaurado.</strong> Os dados da última solicitação incompleta foram recuperados.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="btnLimparRascunho">
+                    <i class="fas fa-trash"></i> Descartar rascunho
+                </button>`;
+            form.prepend(aviso);
+            document.getElementById('btnLimparRascunho')?.addEventListener('click', () => {
+                localStorage.removeItem(RASCUNHO_KEY);
+                aviso.remove();
+            });
+        }
+    } catch(e) {}
+}
+
+// Salva ao digitar/mudar qualquer campo
+form.addEventListener('input',  salvarRascunho);
+form.addEventListener('change', salvarRascunho);
+
+// Salva a cada 10 segundos
+setInterval(salvarRascunho, 10000);
+
+// Apaga rascunho ao enviar com sucesso
+form.addEventListener('submit', () => localStorage.removeItem(RASCUNHO_KEY));
+
+// Restaura ao carregar a página
+restaurarRascunho();
+
 }); // fim DOMContentLoaded
 </script>
 {% endblock %}
