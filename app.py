@@ -1,4 +1,15 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash, get_flashed_messages, session, jsonify
+import re as _re
+
+def _strip_html(text):
+    """Remove tags HTML e converte entidades básicas para texto puro (para o PDF)."""
+    if not text:
+        return ''
+    text = _re.sub(r'<br\s*/?>', '\n', text, flags=_re.IGNORECASE)
+    text = _re.sub(r'</p>', '\n', text, flags=_re.IGNORECASE)
+    text = _re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"')
+    return _re.sub(r'\n{3,}', '\n\n', text).strip()
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
@@ -1258,7 +1269,7 @@ def gerar_pdf_assinatura(id):
                 canvas_obj.setFillColorRGB(0, 0, 0)
                 canvas_obj.setStrokeColorRGB(0, 0, 0)
                 y -= (box_altura + 0.6*cm)
-            parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
+            parecer_txt = _strip_html(s[PARECER]) if s[PARECER] else 'Sem parecer técnico registrado.'
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)
             max_w = w - 5*cm
@@ -1338,7 +1349,7 @@ def gerar_pdf_assinatura(id):
             y = check_space(5*cm, y)
             y -= 0.6*cm
             # simular quebra de página do parecer
-            parecer_txt = s[PARECER] if s[PARECER] else 'Sem parecer técnico registrado.'
+            parecer_txt = _strip_html(s[PARECER]) if s[PARECER] else 'Sem parecer técnico registrado.'
             linhas_estimadas = max(1, len(parecer_txt) // 80)
             for _ in range(linhas_estimadas):
                 if y - 0.4*cm < LIMITE_Y:

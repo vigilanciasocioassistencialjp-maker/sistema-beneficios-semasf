@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 
 {% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <style>
+/* ── Editor Quill ── */
+.ql-container { font-size: 14px; min-height: 160px; border-radius: 0 0 6px 6px; }
+.ql-toolbar { border-radius: 6px 6px 0 0; background: #f8f9fa; }
+.ql-editor { min-height: 150px; }
+
 /* ── Wizard ── */
 .wizard-header {
     background: var(--semasf-navy);
@@ -401,8 +407,8 @@
                         <h5>Parecer Técnico / Histórico Familiar</h5>
                         <div class="mb-3">
                             <label class="form-label required">Parecer Técnico</label>
-                            <textarea name="parecer" class="form-control" rows="6" id="parecerTexto"
-                                placeholder="Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc." required></textarea>
+                            <div id="quillParecer"></div>
+                            <input type="hidden" name="parecer" id="parecerTexto">
                             <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
                         </div>
 
@@ -690,11 +696,9 @@ document.getElementById('excecao_art64')?.addEventListener('change', function() 
     if (this.checked) {
         caixa.classList.replace('border-warning','border-danger');
         caixa.classList.replace('bg-warning','bg-danger');
-        if (parecer) { parecer.placeholder = 'OBRIGATÓRIO: Justificativa para concessão excepcional (Art. 64)...'; parecer.rows = 7; }
-    } else {
+        } else {
         caixa.classList.replace('border-danger','border-warning');
         caixa.classList.replace('bg-danger','bg-warning');
-        if (parecer) { parecer.placeholder = 'Descreva a situação da família...'; parecer.rows = 6; }
     }
 });
 
@@ -749,13 +753,13 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
         irParaStep(4); return;
     }
     const excecao = document.getElementById('excecao_art64');
-    const parecer = document.getElementById('parecerTexto');
     if (rpcValor > limiteRPC && !excecao?.checked) {
         alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite. Marque a exceção do Art. 64.`);
         return;
     }
-    if (excecao?.checked && parecer.value.trim().length < 20) {
-        parecer.classList.add('is-invalid'); parecer.focus();
+    if (excecao?.checked && quillParecer.getText().trim().length < 20) {
+        document.getElementById('quillParecer').classList.add('is-invalid');
+        quillParecer.focus();
         alert('⚠️ O Parecer Técnico é obrigatório ao marcar o Art. 64.'); return;
     }
 
@@ -824,7 +828,7 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
         </div>
         <div class="card mb-3">
             <div class="card-header"><strong>Parecer Técnico</strong></div>
-            <div class="card-body"><p>${parecer.value}</p></div>
+            <div class="card-body">${quillParecer.root.innerHTML}</div>
         </div>
         ${excecaoHtml}
         <div class="alert alert-info small">
@@ -854,7 +858,7 @@ const form = document.getElementById('solicitacaoForm');
 const CAMPOS_SIMPLES = [
     'nome','cpf','data_nascimento','telefone','email',
     'endereco','numero','complemento','bairro','cep','referencia','cras',
-    'data_escuta','renda_bruta','renda_per_capita','beneficios','parecer'
+    'data_escuta','renda_bruta','renda_per_capita','beneficios'
 ];
 
 function salvarRascunho() {
@@ -864,7 +868,7 @@ function salvarRascunho() {
             const el = form.querySelector(`[name="${nome}"]`);
             if (el) dados[nome] = el.value;
         });
-        // Checkboxes vulnerabilidade e serviços
+        dados.parecer         = quillParecer.root.innerHTML;
         dados.vulnerabilidade = [...form.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value);
         dados.servicos_suas   = [...form.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value);
         dados.excecao_art64   = form.querySelector('#excecao_art64')?.checked || false;
@@ -895,6 +899,11 @@ function restaurarRascunho() {
                 const cb = form.querySelector(`input[name="servicos_suas"][value="${v}"]`);
                 if (cb) { cb.checked = true; algumCampo = true; }
             });
+        }
+        if (dados.parecer && dados.parecer !== '<p><br></p>') {
+            quillParecer.root.innerHTML = dados.parecer;
+            document.getElementById('parecerTexto').value = dados.parecer;
+            algumCampo = true;
         }
         if (dados.excecao_art64) {
             const cb = form.querySelector('#excecao_art64');
@@ -932,5 +941,34 @@ form.addEventListener('submit', () => localStorage.removeItem(RASCUNHO_KEY));
 restaurarRascunho();
 
 }); // fim DOMContentLoaded
+
+// ── Quill (fora do DOMContentLoaded pois precisa do script carregado) ──
+let quillParecer;
+document.addEventListener('DOMContentLoaded', function() {
+    quillParecer = new Quill('#quillParecer', {
+        theme: 'snow',
+        placeholder: 'Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc.',
+        modules: {
+            toolbar: [
+                ['bold', 'italic', 'underline'],
+                [{ 'align': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                ['clean']
+            ]
+        }
+    });
+
+    // Sincroniza HTML com input hidden ao digitar
+    quillParecer.on('text-change', function() {
+        document.getElementById('parecerTexto').value = quillParecer.root.innerHTML;
+        salvarRascunho();
+    });
+
+    // Garante sincronização antes do submit
+    document.getElementById('solicitacaoForm').addEventListener('submit', function() {
+        document.getElementById('parecerTexto').value = quillParecer.root.innerHTML;
+    }, true);
+});
 </script>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 {% endblock %}

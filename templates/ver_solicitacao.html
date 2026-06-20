@@ -115,7 +115,11 @@
                 <strong>Parecer Técnico / Histórico Familiar</strong>
             </div>
             <div class="card-body">
-                <p>{{ solicitacao[20] if solicitacao[20] else 'Sem parecer técnico registrado' }}</p>
+                {% if solicitacao[20] %}
+                    {{ solicitacao[20]|safe }}
+                {% else %}
+                    <p class="text-muted">Sem parecer técnico registrado</p>
+                {% endif %}
             </div>
         </div>
 

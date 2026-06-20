@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<style>
+.ql-container { font-size: 14px; min-height: 140px; border-radius: 0 0 6px 6px; }
+.ql-toolbar  { border-radius: 6px 6px 0 0; background: #f8f9fa; }
+.ql-editor   { min-height: 130px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="card shadow p-4 rounded-4">
@@ -214,7 +223,8 @@
                 <h5>8. PARECER TÉCNICO</h5>
                 <div class="row">
                     <div class="col-12 mb-3">
-                        <textarea name="parecer" class="form-control" rows="5" required>{{ s.parecer if s.parecer else '' }}</textarea>
+                        <div id="quillParecerEditar"></div>
+                        <input type="hidden" name="parecer" id="parecerEditarHidden">
                     </div>
                 </div>
                 <!-- Exceção Art. 64 -->
@@ -354,8 +364,32 @@
         const rpc = document.getElementById('renda_per_capita');
         if (rb) rb.value = desmascarar(rb.value).toFixed(2);
         if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+        document.getElementById('parecerEditarHidden').value = quillParecerEditar.root.innerHTML;
         return true;
-    });
+    }, true);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+const parecerInicial = {{ (s.parecer or '')|tojson }};
+const quillParecerEditar = new Quill('#quillParecerEditar', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            ['bold', 'italic', 'underline'],
+            [{ 'align': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            ['clean']
+        ]
+    }
+});
+// Carrega conteúdo existente
+if (parecerInicial) {
+    quillParecerEditar.root.innerHTML = parecerInicial;
+    document.getElementById('parecerEditarHidden').value = parecerInicial;
+}
+quillParecerEditar.on('text-change', function() {
+    document.getElementById('parecerEditarHidden').value = quillParecerEditar.root.innerHTML;
+});
 </script>
 {% endblock %}
 {% endblock %}
