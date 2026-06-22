@@ -1519,14 +1519,21 @@ def dashboard():
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cadastrada'")
     pendentes = cursor.fetchone()[0]
 
-    # Por CRAS (para gráfico de barras)
+    # Por equipe (CRAS/perfil do técnico que registrou — produção real da equipe)
     cursor.execute("""
-        SELECT cras,
-               COUNT(*) AS total,
-               SUM(CASE WHEN status='Entregue' THEN 1 ELSE 0 END) AS entregues,
-               SUM(CASE WHEN status='Ausente'  THEN 1 ELSE 0 END) AS ausentes
-        FROM solicitacoes
-        GROUP BY cras ORDER BY total DESC
+        SELECT
+            CASE
+                WHEN u.perfil = 'creas'       THEN 'CREAS'
+                WHEN u.perfil = 'cras_volante' THEN 'EQUIPE VOLANTE'
+                WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                ELSE COALESCE(u.cras, s.cras, 'Não informado')
+            END AS equipe,
+            COUNT(*) AS total,
+            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) AS entregues,
+            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) AS ausentes
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        GROUP BY equipe ORDER BY total DESC
     """)
     por_cras = cursor.fetchall()
 
@@ -1815,12 +1822,21 @@ def _coletar_dados_relatorio(mes):
         WHERE excecao_art64=TRUE AND data_solicitacao LIKE %s""", (filtro_like,))
     excecoes = cursor.fetchone()[0]
 
-    cursor.execute("""SELECT cras, COUNT(*),
-            SUM(CASE WHEN status='Entregue' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN status='Ausente' THEN 1 ELSE 0 END)
-        FROM solicitacoes
-        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
-        GROUP BY cras ORDER BY COUNT(*) DESC""",
+    cursor.execute("""
+        SELECT
+            CASE
+                WHEN u.perfil = 'creas'        THEN 'CREAS'
+                WHEN u.perfil = 'cras_volante'  THEN 'EQUIPE VOLANTE'
+                WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                ELSE COALESCE(u.cras, s.cras, 'Não informado')
+            END AS equipe,
+            COUNT(*),
+            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END)
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
+        GROUP BY equipe ORDER BY COUNT(*) DESC""",
         (filtro_like, filtro_like, filtro_like_entrega))
     por_cras = cursor.fetchall()
 
