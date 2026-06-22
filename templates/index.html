@@ -476,7 +476,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small"><i class="fas fa-info-circle"></i> Busca realizada para <strong>Ji-Paraná / RO</strong> via ViaCEP.</p>
+                <p class="text-muted small"><i class="fas fa-info-circle"></i> Busca para <strong>Ji-Paraná / RO</strong> via ViaCEP.</p>
                 <div class="input-group mb-3">
                     <input type="text" id="inputBuscarLogradouro" class="form-control" placeholder="Ex: Rua das Flores, Av. Brasil...">
                     <button type="button" class="btn btn-primary" id="btnConfirmarBuscaCep">
@@ -484,6 +484,11 @@
                     </button>
                 </div>
                 <div id="resultadoBuscaCep"></div>
+                <hr>
+                <p class="small text-muted mb-1"><i class="fas fa-external-link-alt"></i> Não encontrou? Busque diretamente nos Correios:</p>
+                <a href="https://buscacepinter.correios.com.br/app/endereco/index.php" target="_blank" class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="fas fa-search"></i> Buscar CEP no site dos Correios
+                </a>
             </div>
         </div>
     </div>
@@ -672,11 +677,21 @@ document.getElementById('btnConfirmarBuscaCep').addEventListener('click', functi
     if (!logradouro) return;
     const res = document.getElementById('resultadoBuscaCep');
     res.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Buscando...</div>';
-    fetch(`https://viacep.com.br/ws/RO/Ji-Paran%C3%A1/${encodeURIComponent(logradouro)}/json/`)
-        .then(r => r.json())
+    const correiosUrl = `https://buscacepinter.correios.com.br/app/endereco/index.php`;
+    const fallbackHtml = `<div class="alert alert-info small mt-2">
+        <i class="fas fa-external-link-alt"></i>
+        Também pode buscar pelo site oficial dos Correios:
+        <a href="${correiosUrl}" target="_blank" class="alert-link">Buscar CEP nos Correios</a>
+    </div>`;
+
+    fetch(`https://viacep.com.br/ws/RO/Ji-Parana/${encodeURIComponent(logradouro)}/json/`)
+        .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        })
         .then(dados => {
             if (!Array.isArray(dados) || dados.length === 0) {
-                res.innerHTML = '<div class="alert alert-warning">Nenhum endereço encontrado. Tente palavras diferentes.</div>';
+                res.innerHTML = '<div class="alert alert-warning">Nenhum endereço encontrado para Ji-Paraná/RO. Tente palavras diferentes ou use o link abaixo.</div>' + fallbackHtml;
                 return;
             }
             res.innerHTML = '<p class="small text-muted mb-2">Clique para selecionar:</p>' +
@@ -685,7 +700,7 @@ document.getElementById('btnConfirmarBuscaCep').addEventListener('click', functi
                      data-cep="${d.cep}" data-logradouro="${d.logradouro}">
                     <strong>${d.logradouro}</strong><br>
                     <small class="text-muted">CEP: ${d.cep} · ${d.bairro || ''}</small>
-                </div>`).join('');
+                </div>`).join('') + fallbackHtml;
             document.querySelectorAll('.resultado-cep').forEach(el => {
                 el.addEventListener('click', function() {
                     document.getElementById('cep').value = this.dataset.cep;
@@ -695,7 +710,12 @@ document.getElementById('btnConfirmarBuscaCep').addEventListener('click', functi
                 });
             });
         })
-        .catch(() => { res.innerHTML = '<div class="alert alert-danger">Erro ao buscar. Verifique sua conexão.</div>'; });
+        .catch(err => {
+            res.innerHTML = `<div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                Não foi possível buscar via ViaCEP. Use o link abaixo para buscar o CEP diretamente nos Correios.
+            </div>` + fallbackHtml;
+        });
 });
 document.getElementById('inputBuscarLogradouro').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') document.getElementById('btnConfirmarBuscaCep').click();
@@ -959,6 +979,7 @@ document.getElementById('btnConfirmarSalvar').addEventListener('click', function
     const rpc = document.getElementById('renda_per_capita');
     if (rb)  rb.value  = desmascarar(rb.value).toFixed(2);
     if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+    localStorage.removeItem(RASCUNHO_KEY); // limpa antes de enviar
     document.getElementById('solicitacaoForm').submit();
 });
 
