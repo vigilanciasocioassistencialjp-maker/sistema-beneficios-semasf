@@ -16,6 +16,11 @@
             <a href="/gerar_pdf/{{ solicitacao[0] }}" class="btn btn-primary btn-gerar-pdf" target="_blank">
                 <i class="fas fa-print"></i> <span class="pdf-label">Gerar PDF</span>
             </a>
+            {% if solicitacao[29] %}
+            <span class="badge bg-info text-dark fs-6 ms-2">
+                <i class="fas fa-home"></i> Visita Domiciliar Solicitada
+            </span>
+            {% endif %}
             {% set ja_entregue = solicitacao[21] in ('Entregue', 'Ausente') %}
             {% set eh_autor = current_user.id == solicitacao[22] %}
             {% if current_user.perfil == 'admin' or (eh_autor and not ja_entregue) %}
@@ -75,7 +80,11 @@
                     <div class="card-body">
                         <p><strong>Renda Bruta:</strong> R$ {{ solicitacao[14] if solicitacao[14] else 'Não informada' }}</p>
                         <p><strong>Renda Per Capita:</strong> R$ {{ solicitacao[15] if solicitacao[15] else 'Não informada' }}</p>
-                        <p><strong>Benefícios:</strong> {{ solicitacao[16] if solicitacao[16] else 'Nenhum' }}</p>
+                        <p><strong>Benefícios:</strong> {{ solicitacao[16] if solicitacao[16] else 'Nenhum' }}
+                            {% if solicitacao[16] == 'Bolsa Família' and solicitacao[28] %}
+                            — <strong>R$ {{ "%.2f"|format(solicitacao[28])|replace(".", "X")|replace(",", ".")|replace("X", ",") }}</strong>
+                            {% endif %}
+                        </p>
                         <p><strong>Vulnerabilidades:</strong> {{ solicitacao[17] if solicitacao[17] else 'Não informado' }}</p>
                         <p><strong>Serviços SUAS:</strong> {{ solicitacao[24] if solicitacao[24] else 'Não informado' }}</p>
                     </div>

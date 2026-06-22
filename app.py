@@ -575,6 +575,15 @@ def inicio():
         # Exceção Art. 64 - concessão fora dos critérios ordinários
         excecao_art64 = request.form.get("excecao_art64") == "1"
 
+        # Novos campos
+        valor_bolsa_familia = 0.0
+        if beneficios == "Bolsa Família":
+            try:
+                vbf = request.form.get("valor_bolsa_familia", "0").replace('.','').replace(',','.')
+                valor_bolsa_familia = float(vbf or 0)
+            except: pass
+        visita_domiciliar = request.form.get("visita_domiciliar") == "1"
+
         # Validação server-side: renda per capita vs critério legal
         salario_minimo = get_salario_minimo()
         limite_rpc = salario_minimo / 4
@@ -588,9 +597,9 @@ def inicio():
         conexao = get_db()
         cursor = conexao.cursor()
         cursor.execute("""
-            INSERT INTO solicitacoes (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_familiar, renda_bruta, renda_per_capita, beneficios, vulnerabilidade, servicos_suas, parecer, status, data_solicitacao, excecao_art64)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (tecnico, cpf_cripto, cpf_hash, nome, data_nasc, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_json, renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text, servicos_text, parecer, 'Cadastrada', data_solic, excecao_art64))
+            INSERT INTO solicitacoes (tecnico, cpf, cpf_hash, nome, data_nascimento, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_familiar, renda_bruta, renda_per_capita, beneficios, vulnerabilidade, servicos_suas, parecer, status, data_solicitacao, excecao_art64, valor_bolsa_familia, visita_domiciliar)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (tecnico, cpf_cripto, cpf_hash, nome, data_nasc, telefone, email, endereco, numero, complemento, bairro, cep, referencia, cras, data_escuta, total_pessoas, composicao_json, renda_bruta, renda_per_capita, beneficios, vulnerabilidade_text, servicos_text, parecer, 'Cadastrada', data_solic, excecao_art64, valor_bolsa_familia, visita_domiciliar))
         conexao.commit()
         conexao.close()
         
@@ -641,7 +650,7 @@ def solicitacoes(pagina=1):
     total_registros = cursor.fetchone()[0]
 
     cursor.execute(
-        f"SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status "
+        f"SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status, visita_domiciliar "
         f"FROM solicitacoes {where} ORDER BY id DESC LIMIT %s OFFSET %s",
         params + [registros_por_pagina, offset]
     )
@@ -689,10 +698,12 @@ def ver_solicitacao(id):
             s.parecer, s.status, s.tecnico, s.composicao_familiar,
             s.servicos_suas, u_escuta.nome as tecnico_escuta_nome,
             u_entrega.nome as tecnico_entrega_nome,
-            s.num_tentativas
-        FROM solicitacoes s 
-        LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario 
-        LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario 
+            s.num_tentativas,
+            s.valor_bolsa_familia,
+            s.visita_domiciliar
+        FROM solicitacoes s
+        LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
+        LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
         WHERE s.id = %s
     """, (id,))
     s = cursor.fetchone()
@@ -790,6 +801,13 @@ def editar_solicitacao(id):
         servicos     = request.form.getlist("servicos_suas")
         parecer      = request.form.get("parecer", "")
         excecao      = request.form.get("excecao_art64") == "1"
+        visita_dom   = request.form.get("visita_domiciliar") == "1"
+        valor_bf     = 0.0
+        if beneficios == "Bolsa Família":
+            try:
+                vbf = request.form.get("valor_bolsa_familia", "0").replace('.','').replace(',','.')
+                valor_bf = float(vbf or 0)
+            except: pass
 
         membros_nomes    = request.form.getlist("membro_nome[]")
         membros_idades   = request.form.getlist("membro_idade[]")
@@ -826,7 +844,7 @@ def editar_solicitacao(id):
                 total_pessoas=%s, composicao_familiar=%s,
                 renda_bruta=%s, renda_per_capita=%s, beneficios=%s,
                 vulnerabilidade=%s, servicos_suas=%s, parecer=%s,
-                excecao_art64=%s
+                excecao_art64=%s, visita_domiciliar=%s, valor_bolsa_familia=%s
             WHERE id=%s
         """, (
             nome, data_nasc, telefone, email,
@@ -835,7 +853,7 @@ def editar_solicitacao(id):
             len(composicao), json.dumps(composicao, ensure_ascii=False),
             renda_bruta, renda_rpc, beneficios,
             ", ".join(vuls), ", ".join(servicos), parecer,
-            excecao, id
+            excecao, visita_dom, valor_bf, id
         ))
 
         # ── Registrar histórico de alterações ──
@@ -909,7 +927,9 @@ def gerar_pdf_assinatura(id):
             s.referencia,               -- ÍNDICE 26
             s.complemento,              -- ÍNDICE 27
             s.email,                    -- ÍNDICE 28
-            s.excecao_art64             -- ÍNDICE 29
+            s.excecao_art64,            -- ÍNDICE 29
+            s.valor_bolsa_familia,      -- ÍNDICE 30
+            s.visita_domiciliar         -- ÍNDICE 31
         FROM solicitacoes s
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
@@ -953,6 +973,8 @@ def gerar_pdf_assinatura(id):
     COMPLEMENTO = 27
     EMAIL = 28
     EXCECAO_ART64 = 29
+    VALOR_BOLSA_FAMILIA = 30
+    VISITA_DOMICILIAR = 31
     
     # Descriptografar CPF
     cpf_pdf = formatar_cpf(descriptografar_cpf(s[CPF])) if s[CPF] else 'N/A'
@@ -1178,7 +1200,7 @@ def gerar_pdf_assinatura(id):
             for label, valor in [
                 ("Renda Bruta Familiar:", f"R$ {float(rb_val):.2f}" if rb_val > 0 else 'N/A'),
                 ("Renda Per Capita:", f"R$ {float(rpc_val):.2f}" if rpc_val > 0 else 'N/A'),
-                ("Benefícios:", (s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum')[:50]),
+                ("Benefícios:", ((s[BENEFICIOS] if s[BENEFICIOS] else 'Nenhum') + (f" — R$ {float(s[VALOR_BOLSA_FAMILIA]):.2f}" if s[BENEFICIOS] == 'Bolsa Família' and s[VALOR_BOLSA_FAMILIA] else ''))[:60]),
                 ("Vulnerabilidades:", (s[VULNERABILIDADE] if s[VULNERABILIDADE] else 'Não informado')[:50]),
                 ("Serviços SUAS:", (s[SERVICOS_SUAS] if s[SERVICOS_SUAS] else 'Não informado')[:50]),
             ]:
@@ -1268,7 +1290,27 @@ def gerar_pdf_assinatura(id):
                     "e autorização do gestor da SEMASF.")
                 canvas_obj.setFillColorRGB(0, 0, 0)
                 canvas_obj.setStrokeColorRGB(0, 0, 0)
-                y -= (box_altura + 0.6*cm)
+                y -= (box_altura + 0.4*cm)
+
+            # Aviso de visita domiciliar
+            if s[VISITA_DOMICILIAR]:
+                vd_x = 2*cm
+                vd_largura = w - 4*cm
+                vd_altura = 0.9*cm
+                canvas_obj.setStrokeColorRGB(0.0, 0.45, 0.7)
+                canvas_obj.setLineWidth(1)
+                canvas_obj.rect(vd_x, y - vd_altura, vd_largura, vd_altura, fill=0)
+                canvas_obj.setFillColorRGB(0.0, 0.45, 0.7)
+                canvas_obj.setFont("Helvetica-Bold", 8)
+                canvas_obj.drawString(vd_x + 0.3*cm, y - 0.38*cm,
+                    "VISITA DOMICILIAR SOLICITADA — Averiguação das condições relatadas pelo beneficiário.")
+                canvas_obj.setFont("Helvetica", 7.5)
+                canvas_obj.drawString(vd_x + 0.3*cm, y - 0.68*cm,
+                    "O técnico responsável identificou necessidade de verificação in loco antes da concessão.")
+                canvas_obj.setFillColorRGB(0, 0, 0)
+                canvas_obj.setStrokeColorRGB(0, 0, 0)
+                y -= (vd_altura + 0.4*cm)
+
             parecer_txt = _strip_html(s[PARECER]) if s[PARECER] else 'Sem parecer técnico registrado.'
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)

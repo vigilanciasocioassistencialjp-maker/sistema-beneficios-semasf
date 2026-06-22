@@ -63,6 +63,7 @@
                     <th>CRAS</th>
                     <th>Data Solicitação</th>
                     <th>Status</th>
+                    <th>Marcadores</th>
                     <th style="width: 180px">Ações</th>
                 </tr>
             </thead>
@@ -89,6 +90,13 @@
                             {% endif %}
                             {{ s[7] }}
                         </span>
+                    </td>
+                    <td>
+                        {% if s[8] %}
+                        <span class="badge bg-info text-dark" title="Visita domiciliar solicitada">
+                            <i class="fas fa-home"></i> Visita
+                        </span>
+                        {% endif %}
                     </td>
                     <td>
                         <div class="btn-group btn-group-sm" role="group">

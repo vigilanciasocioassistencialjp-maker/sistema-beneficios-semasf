@@ -179,6 +179,28 @@ def criar_banco():
             cursor.execute("ALTER TABLE solicitacoes ADD COLUMN num_tentativas INTEGER DEFAULT 1")
             print("✅ Coluna num_tentativas adicionada!")
 
+        # =====================================================
+        # MIGRAÇÃO: Adiciona valor_bolsa_familia
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'solicitacoes' AND column_name = 'valor_bolsa_familia'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE solicitacoes ADD COLUMN valor_bolsa_familia REAL DEFAULT 0")
+            print("✅ Coluna valor_bolsa_familia adicionada!")
+
+        # =====================================================
+        # MIGRAÇÃO: Adiciona visita_domiciliar
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'solicitacoes' AND column_name = 'visita_domiciliar'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE solicitacoes ADD COLUMN visita_domiciliar BOOLEAN DEFAULT FALSE")
+            print("✅ Coluna visita_domiciliar adicionada!")
+
         # Tabela de histórico de edições
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS historico_edicoes (

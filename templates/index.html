@@ -225,7 +225,13 @@
                             </div>
                             <div class="col-md-3 mb-3">
                                 <label class="form-label required">CEP</label>
-                                <input type="text" name="cep" class="form-control" id="cep" required>
+                                <div class="input-group">
+                                    <input type="text" name="cep" class="form-control" id="cep" placeholder="00000-000" required>
+                                    <button type="button" class="btn btn-outline-secondary" id="btnBuscarCep" title="Buscar CEP pelo logradouro">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Digite o CEP ou clique em 🔍 para buscar pelo endereço</small>
                             </div>
                             <div class="col-md-4 mb-3">
                                 <label class="form-label">Ponto de Referência</label>
@@ -349,13 +355,18 @@
                             </div>
                             <div class="col-md-4 mb-3">
                                 <label class="form-label required">Benefícios Recebidos</label>
-                                <select name="beneficios" class="form-select" required>
+                                <select name="beneficios" class="form-select" id="selectBeneficios" required>
                                     <option value="">Selecione</option>
                                     <option value="Bolsa Família">Bolsa Família</option>
                                     <option value="BPC">BPC (Benefício de Prestação Continuada)</option>
                                     <option value="Outros">Outros</option>
                                     <option value="Nenhum">Nenhum</option>
                                 </select>
+                            </div>
+                            <div class="col-md-4 mb-3" id="divValorBF" style="display:none;">
+                                <label class="form-label required">Valor do Bolsa Família (R$)</label>
+                                <input type="text" name="valor_bolsa_familia" id="valorBF" class="form-control" placeholder="0,00">
+                                <small class="text-muted">Informe o valor mensal recebido</small>
                             </div>
                         </div>
                     </div>
@@ -412,7 +423,20 @@
                             <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
                         </div>
 
-                        <div class="border border-warning rounded p-3 bg-warning bg-opacity-10" id="divExcecao">
+                        <div class="border border-info rounded p-3 bg-info bg-opacity-10 mt-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="visita_domiciliar" id="visita_domiciliar" value="1">
+                                <label class="form-check-label fw-bold" for="visita_domiciliar">
+                                    <i class="fas fa-home text-info"></i>
+                                    Solicitar <strong>Visita Domiciliar</strong> para averiguação
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">
+                                Marque quando houver indícios de inconsistência no relato ou necessidade de verificação das condições reais da família.
+                            </small>
+                        </div>
+
+                        <div class="border border-warning rounded p-3 bg-warning bg-opacity-10 mt-3" id="divExcecao">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1">
                                 <label class="form-check-label fw-bold" for="excecao_art64">
@@ -441,6 +465,28 @@
             </form>
         </div><!-- wizard-body -->
     </div><!-- card -->
+</div>
+
+<!-- Modal Busca CEP -->
+<div class="modal fade" id="modalBuscarCep" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-search"></i> Buscar CEP por Endereço</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small"><i class="fas fa-info-circle"></i> Busca realizada para <strong>Ji-Paraná / RO</strong> via ViaCEP.</p>
+                <div class="input-group mb-3">
+                    <input type="text" id="inputBuscarLogradouro" class="form-control" placeholder="Ex: Rua das Flores, Av. Brasil...">
+                    <button type="button" class="btn btn-primary" id="btnConfirmarBuscaCep">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+                <div id="resultadoBuscaCep"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal de Revisão -->
@@ -585,6 +631,74 @@ document.getElementById('cep').addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'');
     v = v.replace(/(\d{5})(\d)/,'$1-$2');
     this.value = v;
+    // Auto-preenche endereço ao completar 8 dígitos
+    if (v.length === 8) {
+        fetch(`https://viacep.com.br/ws/${v}/json/`)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.erro) {
+                    const end = document.querySelector('input[name="endereco"]');
+                    if (end && !end.value) end.value = d.logradouro || '';
+                }
+            }).catch(() => {});
+    }
+});
+
+// ── Valor Bolsa Família ────────────────────────────────────────────
+document.getElementById('selectBeneficios').addEventListener('change', function() {
+    const div = document.getElementById('divValorBF');
+    const input = document.getElementById('valorBF');
+    if (this.value === 'Bolsa Família') {
+        div.style.display = 'block';
+        input.required = true;
+    } else {
+        div.style.display = 'none';
+        input.required = false;
+        input.value = '';
+    }
+});
+document.getElementById('valorBF').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    if (!v) { this.value = ''; return; }
+    this.value = (parseInt(v)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
+});
+
+// ── Busca CEP por logradouro (ViaCEP) ─────────────────────────────
+document.getElementById('btnBuscarCep').addEventListener('click', function() {
+    new bootstrap.Modal(document.getElementById('modalBuscarCep')).show();
+});
+document.getElementById('btnConfirmarBuscaCep').addEventListener('click', function() {
+    const logradouro = document.getElementById('inputBuscarLogradouro').value.trim();
+    if (!logradouro) return;
+    const res = document.getElementById('resultadoBuscaCep');
+    res.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Buscando...</div>';
+    fetch(`https://viacep.com.br/ws/RO/Ji-Paran%C3%A1/${encodeURIComponent(logradouro)}/json/`)
+        .then(r => r.json())
+        .then(dados => {
+            if (!Array.isArray(dados) || dados.length === 0) {
+                res.innerHTML = '<div class="alert alert-warning">Nenhum endereço encontrado. Tente palavras diferentes.</div>';
+                return;
+            }
+            res.innerHTML = '<p class="small text-muted mb-2">Clique para selecionar:</p>' +
+                dados.map(d => `
+                <div class="list-group-item list-group-item-action p-2 mb-1 border rounded resultado-cep" style="cursor:pointer"
+                     data-cep="${d.cep}" data-logradouro="${d.logradouro}">
+                    <strong>${d.logradouro}</strong><br>
+                    <small class="text-muted">CEP: ${d.cep} · ${d.bairro || ''}</small>
+                </div>`).join('');
+            document.querySelectorAll('.resultado-cep').forEach(el => {
+                el.addEventListener('click', function() {
+                    document.getElementById('cep').value = this.dataset.cep;
+                    const end = document.querySelector('input[name="endereco"]');
+                    if (end && !end.value) end.value = this.dataset.logradouro;
+                    bootstrap.Modal.getInstance(document.getElementById('modalBuscarCep')).hide();
+                });
+            });
+        })
+        .catch(() => { res.innerHTML = '<div class="alert alert-danger">Erro ao buscar. Verifique sua conexão.</div>'; });
+});
+document.getElementById('inputBuscarLogradouro').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('btnConfirmarBuscaCep').click();
 });
 
 // ── Composição familiar ────────────────────────────────────────────
@@ -819,7 +933,7 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
                     <div class="card-body">
                         <p><strong>Renda Familiar:</strong> R$ ${document.getElementById('renda_bruta').value}</p>
                         <p><strong>Renda Per Capita:</strong> R$ ${document.getElementById('renda_per_capita').value}</p>
-                        <p><strong>Benefícios:</strong> ${document.querySelector('select[name="beneficios"]').value}</p>
+                        <p><strong>Benefícios:</strong> ${document.querySelector('select[name="beneficios"]').value}${document.getElementById('selectBeneficios').value==='Bolsa Família'?' — R$ '+document.getElementById('valorBF').value:''}</p>
                         <p><strong>Vulnerabilidades:</strong> ${vuls}</p>
                         <p><strong>Serviços SUAS:</strong> ${servs}</p>
                     </div>
@@ -831,6 +945,7 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
             <div class="card-body">${quillParecer.root.innerHTML}</div>
         </div>
         ${excecaoHtml}
+        ${document.getElementById('visita_domiciliar')?.checked ? '<div class="alert alert-info py-2"><i class="fas fa-home"></i> <strong>Visita domiciliar solicitada</strong> para averiguação das condições relatadas.</div>' : ''}
         <div class="alert alert-info small">
             <i class="fas fa-info-circle"></i>
             Após confirmar, a solicitação será salva e um PDF poderá ser gerado.
@@ -858,7 +973,7 @@ const form = document.getElementById('solicitacaoForm');
 const CAMPOS_SIMPLES = [
     'nome','cpf','data_nascimento','telefone','email',
     'endereco','numero','complemento','bairro','cep','referencia','cras',
-    'data_escuta','renda_bruta','renda_per_capita','beneficios'
+    'data_escuta','renda_bruta','renda_per_capita','beneficios','valor_bolsa_familia'
 ];
 
 function salvarRascunho() {
@@ -871,7 +986,8 @@ function salvarRascunho() {
         dados.parecer         = quillParecer.root.innerHTML;
         dados.vulnerabilidade = [...form.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value);
         dados.servicos_suas   = [...form.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value);
-        dados.excecao_art64   = form.querySelector('#excecao_art64')?.checked || false;
+        dados.excecao_art64     = form.querySelector('#excecao_art64')?.checked || false;
+        dados.visita_domiciliar = form.querySelector('#visita_domiciliar')?.checked || false;
         localStorage.setItem(RASCUNHO_KEY, JSON.stringify(dados));
     } catch(e) {}
 }
@@ -908,6 +1024,15 @@ function restaurarRascunho() {
         if (dados.excecao_art64) {
             const cb = form.querySelector('#excecao_art64');
             if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); algumCampo = true; }
+        }
+        if (dados.visita_domiciliar) {
+            const cb = form.querySelector('#visita_domiciliar');
+            if (cb) { cb.checked = true; algumCampo = true; }
+        }
+        // Reativa campo valor BF se benefício era Bolsa Família
+        const selBen = form.querySelector('#selectBeneficios');
+        if (selBen && selBen.value === 'Bolsa Família') {
+            selBen.dispatchEvent(new Event('change'));
         }
 
         if (algumCampo) {

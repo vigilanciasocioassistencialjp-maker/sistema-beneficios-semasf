@@ -175,11 +175,16 @@
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label required">Benefícios Recebidos</label>
-                        <select name="beneficios" class="form-select" required>
+                        <select name="beneficios" id="selectBeneficiosEditar" class="form-select" required>
                             {% for b in ['Bolsa Família', 'BPC', 'Outros', 'Nenhum'] %}
                             <option value="{{ b }}" {% if s.beneficios == b %}selected{% endif %}>{{ b }}</option>
                             {% endfor %}
                         </select>
+                    </div>
+                    <div class="col-md-4 mb-3" id="divValorBFEditar" style="{{ 'display:block' if s.beneficios == 'Bolsa Família' else 'display:none' }}">
+                        <label class="form-label">Valor do Bolsa Família (R$)</label>
+                        <input type="text" name="valor_bolsa_familia" id="valorBFEditar" class="form-control"
+                               value="{{ '%.2f'|format(s.valor_bolsa_familia)|replace('.', ',')|replace(',', '.', 1) if s.valor_bolsa_familia else '' }}">
                     </div>
                 </div>
             </div>
@@ -230,6 +235,16 @@
                 <!-- Exceção Art. 64 -->
                 <div class="row">
                     <div class="col-12">
+                        <div class="border border-info bg-info bg-opacity-10 rounded p-3 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="visita_domiciliar" id="visita_domiciliar" value="1" {% if s.visita_domiciliar %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="visita_domiciliar">
+                                    <i class="fas fa-home text-info"></i>
+                                    Solicitar <strong>Visita Domiciliar</strong> para averiguação
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">Marque quando houver indícios de inconsistência no relato.</small>
+                        </div>
                         <div class="border {% if s.excecao_art64 %}border-danger bg-danger{% else %}border-warning bg-warning{% endif %} bg-opacity-10 rounded p-3" id="divExcecao">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1" {% if s.excecao_art64 %}checked{% endif %}>
@@ -356,6 +371,23 @@
     });
     document.querySelectorAll('.remover-membro').forEach(btn => {
         btn.addEventListener('click', function() { btn.closest('.membro-familia').remove(); calcularRPC(); });
+    });
+
+    // Valor Bolsa Família
+    document.getElementById('selectBeneficiosEditar').addEventListener('change', function() {
+        const div = document.getElementById('divValorBFEditar');
+        const inp = document.getElementById('valorBFEditar');
+        if (this.value === 'Bolsa Família') {
+            div.style.display = 'block';
+        } else {
+            div.style.display = 'none';
+            inp.value = '';
+        }
+    });
+    document.getElementById('valorBFEditar').addEventListener('input', function() {
+        let v = this.value.replace(/\D/g,'');
+        if (!v) { this.value = ''; return; }
+        this.value = (parseInt(v)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
     });
 
     // Submit: desmascarar antes de enviar
