@@ -1315,21 +1315,31 @@ def gerar_pdf_assinatura(id):
             text_object = canvas_obj.beginText(2.5*cm, y)
             text_object.setFont("Helvetica", 9)
             max_w = w - 5*cm
-            linha = ""
-            for palavra in parecer_txt.split():
-                teste = linha + " " + palavra if linha else palavra
-                if canvas_obj.stringWidth(teste, "Helvetica", 9) <= max_w:
-                    linha = teste
-                else:
+
+            for paragrafo in parecer_txt.split('\n'):
+                paragrafo = paragrafo.strip()
+                # Linha em branco entre parágrafos
+                if not paragrafo:
+                    text_object.textLine('')
+                    continue
+                linha = ""
+                for palavra in paragrafo.split():
+                    teste = linha + " " + palavra if linha else palavra
+                    if canvas_obj.stringWidth(teste, "Helvetica", 9) <= max_w:
+                        linha = teste
+                    else:
+                        text_object.textLine(linha)
+                        linha = palavra
+                        if text_object.getY() < LIMITE_Y:
+                            canvas_obj.drawText(text_object)
+                            y = nova_pagina()
+                            text_object = canvas_obj.beginText(2.5*cm, y)
+                            text_object.setFont("Helvetica", 9)
+                if linha:
                     text_object.textLine(linha)
-                    linha = palavra
-                    if text_object.getY() < LIMITE_Y:
-                        canvas_obj.drawText(text_object)
-                        y = nova_pagina()
-                        text_object = canvas_obj.beginText(2.5*cm, y)
-                        text_object.setFont("Helvetica", 9)
-            if linha:
-                text_object.textLine(linha)
+                # Espaço entre parágrafos
+                text_object.textLine('')
+
             canvas_obj.drawText(text_object)
             y = text_object.getY() - 1*cm
 
