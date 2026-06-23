@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
 <style>
 .ql-container { font-size: 14px; min-height: 140px; border-radius: 0 0 6px 6px; }
 .ql-toolbar  { border-radius: 6px 6px 0 0; background: #f8f9fa; }
@@ -30,7 +30,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" id="editarForm">
+        <form method="POST" action="/editar_solicitacao/{{ s.id }}" id="editarForm">
 
             <!-- 1. DADOS PESSOAIS -->
             <div class="form-section">
@@ -390,17 +390,23 @@
         this.value = (parseInt(v)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
     });
 
-    // Submit: desmascarar antes de enviar
-    document.getElementById('editarForm').addEventListener('submit', function() {
+    // Submit: desmascarar e desabilitar botão para evitar duplo envio
+    document.getElementById('editarForm').addEventListener('submit', function(e) {
         const rb = document.getElementById('renda_bruta');
         const rpc = document.getElementById('renda_per_capita');
         if (rb) rb.value = desmascarar(rb.value).toFixed(2);
         if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
         document.getElementById('parecerEditarHidden').value = quillParecerEditar.root.innerHTML;
-        return true;
+
+        // Desabilita o botão imediatamente para evitar duplo clique
+        const btn = this.querySelector('button[type="submit"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+        }
     }, true);
 </script>
-<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
 <script>
 const parecerInicial = {{ (s.parecer or '')|tojson }};
 const quillParecerEditar = new Quill('#quillParecerEditar', {
