@@ -256,14 +256,15 @@ def enviar_backup_email():
 scheduler = BackgroundScheduler(timezone='America/Porto_Velho')
 scheduler.add_job(
     func=enviar_backup_email,
-    trigger=CronTrigger(hour=0, minute=0),
+    trigger=CronTrigger(hour=8, minute=0),
     id='backup_diario',
     name='Backup diario por e-mail',
-    replace_existing=True
+    replace_existing=True,
+    misfire_grace_time=3600  # se perder as 8h, executa em até 1h depois
 )
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
-print("Agendador de backup iniciado (todo dia a meia-noite, horario de Rondonia)")
+print("Agendador de backup iniciado (todo dia às 8h, horario de Rondonia)")
 
 # =====================================================
 # HTTPS
