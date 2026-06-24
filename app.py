@@ -1669,12 +1669,18 @@ def relatorio():
         SELECT s.nome,
                s.cpf,
                s.bairro,
-               s.cras,
+               CASE
+                   WHEN u_esc.perfil = 'creas'            THEN 'CREAS'
+                   WHEN u_esc.perfil = 'cras_volante'      THEN 'EQUIPE VOLANTE'
+                   WHEN u_esc.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                   ELSE COALESCE(u_esc.cras, s.cras, 'Não informado')
+               END AS unidade,
                s.status,
                s.data_entrega,
-               COALESCE(u.nome, s.tecnico_entrega) as tecnico
+               COALESCE(u_ent.nome, s.tecnico_entrega) as tecnico
         FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+        LEFT JOIN usuarios u_esc ON s.tecnico = u_esc.usuario
+        LEFT JOIN usuarios u_ent ON s.tecnico_entrega = u_ent.usuario
         WHERE s.status IN ('Entregue', 'Ausente')
           AND (s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s)
         ORDER BY s.id DESC
