@@ -1630,15 +1630,22 @@ def relatorio():
     """, (filtro_like,))
     total_excecoes = cursor.fetchone()[0]
 
-    # Por CRAS
+    # Por Unidade (equipe do técnico que fez a escuta)
     cursor.execute("""
-        SELECT cras,
-               COUNT(*) as total,
-               SUM(CASE WHEN status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-               SUM(CASE WHEN status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
-        FROM solicitacoes
-        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
-        GROUP BY cras
+        SELECT
+            CASE
+                WHEN u.perfil = 'creas'             THEN 'CREAS'
+                WHEN u.perfil = 'cras_volante'       THEN 'EQUIPE VOLANTE'
+                WHEN u.perfil IN ('admin','gestor')  THEN 'ADMINISTRAÇÃO'
+                ELSE COALESCE(u.cras, s.cras, 'Não informado')
+            END AS unidade,
+            COUNT(*) as total,
+            SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
+            SUM(CASE WHEN s.status = 'Ausente'  THEN 1 ELSE 0 END) as ausentes
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
+        GROUP BY unidade
         ORDER BY total DESC
     """, (filtro_like, filtro_like, filtro_like_entrega))
     por_cras = cursor.fetchall()
@@ -2021,7 +2028,7 @@ def relatorio_pdf(tipo):
         # Tabela Por CRAS
         c.setFont("Helvetica-Bold", 11)
         c.setFillColorRGB(0, 0.3, 0)
-        c.drawString(2*cm, y, "DISTRIBUIÇÃO POR CRAS")
+        c.drawString(2*cm, y, "DISTRIBUIÇÃO POR UNIDADE RESPONSÁVEL")
         c.setFillColorRGB(0, 0, 0)
         y -= 0.6*cm
         c.setFont("Helvetica-Bold", 9)
