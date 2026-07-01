@@ -244,14 +244,18 @@
                         <h5>CRAS e Data da Escuta</h5>
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label required">CRAS de Referência</label>
-                                {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante'] %}
+                                <label class="form-label required">Unidade Responsável</label>
+                                {% if current_user.perfil in ['gestor', 'admin'] %}
                                     <select name="cras" class="form-select" id="cras" required>
                                         <option value="">Selecione o CRAS</option>
                                         {% for c in bairros_por_cras.keys() %}
                                         <option value="{{ c }}">{{ c }}</option>
                                         {% endfor %}
                                     </select>
+                                {% elif current_user.perfil == 'creas' %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="CREAS" readonly style="background-color:#e9ecef">
+                                {% elif current_user.perfil == 'cras_volante' %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="EQUIPE VOLANTE" readonly style="background-color:#e9ecef">
                                 {% else %}
                                     <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color:#e9ecef">
                                 {% endif %}

@@ -101,12 +101,20 @@
                         <input type="text" name="cep" class="form-control" value="{{ s.cep if s.cep else '' }}">
                     </div>
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">CRAS</label>
-                        <select name="cras" id="cras_editar" class="form-select">
-                            {% for c in bairros_por_cras.keys() %}
-                            <option value="{{ c }}" {% if s.cras == c %}selected{% endif %}>{{ c }}</option>
-                            {% endfor %}
-                        </select>
+                        <label class="form-label">Unidade Responsável</label>
+                        {% if current_user.perfil in ['gestor', 'admin'] %}
+                            <select name="cras" id="cras_editar" class="form-select">
+                                {% for c in bairros_por_cras.keys() %}
+                                <option value="{{ c }}" {% if s.cras == c %}selected{% endif %}>{{ c }}</option>
+                                {% endfor %}
+                            </select>
+                        {% elif current_user.perfil == 'creas' %}
+                            <input type="text" name="cras" id="cras_editar" class="form-control" value="CREAS" readonly style="background-color:#e9ecef">
+                        {% elif current_user.perfil == 'cras_volante' %}
+                            <input type="text" name="cras" id="cras_editar" class="form-control" value="EQUIPE VOLANTE" readonly style="background-color:#e9ecef">
+                        {% else %}
+                            <input type="text" name="cras" id="cras_editar" class="form-control" value="{{ s.cras }}" readonly style="background-color:#e9ecef">
+                        {% endif %}
                     </div>
                 </div>
                 <div class="row">
