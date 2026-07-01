@@ -623,54 +623,109 @@ def solicitacoes(pagina=1):
     registros_por_pagina = 20
     offset = (pagina - 1) * registros_por_pagina
 
-    # Parâmetros de busca server-side
-    busca_nome   = request.args.get('busca_nome', '').strip()
-    busca_status = request.args.get('busca_status', '').strip()
+    busca_nome              = request.args.get('busca_nome', '').strip()
+    busca_status            = request.args.get('busca_status', '').strip()
+    busca_cpf               = request.args.get('busca_cpf', '').strip()
+    busca_unidade           = request.args.get('busca_unidade', '').strip()
+    busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
+    busca_tecnico_entrega   = request.args.get('busca_tecnico_entrega', '').strip()
+    busca_tecnico_qualquer  = request.args.get('busca_tecnico_qualquer', '').strip()
 
-    # Monta cláusulas WHERE dinamicamente
     filtros = []
     params  = []
+    join_usuario = ""
 
     if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante']:
-        filtros.append("cras = %s")
+        filtros.append("s.cras = %s")
         params.append(current_user.cras)
 
     if busca_nome:
-        filtros.append("nome ILIKE %s")
+        filtros.append("s.nome ILIKE %s")
         params.append(f"%{busca_nome}%")
 
-    if busca_status:
-        filtros.append("status = %s")
+    if busca_status == 'Visita':
+        filtros.append("s.visita_domiciliar = TRUE")
+    elif busca_status:
+        filtros.append("s.status = %s")
         params.append(busca_status)
+
+    if busca_tecnico_escuta:
+        filtros.append("s.tecnico = %s")
+        params.append(busca_tecnico_escuta)
+
+    if busca_tecnico_entrega:
+        filtros.append("s.tecnico_entrega = %s")
+        params.append(busca_tecnico_entrega)
+
+    if busca_tecnico_qualquer:
+        filtros.append("(s.tecnico = %s OR s.tecnico_entrega = %s)")
+        params.extend([busca_tecnico_qualquer, busca_tecnico_qualquer])
+
+    if busca_unidade:
+        join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
+        if busca_unidade == 'CREAS':
+            filtros.append("u.perfil = 'creas'")
+        elif busca_unidade == 'EQUIPE VOLANTE':
+            filtros.append("u.perfil = 'cras_volante'")
+        elif busca_unidade == 'ADMINISTRAÇÃO':
+            filtros.append("u.perfil IN ('admin', 'gestor')")
+        else:
+            filtros.append("COALESCE(u.cras, s.cras) = %s")
+            params.append(busca_unidade)
 
     where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
 
     conexao = get_db()
     cursor  = conexao.cursor()
 
-    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where}", params)
-    total_registros = cursor.fetchone()[0]
+    # Listas para dropdowns
+    cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
+    lista_tecnicos = cursor.fetchall()
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
 
-    cursor.execute(
-        f"SELECT id, tecnico, nome, cpf, bairro, cras, data_solicitacao, status, visita_domiciliar "
-        f"FROM solicitacoes {where} ORDER BY id DESC LIMIT %s OFFSET %s",
-        params + [registros_por_pagina, offset]
-    )
-    dados = cursor.fetchall()
+    base_query = f"FROM solicitacoes s {join_usuario} {where}"
+
+    # Busca por CPF: descriptografa em Python
+    if busca_cpf:
+        cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
+        cursor.execute(
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"{base_query} ORDER BY s.id DESC",
+            params
+        )
+        todos = cursor.fetchall()
+        dados_filtrados = []
+        for row in todos:
+            row = list(row)
+            cpf_desc = descriptografar_cpf(row[3]) if row[3] else ''
+            if cpf_limpo_busca in cpf_desc:
+                row[3] = formatar_cpf(cpf_desc)
+                dados_filtrados.append(tuple(row))
+        total_registros = len(dados_filtrados)
+        dados = dados_filtrados[(pagina - 1) * registros_por_pagina: pagina * registros_por_pagina]
+    else:
+        cursor.execute(f"SELECT COUNT(*) {base_query}", params)
+        total_registros = cursor.fetchone()[0]
+        cursor.execute(
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"{base_query} ORDER BY s.id DESC LIMIT %s OFFSET %s",
+            params + [registros_por_pagina, offset]
+        )
+        dados_raw = cursor.fetchall()
+        dados = []
+        for row in dados_raw:
+            row = list(row)
+            if row[3]:
+                row[3] = formatar_cpf(descriptografar_cpf(row[3]))
+            dados.append(tuple(row))
+
     conexao.close()
 
     total_paginas = max(1, (total_registros + registros_por_pagina - 1) // registros_por_pagina)
 
-    dados_formatados = []
-    for row in dados:
-        row = list(row)
-        if row[3]:
-            row[3] = formatar_cpf(descriptografar_cpf(row[3]))
-        dados_formatados.append(tuple(row))
-
     return render_template(
         "solicitacoes.html",
-        solicitacoes=dados_formatados,
+        solicitacoes=dados,
         user_perfil=current_user.perfil,
         datetime=datetime,
         pagina_atual=pagina,
@@ -678,6 +733,13 @@ def solicitacoes(pagina=1):
         total_registros=total_registros,
         busca_nome=busca_nome,
         busca_status=busca_status,
+        busca_cpf=busca_cpf,
+        busca_unidade=busca_unidade,
+        busca_tecnico_escuta=busca_tecnico_escuta,
+        busca_tecnico_entrega=busca_tecnico_entrega,
+        busca_tecnico_qualquer=busca_tecnico_qualquer,
+        lista_tecnicos=lista_tecnicos,
+        lista_unidades=lista_unidades,
         current_user=current_user
     )
 
@@ -1725,55 +1787,6 @@ def relatorio():
             'ultima_entrega': str(row[4]) if row[4] else 'N/A',
         })
 
-    # ===== BUSCA FILTRADA DE SOLICITAÇÕES =====
-    busca_nome = request.args.get('busca_nome', '').strip()
-    busca_cpf = request.args.get('busca_cpf', '').strip()
-    busca_bairro = request.args.get('busca_bairro', '').strip()
-    busca_status = request.args.get('busca_status', '').strip()
-    tem_busca = bool(busca_nome or busca_cpf or busca_bairro or busca_status)
-
-    resultados_busca = []
-    if tem_busca:
-        conexao2 = get_db()
-        cursor2 = conexao2.cursor()
-        condicoes = []
-        params = []
-        if busca_nome:
-            condicoes.append("s.nome ILIKE %s")
-            params.append(f"%{busca_nome}%")
-        if busca_cpf:
-            # CPF é criptografado; buscar pelo hash
-            cpf_limpo = ''.join(filter(str.isdigit, busca_cpf))
-            if cpf_limpo:
-                condicoes.append("s.cpf_hash = %s")
-                params.append(hash_cpf(cpf_limpo))
-        if busca_bairro:
-            condicoes.append("s.bairro ILIKE %s")
-            params.append(f"%{busca_bairro}%")
-        if busca_status:
-            condicoes.append("s.status = %s")
-            params.append(busca_status)
-
-        where_clause = " AND ".join(condicoes) if condicoes else "1=1"
-        cursor2.execute(f"""
-            SELECT s.id, s.nome, s.cpf, s.bairro, s.cras, s.status,
-                   s.data_solicitacao, s.data_entrega,
-                   COALESCE(u.nome, s.tecnico) as tecnico
-            FROM solicitacoes s
-            LEFT JOIN usuarios u ON s.tecnico = u.usuario
-            WHERE {where_clause}
-            ORDER BY s.id DESC
-            LIMIT 100
-        """, tuple(params))
-        raw_busca = cursor2.fetchall()
-        conexao2.close()
-
-        for row in raw_busca:
-            row = list(row)
-            if row[2]:
-                row[2] = formatar_cpf(descriptografar_cpf(row[2]))
-            resultados_busca.append(tuple(row))
-
     return render_template(
         "relatorio.html",
         mes=mes,
@@ -1787,12 +1800,6 @@ def relatorio():
         por_tecnico=por_tecnico,
         ultimas_entregas=ultimas_entregas,
         recorrencia=recorrencia,
-        resultados_busca=resultados_busca,
-        tem_busca=tem_busca,
-        busca_nome=busca_nome,
-        busca_cpf=busca_cpf,
-        busca_bairro=busca_bairro,
-        busca_status=busca_status,
         datetime=datetime,
         current_user=current_user
     )

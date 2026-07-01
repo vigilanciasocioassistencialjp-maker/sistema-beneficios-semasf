@@ -17,38 +17,89 @@
     </div>
 
     <!-- Filtros server-side -->
-    <form method="GET" action="{{ url_for('solicitacoes') }}" class="row mb-4 g-2 align-items-end">
-        <div class="col-md-3">
-            <label class="form-label fw-bold small text-muted">FILTRAR POR STATUS</label>
-            <select name="busca_status" class="form-select" onchange="this.form.submit()">
-                <option value="">Todos os Status</option>
-                <option value="Cadastrada" {% if busca_status == 'Cadastrada' %}selected{% endif %}>🟡 Cadastrada</option>
-                <option value="Entregue"   {% if busca_status == 'Entregue'   %}selected{% endif %}>✅ Entregue</option>
-                <option value="Ausente"    {% if busca_status == 'Ausente'    %}selected{% endif %}>❌ Ausente</option>
-            </select>
-        </div>
-        <div class="col-md-6">
-            <label class="form-label fw-bold small text-muted">BUSCAR POR NOME</label>
-            <div class="input-group">
-                <span class="input-group-text bg-white">
-                    <i class="fas fa-search text-muted"></i>
-                </span>
-                <input type="text" name="busca_nome" class="form-control"
-                       placeholder="Digite o nome do beneficiário..."
-                       value="{{ busca_nome }}">
-            </div>
-        </div>
-        <div class="col-md-auto">
-            <button type="submit" class="btn btn-primary">
-                <i class="fas fa-search"></i> Buscar
-            </button>
-            {% if busca_nome or busca_status %}
-            <a href="{{ url_for('solicitacoes') }}" class="btn btn-secondary ms-1">
-                <i class="fas fa-eraser"></i> Limpar
-            </a>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="fas fa-filter"></i> Filtros de Busca
+            {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer %}
+            <span class="badge bg-warning text-dark ms-2">Filtros ativos</span>
             {% endif %}
         </div>
-    </form>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('solicitacoes') }}" class="row g-2">
+                <!-- Linha 1 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">NOME DO BENEFICIÁRIO</label>
+                    <input type="text" name="busca_nome" class="form-control"
+                           placeholder="Digite o nome..." value="{{ busca_nome }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">CPF</label>
+                    <input type="text" name="busca_cpf" class="form-control"
+                           placeholder="000.000.000-00" value="{{ busca_cpf }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold small text-muted">STATUS</label>
+                    <select name="busca_status" class="form-select">
+                        <option value="">Todos</option>
+                        <option value="Cadastrada" {% if busca_status == 'Cadastrada' %}selected{% endif %}>🟡 Cadastrada</option>
+                        <option value="Entregue"   {% if busca_status == 'Entregue'   %}selected{% endif %}>✅ Entregue</option>
+                        <option value="Ausente"    {% if busca_status == 'Ausente'    %}selected{% endif %}>❌ Ausente</option>
+                        <option value="Visita"     {% if busca_status == 'Visita'     %}selected{% endif %}>🏠 Visita Domiciliar</option>
+                    </select>
+                </div>
+                {% if current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante'] %}
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">UNIDADE RESPONSÁVEL</label>
+                    <select name="busca_unidade" class="form-select">
+                        <option value="">Todas as Unidades</option>
+                        {% for u in lista_unidades %}
+                        <option value="{{ u }}" {% if busca_unidade == u %}selected{% endif %}>{{ u }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Linha 2 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ESCUTA)</label>
+                    <select name="busca_tecnico_escuta" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_escuta == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ENTREGA)</label>
+                    <select name="busca_tecnico_entrega" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_entrega == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ESCUTA OU ENTREGA)</label>
+                    <select name="busca_tecnico_qualquer" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_qualquer == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <!-- Botões -->
+                <div class="col-12 d-flex gap-2 mt-1">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                    {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer %}
+                    <a href="{{ url_for('solicitacoes') }}" class="btn btn-secondary">
+                        <i class="fas fa-eraser"></i> Limpar Filtros
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Tabela -->
     <div class="table-responsive">
@@ -147,7 +198,7 @@
         <ul class="pagination justify-content-center">
             {% if pagina_atual > 1 %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, busca_nome=busca_nome, busca_status=busca_status) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">
                     <i class="fas fa-chevron-left"></i> Anterior
                 </a>
             </li>
@@ -155,13 +206,13 @@
 
             {% for p in range(1, total_paginas + 1) %}
             <li class="page-item {% if p == pagina_atual %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, busca_nome=busca_nome, busca_status=busca_status) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
             {% if pagina_atual < total_paginas %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, busca_nome=busca_nome, busca_status=busca_status) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">
                     Próxima <i class="fas fa-chevron-right"></i>
                 </a>
             </li>
