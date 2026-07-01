@@ -200,7 +200,7 @@ def gerar_backup_json():
 def enviar_backup_email():
     if not SENDGRID_API_KEY:
         print("Backup ignorado: SENDGRID_API_KEY nao configurada no Render.")
-        return
+        return False
     try:
         agora = datetime.now(FUSO_RONDONIA)
         nome_arquivo = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}.json.gz"
@@ -252,6 +252,7 @@ def enviar_backup_email():
     except Exception as e:
         print(f"Erro no backup automatico: {e}")
         logger.error(f"Erro no backup automatico: {e}")
+        raise
 
 scheduler = BackgroundScheduler(timezone='America/Porto_Velho')
 scheduler.add_job(
@@ -2441,8 +2442,10 @@ def backup_automatico():
     if not token_esperado or token_enviado != token_esperado:
         return "Acesso negado", 403
     try:
-        enviar_backup_email()
-        return "OK", 200
+        resultado = enviar_backup_email()
+        if resultado is False:
+            return "Erro: SENDGRID_API_KEY nao configurada", 500
+        return "Backup enviado com sucesso", 200
     except Exception as e:
         logger.error(f"Erro no backup automatico via cron externo: {e}")
         return f"Erro: {e}", 500
