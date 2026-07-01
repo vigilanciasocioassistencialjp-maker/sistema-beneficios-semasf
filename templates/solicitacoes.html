@@ -20,12 +20,32 @@
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <i class="fas fa-filter"></i> Filtros de Busca
-            {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer %}
+            {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer or periodo_inicio or periodo_fim %}
             <span class="badge bg-warning text-dark ms-2">Filtros ativos</span>
             {% endif %}
         </div>
         <div class="card-body">
             <form method="GET" action="{{ url_for('solicitacoes') }}" class="row g-2">
+                <!-- Período -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">PERÍODO DE</label>
+                    <select name="periodo_inicio" class="form-select">
+                        <option value="">— Início —</option>
+                        {% for m in lista_meses|reverse %}
+                        <option value="{{ m.valor }}" {% if m.valor == periodo_inicio %}selected{% endif %}>{{ m.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">ATÉ</label>
+                    <select name="periodo_fim" class="form-select">
+                        <option value="">— Fim —</option>
+                        {% for m in lista_meses|reverse %}
+                        <option value="{{ m.valor }}" {% if m.valor == periodo_fim %}selected{% endif %}>{{ m.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6"></div>
                 <!-- Linha 1 -->
                 <div class="col-md-4">
                     <label class="form-label fw-bold small text-muted">NOME DO BENEFICIÁRIO</label>
@@ -196,9 +216,10 @@
     {% if total_paginas > 1 %}
     <nav class="mt-4">
         <ul class="pagination justify-content-center">
+            {% set pg_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
             {% if pagina_atual > 1 %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, **pg_args) }}">
                     <i class="fas fa-chevron-left"></i> Anterior
                 </a>
             </li>
@@ -206,13 +227,13 @@
 
             {% for p in range(1, total_paginas + 1) %}
             <li class="page-item {% if p == pagina_atual %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, **pg_args) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
             {% if pagina_atual < total_paginas %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, busca_nome=busca_nome, busca_status=busca_status, busca_cpf=busca_cpf, busca_unidade=busca_unidade, busca_tecnico_escuta=busca_tecnico_escuta, busca_tecnico_entrega=busca_tecnico_entrega, busca_tecnico_qualquer=busca_tecnico_qualquer) }}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, **pg_args) }}">
                     Próxima <i class="fas fa-chevron-right"></i>
                 </a>
             </li>

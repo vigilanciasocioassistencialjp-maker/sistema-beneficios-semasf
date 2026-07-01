@@ -630,6 +630,8 @@ def solicitacoes(pagina=1):
     busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
     busca_tecnico_entrega   = request.args.get('busca_tecnico_entrega', '').strip()
     busca_tecnico_qualquer  = request.args.get('busca_tecnico_qualquer', '').strip()
+    periodo_inicio          = request.args.get('periodo_inicio', '').strip()
+    periodo_fim             = request.args.get('periodo_fim', '').strip()
 
     filtros = []
     params  = []
@@ -673,6 +675,11 @@ def solicitacoes(pagina=1):
             filtros.append("COALESCE(u.cras, s.cras) = %s")
             params.append(busca_unidade)
 
+    cond_periodo, p_periodo = _periodo_sql(periodo_inicio, periodo_fim)
+    if cond_periodo:
+        filtros.append(cond_periodo)
+        params.extend(p_periodo)
+
     where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
 
     conexao = get_db()
@@ -682,6 +689,13 @@ def solicitacoes(pagina=1):
     cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
     lista_tecnicos = cursor.fetchall()
     lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+    nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    lista_meses_sol = []
+    agora = datetime.now(FUSO_RONDONIA)
+    for i in range(24):
+        d = agora - timedelta(days=30 * i)
+        lista_meses_sol.append({'valor': d.strftime('%Y-%m'), 'nome': f"{nomes_meses[d.month-1]}/{d.year}"})
 
     base_query = f"FROM solicitacoes s {join_usuario} {where}"
 
@@ -738,8 +752,11 @@ def solicitacoes(pagina=1):
         busca_tecnico_escuta=busca_tecnico_escuta,
         busca_tecnico_entrega=busca_tecnico_entrega,
         busca_tecnico_qualquer=busca_tecnico_qualquer,
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
         lista_tecnicos=lista_tecnicos,
         lista_unidades=lista_unidades,
+        lista_meses=lista_meses_sol,
         current_user=current_user
     )
 
@@ -1631,70 +1648,81 @@ def dashboard():
 # RELATÓRIO
 # =====================================================
 
+def _periodo_sql(periodo_inicio, periodo_fim):
+    """Retorna (condicao_sql, params) para filtro de período YYYY-MM.
+    Se nenhum período for informado, retorna condição vazia (mostra tudo)."""
+    if not periodo_inicio and not periodo_fim:
+        return "", []
+    inicio = periodo_inicio or '2000-01'
+    fim    = periodo_fim    or '2099-12'
+    cond = """(
+        (data_solicitacao ~ '^[0-9]' AND
+         (SUBSTRING(data_solicitacao, 7, 4) || '-' || SUBSTRING(data_solicitacao, 4, 2)) BETWEEN %s AND %s)
+        OR (data_entrega IS NOT NULL AND data_entrega != '' AND SUBSTRING(data_entrega::text, 1, 7) BETWEEN %s AND %s)
+    )"""
+    return cond, [inicio, fim, inicio, fim]
+
+def _label_periodo(periodo_inicio, periodo_fim):
+    """Gera texto legível para o período selecionado."""
+    nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+    def fmt(p):
+        try:
+            a, m = p.split('-')
+            return f"{nomes[int(m)-1]}/{a}"
+        except:
+            return p
+    if periodo_inicio and periodo_fim:
+        if periodo_inicio == periodo_fim:
+            return fmt(periodo_inicio)
+        return f"{fmt(periodo_inicio)} a {fmt(periodo_fim)}"
+    if periodo_inicio:
+        return f"A partir de {fmt(periodo_inicio)}"
+    if periodo_fim:
+        return f"Até {fmt(periodo_fim)}"
+    return "Todo o período"
+
 @app.route("/relatorio")
 @login_required
 def relatorio():
-    # Mês selecionado (padrão: mês atual)
-    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
+    periodo_inicio = request.args.get('periodo_inicio', '').strip()
+    periodo_fim    = request.args.get('periodo_fim', '').strip()
 
-    # Lista de meses disponíveis para o seletor (últimos 12 meses)
     nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
     lista_meses = []
     agora = datetime.now(FUSO_RONDONIA)
-    for i in range(12):
+    for i in range(24):
         data = agora - timedelta(days=30 * i)
         valor = data.strftime('%Y-%m')
         nome = f"{nomes_meses[data.month - 1]}/{data.year}"
         lista_meses.append({'valor': valor, 'nome': nome})
 
-    # data_solicitacao salva como 'dd/mm/YYYY HH:MM:SS'
-    # mes vem como 'YYYY-MM', precisamos converter para '%/MM/YYYY%'
-    try:
-        ano, num_mes = mes.split('-')
-        filtro_like = f"%/{num_mes}/{ano}%"
-        filtro_like_entrega = f"{ano}-{num_mes}%"  # data_entrega pode vir em outro formato
-    except:
-        filtro_like = f"%"
-        filtro_like_entrega = f"%"
+    cond_periodo, p_periodo = _periodo_sql(periodo_inicio, periodo_fim)
+    w = f"WHERE {cond_periodo}" if cond_periodo else ""
+
+    def _and(base):
+        return (base + " AND ") if base else "WHERE "
 
     conexao = get_db()
     cursor = conexao.cursor()
 
-    # Totais do mês
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes
-        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {w}", p_periodo)
     total_solicitacoes = cursor.fetchone()[0]
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes
-        WHERE status = 'Entregue' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}status='Entregue'", p_periodo)
     total_entregues = cursor.fetchone()[0]
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes
-        WHERE status = 'Ausente' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}status='Ausente'", p_periodo)
     total_ausentes = cursor.fetchone()[0]
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes
-        WHERE status = 'Cadastrada' AND data_solicitacao LIKE %s
-    """, (filtro_like,))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}status='Cadastrada'", p_periodo)
     total_pendentes = cursor.fetchone()[0]
 
-    # Exceções Art. 64 do período
-    cursor.execute("""
-        SELECT COUNT(*) FROM solicitacoes
-        WHERE excecao_art64 = TRUE AND data_solicitacao LIKE %s
-    """, (filtro_like,))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}excecao_art64=TRUE", p_periodo)
     total_excecoes = cursor.fetchone()[0]
 
-    # Por Unidade (equipe do técnico que fez a escuta)
-    cursor.execute("""
+    # Por Unidade
+    cursor.execute(f"""
         SELECT
             CASE
                 WHEN u.perfil = 'creas'             THEN 'CREAS'
@@ -1703,55 +1731,47 @@ def relatorio():
                 ELSE COALESCE(u.cras, s.cras, 'Não informado')
             END AS unidade,
             COUNT(*) as total,
-            SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-            SUM(CASE WHEN s.status = 'Ausente'  THEN 1 ELSE 0 END) as ausentes
+            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregues,
+            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
-        GROUP BY unidade
-        ORDER BY total DESC
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+        {w}
+        GROUP BY unidade ORDER BY total DESC
+    """, p_periodo)
     por_cras = cursor.fetchall()
 
-    # Por Técnico (quem fez a escuta)
-    cursor.execute("""
+    # Por Técnico
+    cursor.execute(f"""
         SELECT COALESCE(u.nome, s.tecnico) as nome_tecnico,
                COUNT(*) as total,
-               SUM(CASE WHEN s.status = 'Entregue' THEN 1 ELSE 0 END) as entregues,
-               SUM(CASE WHEN s.status = 'Ausente' THEN 1 ELSE 0 END) as ausentes
+               SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregues,
+               SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
-        GROUP BY COALESCE(u.nome, s.tecnico)
-        ORDER BY total DESC
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+        {w}
+        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY total DESC
+    """, p_periodo)
     por_tecnico = cursor.fetchall()
 
-    # Últimas entregas do mês (máx 20)
-    cursor.execute("""
-        SELECT s.nome,
-               s.cpf,
-               s.bairro,
+    # Últimas entregas do período (máx 20)
+    cursor.execute(f"""
+        SELECT s.nome, s.cpf, s.bairro,
                CASE
-                   WHEN u_esc.perfil = 'creas'            THEN 'CREAS'
-                   WHEN u_esc.perfil = 'cras_volante'      THEN 'EQUIPE VOLANTE'
-                   WHEN u_esc.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                   WHEN u_esc.perfil = 'creas'             THEN 'CREAS'
+                   WHEN u_esc.perfil = 'cras_volante'       THEN 'EQUIPE VOLANTE'
+                   WHEN u_esc.perfil IN ('admin','gestor')  THEN 'ADMINISTRAÇÃO'
                    ELSE COALESCE(u_esc.cras, s.cras, 'Não informado')
                END AS unidade,
-               s.status,
-               s.data_entrega,
+               s.status, s.data_entrega,
                COALESCE(u_ent.nome, s.tecnico_entrega) as tecnico
         FROM solicitacoes s
         LEFT JOIN usuarios u_esc ON s.tecnico = u_esc.usuario
         LEFT JOIN usuarios u_ent ON s.tecnico_entrega = u_ent.usuario
-        WHERE s.status IN ('Entregue', 'Ausente')
-          AND (s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s)
-        ORDER BY s.id DESC
-        LIMIT 20
-    """, (filtro_like, filtro_like, filtro_like_entrega))
+        {_and(w)}s.status IN ('Entregue', 'Ausente')
+        ORDER BY s.id DESC LIMIT 20
+    """, p_periodo)
     raw_entregas = cursor.fetchall()
 
-    # Descriptografar CPFs das últimas entregas
     ultimas_entregas = []
     for row in raw_entregas:
         row = list(row)
@@ -1759,38 +1779,34 @@ def relatorio():
             row[1] = formatar_cpf(descriptografar_cpf(row[1]))
         ultimas_entregas.append(tuple(row))
 
-    # Recorrência: beneficiários com mais de 1 cesta entregue
+    # Recorrência: beneficiários com mais de 1 cesta entregue (sem filtro de período)
     cursor.execute("""
-        SELECT cpf_hash,
-               MAX(nome) as nome,
-               MAX(cpf) as cpf_cripto,
-               COUNT(*) as total_recebido,
-               MAX(data_entrega) as ultima_entrega
+        SELECT cpf_hash, MAX(nome), MAX(cpf), COUNT(*), MAX(data_entrega)
         FROM solicitacoes
-        WHERE status = 'Entregue' AND cpf_hash IS NOT NULL
-        GROUP BY cpf_hash
-        HAVING COUNT(*) > 1
-        ORDER BY total_recebido DESC
-        LIMIT 30
+        WHERE status='Entregue' AND cpf_hash IS NOT NULL
+        GROUP BY cpf_hash HAVING COUNT(*) > 1
+        ORDER BY COUNT(*) DESC LIMIT 30
     """)
     raw_recorrencia = cursor.fetchall()
-
     conexao.close()
 
     recorrencia = []
     for row in raw_recorrencia:
         cpf_legivel = formatar_cpf(descriptografar_cpf(row[2])) if row[2] else 'N/A'
         recorrencia.append({
-            'cpf': cpf_legivel,
-            'nome': row[1] or 'N/A',
+            'cpf': cpf_legivel, 'nome': row[1] or 'N/A',
             'total_recebido': row[3],
             'ultima_entrega': str(row[4]) if row[4] else 'N/A',
         })
 
+    label_periodo = _label_periodo(periodo_inicio, periodo_fim)
+
     return render_template(
         "relatorio.html",
-        mes=mes,
         lista_meses=lista_meses,
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
+        label_periodo=label_periodo,
         total_solicitacoes=total_solicitacoes,
         total_entregues=total_entregues,
         total_ausentes=total_ausentes,
@@ -1808,43 +1824,30 @@ def relatorio():
 # EXPORTAÇÃO PDF DO RELATÓRIO
 # =====================================================
 
-def _coletar_dados_relatorio(mes):
-    """Coleta os totais e tabelas do relatório para um mês. Retorna um dict."""
-    try:
-        ano, num_mes = mes.split('-')
-        filtro_like = f"%/{num_mes}/{ano}%"
-        filtro_like_entrega = f"{ano}-{num_mes}%"
-    except:
-        filtro_like = "%"
-        filtro_like_entrega = "%"
+def _coletar_dados_relatorio(periodo_inicio, periodo_fim):
+    """Coleta os totais e tabelas do relatório para um período. Retorna um dict."""
+    cond_periodo, p_periodo = _periodo_sql(periodo_inicio, periodo_fim)
+    where = f"WHERE {cond_periodo}" if cond_periodo else ""
 
     conexao = get_db()
     cursor = conexao.cursor()
 
-    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
-        WHERE data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s""",
-        (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where}", p_periodo)
     total = cursor.fetchone()[0]
 
-    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
-        WHERE status='Entregue' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)""",
-        (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where + (' AND ' if where else 'WHERE ')}status='Entregue'", p_periodo)
     entregues = cursor.fetchone()[0]
 
-    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
-        WHERE status='Ausente' AND (data_solicitacao LIKE %s OR data_entrega LIKE %s OR data_entrega LIKE %s)""",
-        (filtro_like, filtro_like, filtro_like_entrega))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where + (' AND ' if where else 'WHERE ')}status='Ausente'", p_periodo)
     ausentes = cursor.fetchone()[0]
 
-    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
-        WHERE status='Cadastrada' AND data_solicitacao LIKE %s""", (filtro_like,))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where + (' AND ' if where else 'WHERE ')}status='Cadastrada'", p_periodo)
     pendentes = cursor.fetchone()[0]
 
-    cursor.execute("""SELECT COUNT(*) FROM solicitacoes
-        WHERE excecao_art64=TRUE AND data_solicitacao LIKE %s""", (filtro_like,))
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where + (' AND ' if where else 'WHERE ')}excecao_art64=TRUE", p_periodo)
     excecoes = cursor.fetchone()[0]
 
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT
             CASE
                 WHEN u.perfil = 'creas'        THEN 'CREAS'
@@ -1857,18 +1860,17 @@ def _coletar_dados_relatorio(mes):
             SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END)
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
-        GROUP BY equipe ORDER BY COUNT(*) DESC""",
-        (filtro_like, filtro_like, filtro_like_entrega))
+        {'WHERE ' + cond_periodo if cond_periodo else ''}
+        GROUP BY equipe ORDER BY COUNT(*) DESC""", p_periodo)
     por_cras = cursor.fetchall()
 
-    cursor.execute("""SELECT COALESCE(u.nome, s.tecnico), COUNT(*),
+    cursor.execute(f"""
+        SELECT COALESCE(u.nome, s.tecnico), COUNT(*),
             SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
             SUM(CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END)
         FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico=u.usuario
-        WHERE s.data_solicitacao LIKE %s OR s.data_entrega LIKE %s OR s.data_entrega LIKE %s
-        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY COUNT(*) DESC""",
-        (filtro_like, filtro_like, filtro_like_entrega))
+        {'WHERE ' + cond_periodo if cond_periodo else ''}
+        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY COUNT(*) DESC""", p_periodo)
     por_tecnico = cursor.fetchall()
 
     conexao.close()
@@ -1950,24 +1952,27 @@ def exportar_excel():
     if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante', 'cras']:
         return "Acesso negado", 403
 
-    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
+    periodo_inicio = request.args.get('periodo_inicio', '').strip()
+    periodo_fim    = request.args.get('periodo_fim', '').strip()
+    cond_periodo, p_periodo = _periodo_sql(periodo_inicio, periodo_fim)
+    where_excel = f"WHERE {cond_periodo}" if cond_periodo else ""
 
     conexao = get_db()
     cursor  = conexao.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT id, nome, cpf, bairro, cras, tecnico, status,
                data_solicitacao, data_entrega, tecnico_entrega,
                renda_per_capita, total_pessoas, excecao_art64, observacoes_entrega
-        FROM solicitacoes
-        WHERE data_solicitacao LIKE %s
+        FROM solicitacoes {where_excel}
         ORDER BY id DESC
-    """, (f"{mes}%",))
+    """, p_periodo)
     linhas = cursor.fetchall()
     conexao.close()
 
+    label = _label_periodo(periodo_inicio, periodo_fim)
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Cestas {mes}"
+    ws.title = f"Cestas {label}"[:31]
 
     # Estilo cabeçalho
     azul_escuro = PatternFill("solid", fgColor="1B2F5E")
@@ -2018,20 +2023,22 @@ def relatorio_pdf(tipo):
     if current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante', 'cras']:
         return "Acesso negado", 403
 
-    mes = request.args.get('mes', datetime.now(FUSO_RONDONIA).strftime('%Y-%m'))
-    dados = _coletar_dados_relatorio(mes)
+    periodo_inicio = request.args.get('periodo_inicio', '').strip()
+    periodo_fim    = request.args.get('periodo_fim', '').strip()
+    dados = _coletar_dados_relatorio(periodo_inicio, periodo_fim)
+    label = _label_periodo(periodo_inicio, periodo_fim)
 
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
 
     subtitulo = "RELATÓRIO RESUMIDO DE CESTAS BÁSICAS" if tipo == 'resumido' else "RELATÓRIO DE CESTAS BÁSICAS"
-    _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo)
+    _desenhar_cabecalho_relatorio(c, w, h, label, subtitulo)
 
     y = h - 5*cm
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0.3, 0)
-    c.drawString(2*cm, y, "RESUMO DO MÊS")
+    c.drawString(2*cm, y, f"RESUMO — {label.upper()}")
     c.setFillColorRGB(0, 0, 0)
     y -= 0.3*cm
     y = _desenhar_totais(c, w, y, dados)
@@ -2096,12 +2103,13 @@ def relatorio_pdf(tipo):
             c.drawString(16.5*cm, y, str(aus or 0))
             y -= 0.45*cm
 
-    _rodape_relatorio(c, w, mes)
+    _rodape_relatorio(c, w, label)
     c.save()
     buffer.seek(0)
 
-    nome_arq = f"relatorio_{tipo}_{mes}.pdf"
-    logger.info(f"Relatório PDF ({tipo}) de {mes} gerado por {current_user.id}")
+    slug = (periodo_inicio or 'tudo') + ('_a_' + periodo_fim if periodo_fim and periodo_fim != periodo_inicio else '')
+    nome_arq = f"relatorio_{tipo}_{slug}.pdf"
+    logger.info(f"Relatório PDF ({tipo}) período {label} gerado por {current_user.id}")
     return send_file(buffer, as_attachment=True, download_name=nome_arq, mimetype='application/pdf')
 
 # =====================================================
