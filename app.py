@@ -695,6 +695,8 @@ def solicitacoes(pagina=1):
     agora = datetime.now(FUSO_RONDONIA)
     for i in range(24):
         d = agora - timedelta(days=30 * i)
+        if d.year < 2026:
+            break
         lista_meses_sol.append({'valor': d.strftime('%Y-%m'), 'nome': f"{nomes_meses[d.month-1]}/{d.year}"})
 
     base_query = f"FROM solicitacoes s {join_usuario} {where}"
@@ -1693,6 +1695,8 @@ def relatorio():
     agora = datetime.now(FUSO_RONDONIA)
     for i in range(24):
         data = agora - timedelta(days=30 * i)
+        if data.year < 2026:
+            break
         valor = data.strftime('%Y-%m')
         nome = f"{nomes_meses[data.month - 1]}/{data.year}"
         lista_meses.append({'valor': valor, 'nome': nome})
