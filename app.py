@@ -2433,6 +2433,20 @@ def backup():
     except Exception as e:
         return f"❌ Erro ao enviar backup: {e}", 500
 
+@app.route("/api/backup/automatico")
+def backup_automatico():
+    """Endpoint para cron externo (cron-job.org). Protegido por token secreto."""
+    token_enviado = request.args.get('token', '')
+    token_esperado = os.environ.get('BACKUP_TOKEN', '')
+    if not token_esperado or token_enviado != token_esperado:
+        return "Acesso negado", 403
+    try:
+        enviar_backup_email()
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Erro no backup automatico via cron externo: {e}")
+        return f"Erro: {e}", 500
+
 # =====================================================
 # EXECUÇÃO
 # =====================================================
