@@ -197,8 +197,9 @@
                 <h5 class="modal-title"><i class="fas fa-ban"></i> Confirmar Cancelamento</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="formCancelar">
+            <form method="POST" action="/cancelar_solicitacao" id="formCancelar">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="solicitacao_id" id="cancelarIdInput">
                 <div class="modal-body">
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
@@ -228,11 +229,13 @@
 {% block extra_js %}
 <script>
 document.getElementById('modalCancelar').addEventListener('show.bs.modal', function(e) {
-    const btn = e.relatedTarget;
+    const btn  = e.relatedTarget;
     const id   = btn.getAttribute('data-id');
     const nome = btn.getAttribute('data-nome');
     document.getElementById('cancelarInfo').textContent = `#${id} — ${nome}`;
-    document.getElementById('formCancelar').action = `/cancelar_solicitacao/${id}`;
+    document.getElementById('cancelarIdInput').value = id;
+    // Limpar motivo anterior
+    document.querySelector('#formCancelar textarea[name="motivo"]').value = '';
 });
 
 function toggleTodos(chk) {

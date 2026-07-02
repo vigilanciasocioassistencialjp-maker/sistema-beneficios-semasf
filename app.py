@@ -2557,11 +2557,19 @@ def administracao():
     )
 
 
-@app.route("/cancelar_solicitacao/<int:id>", methods=["POST"])
+@app.route("/cancelar_solicitacao", methods=["POST"])
 @login_required
-def cancelar_solicitacao(id):
+def cancelar_solicitacao():
     if current_user.perfil not in ['admin', 'gestor']:
         return "Acesso negado", 403
+
+    try:
+        id = int(request.form.get('solicitacao_id', 0))
+    except ValueError:
+        id = 0
+    if not id:
+        flash("ID de solicitação inválido.", "danger")
+        return redirect(url_for('administracao'))
 
     motivo = request.form.get('motivo', '').strip()
     if not motivo:
