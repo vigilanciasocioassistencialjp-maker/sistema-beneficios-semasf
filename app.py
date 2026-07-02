@@ -331,6 +331,20 @@ login_manager.login_message = None
 def load_user(user_id):
     return carregar_usuario(user_id)
 
+@app.context_processor
+def inject_notificacoes_count():
+    if current_user.is_authenticated:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM notificacoes WHERE destinatario=%s AND lida=FALSE", (current_user.id,))
+            count = cur.fetchone()[0]
+            conn.close()
+            return {'notificacoes_nao_lidas': count}
+        except:
+            return {'notificacoes_nao_lidas': 0}
+    return {'notificacoes_nao_lidas': 0}
+
 @app.template_filter('fromjson')
 def fromjson_filter(value):
     try: return json.loads(value) if value else []
@@ -1710,7 +1724,7 @@ def relatorio():
     conexao = get_db()
     cursor = conexao.cursor()
 
-    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {w}", p_periodo)
+    cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}status != 'Cancelada'", p_periodo)
     total_solicitacoes = cursor.fetchone()[0]
 
     cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}status='Entregue'", p_periodo)
@@ -2468,6 +2482,212 @@ def backup_automatico():
     except Exception as e:
         logger.error(f"Erro no backup automatico via cron externo: {e}")
         return f"Erro: {e}", 500
+
+# =====================================================
+# ADMINISTRAÇÃO
+# =====================================================
+
+@app.route("/administracao")
+@login_required
+def administracao():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for('dashboard'))
+
+    busca_id   = request.args.get('busca_id', '').strip()
+    busca_nome = request.args.get('busca_nome', '').strip()
+
+    solicitacao_encontrada = None
+    resultados = []
+
+    conn = get_db()
+    cur  = conn.cursor()
+
+    if busca_id:
+        try:
+            cur.execute("""
+                SELECT s.id, s.nome, s.cpf, s.status, s.data_solicitacao,
+                       COALESCE(u.nome, s.tecnico) as tecnico_nome, s.bairro, s.cras
+                FROM solicitacoes s
+                LEFT JOIN usuarios u ON s.tecnico = u.usuario
+                WHERE s.id = %s
+            """, (int(busca_id),))
+            row = cur.fetchone()
+            if row:
+                row = list(row)
+                if row[2]: row[2] = formatar_cpf(descriptografar_cpf(row[2]))
+                solicitacao_encontrada = row
+        except ValueError:
+            pass
+    elif busca_nome:
+        cur.execute("""
+            SELECT s.id, s.nome, s.cpf, s.status, s.data_solicitacao,
+                   COALESCE(u.nome, s.tecnico) as tecnico_nome, s.bairro, s.cras
+            FROM solicitacoes s
+            LEFT JOIN usuarios u ON s.tecnico = u.usuario
+            WHERE s.nome ILIKE %s AND s.status = 'Cadastrada'
+            ORDER BY s.id DESC LIMIT 20
+        """, (f"%{busca_nome}%",))
+        for row in cur.fetchall():
+            row = list(row)
+            if row[2]: row[2] = formatar_cpf(descriptografar_cpf(row[2]))
+            resultados.append(row)
+
+    cur.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
+    lista_usuarios = cur.fetchall()
+
+    cur.execute("""
+        SELECT s.id, s.nome, s.cancelado_em, COALESCE(u.nome, s.cancelado_por), s.motivo_cancelamento
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.cancelado_por = u.usuario
+        WHERE s.status = 'Cancelada'
+        ORDER BY s.id DESC LIMIT 15
+    """)
+    ultimos_cancelamentos = cur.fetchall()
+
+    conn.close()
+
+    return render_template('administracao.html',
+        busca_id=busca_id,
+        busca_nome=busca_nome,
+        solicitacao_encontrada=solicitacao_encontrada,
+        resultados=resultados,
+        lista_usuarios=lista_usuarios,
+        ultimos_cancelamentos=ultimos_cancelamentos,
+        current_user=current_user
+    )
+
+
+@app.route("/cancelar_solicitacao/<int:id>", methods=["POST"])
+@login_required
+def cancelar_solicitacao(id):
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+
+    motivo = request.form.get('motivo', '').strip()
+    if not motivo:
+        flash("Informe o motivo do cancelamento.", "danger")
+        return redirect(url_for('administracao'))
+
+    agora = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')
+    conn  = get_db()
+    cur   = conn.cursor()
+
+    cur.execute("SELECT status, tecnico, nome FROM solicitacoes WHERE id = %s", (id,))
+    row = cur.fetchone()
+    if not row:
+        flash("Solicitação não encontrada.", "danger")
+        conn.close()
+        return redirect(url_for('administracao'))
+
+    status_atual, tecnico, nome_beneficiario = row
+    if status_atual != 'Cadastrada':
+        flash(f"Só é possível cancelar solicitações com status 'Cadastrada'. Status atual: {status_atual}", "warning")
+        conn.close()
+        return redirect(url_for('administracao'))
+
+    cur.execute("""
+        UPDATE solicitacoes
+        SET status='Cancelada', cancelado_por=%s, cancelado_em=%s, motivo_cancelamento=%s
+        WHERE id=%s
+    """, (current_user.id, agora, motivo, id))
+
+    cur.execute("""
+        INSERT INTO historico_edicoes (solicitacao_id, usuario, campo, valor_antes, valor_depois, data_hora)
+        VALUES (%s, %s, 'status', 'Cadastrada', 'Cancelada', %s)
+    """, (id, current_user.id, agora))
+
+    # Notifica o técnico que criou a solicitação
+    if tecnico:
+        msg = (f"Sua solicitação #{id} ({nome_beneficiario}) foi cancelada por "
+               f"{current_user.nome or current_user.id}. Motivo: {motivo}")
+        cur.execute("""
+            INSERT INTO notificacoes (destinatario, remetente, mensagem, tipo, criada_em, solicitacao_id)
+            VALUES (%s, %s, %s, 'cancelamento', %s, %s)
+        """, (tecnico, current_user.id, msg, agora, id))
+
+    conn.commit()
+    conn.close()
+
+    logger.info(f"Solicitação #{id} cancelada por {current_user.id}. Motivo: {motivo}")
+    flash(f"Solicitação #{id} cancelada com sucesso.", "success")
+    return redirect(url_for('administracao'))
+
+
+@app.route("/administracao/enviar_notificacao", methods=["POST"])
+@login_required
+def enviar_notificacao():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+
+    destinatarios = request.form.getlist('destinatarios')
+    mensagem      = request.form.get('mensagem', '').strip()
+
+    if not destinatarios or not mensagem:
+        flash("Selecione pelo menos um destinatário e escreva a mensagem.", "danger")
+        return redirect(url_for('administracao'))
+
+    agora = datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S')
+    conn  = get_db()
+    cur   = conn.cursor()
+
+    # "todos" é um atalho para selecionar todos os usuários
+    if 'todos' in destinatarios:
+        cur.execute("SELECT usuario FROM usuarios")
+        destinatarios = [r[0] for r in cur.fetchall()]
+
+    for dest in destinatarios:
+        cur.execute("""
+            INSERT INTO notificacoes (destinatario, remetente, mensagem, tipo, criada_em)
+            VALUES (%s, %s, %s, 'comunicado', %s)
+        """, (dest, current_user.id, mensagem, agora))
+
+    conn.commit()
+    conn.close()
+    flash(f"Notificação enviada para {len(destinatarios)} usuário(s).", "success")
+    return redirect(url_for('administracao'))
+
+
+# =====================================================
+# NOTIFICAÇÕES
+# =====================================================
+
+@app.route("/notificacoes")
+@login_required
+def notificacoes():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT n.id, COALESCE(u.nome, n.remetente), n.mensagem, n.tipo, n.lida, n.criada_em, n.solicitacao_id
+        FROM notificacoes n
+        LEFT JOIN usuarios u ON n.remetente = u.usuario
+        WHERE n.destinatario = %s
+        ORDER BY n.id DESC LIMIT 50
+    """, (current_user.id,))
+    lista = cur.fetchall()
+    conn.close()
+    return render_template('notificacoes.html', lista_notificacoes=lista, current_user=current_user)
+
+
+@app.route("/notificacoes/marcar_lida/<int:id>", methods=["POST"])
+@login_required
+def marcar_notificacao_lida(id):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("UPDATE notificacoes SET lida=TRUE WHERE id=%s AND destinatario=%s", (id, current_user.id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('notificacoes'))
+
+
+@app.route("/notificacoes/marcar_todas_lidas", methods=["POST"])
+@login_required
+def marcar_todas_lidas():
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("UPDATE notificacoes SET lida=TRUE WHERE destinatario=%s", (current_user.id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('notificacoes'))
 
 # =====================================================
 # EXECUÇÃO

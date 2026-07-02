@@ -201,6 +201,32 @@ def criar_banco():
             cursor.execute("ALTER TABLE solicitacoes ADD COLUMN visita_domiciliar BOOLEAN DEFAULT FALSE")
             print("✅ Coluna visita_domiciliar adicionada!")
 
+        # =====================================================
+        # MIGRAÇÃO: Campos de cancelamento
+        # =====================================================
+        for col, tipo in [('cancelado_por','TEXT'),('cancelado_em','TEXT'),('motivo_cancelamento','TEXT')]:
+            cursor.execute(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='solicitacoes' AND column_name='{col}'
+            """)
+            if not cursor.fetchone():
+                cursor.execute(f"ALTER TABLE solicitacoes ADD COLUMN {col} {tipo}")
+                print(f"✅ Coluna {col} adicionada!")
+
+        # Tabela de notificações
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notificacoes (
+                id SERIAL PRIMARY KEY,
+                destinatario TEXT NOT NULL,
+                remetente TEXT NOT NULL,
+                mensagem TEXT NOT NULL,
+                tipo TEXT DEFAULT 'geral',
+                lida BOOLEAN DEFAULT FALSE,
+                criada_em TEXT NOT NULL,
+                solicitacao_id INTEGER
+            )
+        ''')
+
         # Tabela de histórico de edições
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS historico_edicoes (

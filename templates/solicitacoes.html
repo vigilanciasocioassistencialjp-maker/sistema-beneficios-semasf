@@ -65,6 +65,7 @@
                         <option value="Entregue"   {% if busca_status == 'Entregue'   %}selected{% endif %}>✅ Entregue</option>
                         <option value="Ausente"    {% if busca_status == 'Ausente'    %}selected{% endif %}>❌ Ausente</option>
                         <option value="Visita"     {% if busca_status == 'Visita'     %}selected{% endif %}>🏠 Visita Domiciliar</option>
+                        <option value="Cancelada"  {% if busca_status == 'Cancelada'  %}selected{% endif %}>🚫 Cancelada</option>
                     </select>
                 </div>
                 {% if current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante'] %}
@@ -153,6 +154,7 @@
                             {% if s[7] == 'Cadastrada' %}bg-warning text-dark
                             {% elif s[7] == 'Entregue' %}bg-success
                             {% elif s[7] == 'Ausente' %}bg-danger
+                            {% elif s[7] == 'Cancelada' %}bg-secondary
                             {% else %}bg-secondary
                             {% endif %}">
                             {% if s[7] == 'Cadastrada' %}🟡

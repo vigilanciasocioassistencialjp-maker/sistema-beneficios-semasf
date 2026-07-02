@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">
+            <i class="fas fa-tools text-danger"></i> Administração
+        </h2>
+    </div>
+
+    <!-- ===================== CANCELAR SOLICITAÇÃO ===================== -->
+    <div class="card shadow-sm mb-4 border-danger">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="fas fa-ban"></i> Cancelar Solicitação</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                <i class="fas fa-info-circle"></i>
+                Apenas solicitações com status <strong>Cadastrada</strong> podem ser canceladas.
+                O registro permanece no banco com histórico completo do cancelamento.
+                O técnico responsável será notificado automaticamente.
+            </p>
+
+            <!-- Busca -->
+            <form method="GET" action="{{ url_for('administracao') }}" class="row g-2 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">BUSCAR POR ID</label>
+                    <input type="number" name="busca_id" class="form-control" placeholder="Nº da solicitação"
+                           value="{{ busca_id }}">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold small text-muted">BUSCAR POR NOME</label>
+                    <input type="text" name="busca_nome" class="form-control" placeholder="Nome do beneficiário"
+                           value="{{ busca_nome }}">
+                </div>
+                <div class="col-md-auto d-flex align-items-end gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                    {% if busca_id or busca_nome %}
+                    <a href="{{ url_for('administracao') }}" class="btn btn-secondary">
+                        <i class="fas fa-eraser"></i> Limpar
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <!-- Resultado por ID -->
+            {% if solicitacao_encontrada %}
+            <div class="card border-{% if solicitacao_encontrada[3] == 'Cadastrada' %}warning{% else %}secondary{% endif %} mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>#{{ solicitacao_encontrada[0] }}</strong> — {{ solicitacao_encontrada[1] }}</p>
+                            <p class="mb-1 text-muted small">CPF: {{ solicitacao_encontrada[2] }}</p>
+                            <p class="mb-1 text-muted small">Bairro: {{ solicitacao_encontrada[6] }} — {{ solicitacao_encontrada[7] }}</p>
+                            <p class="mb-1 text-muted small">Técnico: {{ solicitacao_encontrada[5] }}</p>
+                            <p class="mb-0 text-muted small">Data: {{ solicitacao_encontrada[4] }}</p>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-center">
+                            <span class="badge fs-6
+                                {% if solicitacao_encontrada[3] == 'Cadastrada' %}bg-warning text-dark
+                                {% elif solicitacao_encontrada[3] == 'Entregue' %}bg-success
+                                {% elif solicitacao_encontrada[3] == 'Ausente' %}bg-danger
+                                {% elif solicitacao_encontrada[3] == 'Cancelada' %}bg-secondary
+                                {% endif %}">
+                                {{ solicitacao_encontrada[3] }}
+                            </span>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-center justify-content-end">
+                            {% if solicitacao_encontrada[3] == 'Cadastrada' %}
+                            <button class="btn btn-danger" data-bs-toggle="modal"
+                                    data-bs-target="#modalCancelar"
+                                    data-id="{{ solicitacao_encontrada[0] }}"
+                                    data-nome="{{ solicitacao_encontrada[1] }}">
+                                <i class="fas fa-ban"></i> Cancelar
+                            </button>
+                            {% else %}
+                            <span class="text-muted small">Não pode ser cancelada</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% elif busca_id %}
+            <div class="alert alert-warning">Nenhuma solicitação encontrada com ID #{{ busca_id }}.</div>
+            {% endif %}
+
+            <!-- Resultados por nome -->
+            {% if resultados %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr><th>#</th><th>Nome</th><th>Técnico</th><th>Bairro</th><th>Data</th><th>Ação</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in resultados %}
+                        <tr>
+                            <td class="fw-bold">#{{ r[0] }}</td>
+                            <td>{{ r[1] }}</td>
+                            <td>{{ r[5] }}</td>
+                            <td>{{ r[6] }}</td>
+                            <td>{{ r[4] }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" data-bs-toggle="modal"
+                                        data-bs-target="#modalCancelar"
+                                        data-id="{{ r[0] }}" data-nome="{{ r[1] }}">
+                                    <i class="fas fa-ban"></i> Cancelar
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% elif busca_nome %}
+            <div class="alert alert-warning">Nenhuma solicitação cadastrada encontrada com esse nome.</div>
+            {% endif %}
+
+            <!-- Últimos cancelamentos -->
+            {% if ultimos_cancelamentos %}
+            <hr>
+            <h6 class="fw-bold text-secondary"><i class="fas fa-history"></i> Últimos Cancelamentos</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead class="table-secondary">
+                        <tr><th>#</th><th>Beneficiário</th><th>Cancelado em</th><th>Por</th><th>Motivo</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for c in ultimos_cancelamentos %}
+                        <tr>
+                            <td>#{{ c[0] }}</td>
+                            <td>{{ c[1] }}</td>
+                            <td>{{ c[2] }}</td>
+                            <td>{{ c[3] }}</td>
+                            <td><small class="text-muted">{{ c[4] }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ===================== ENVIAR NOTIFICAÇÃO ===================== -->
+    <div class="card shadow-sm mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-bell"></i> Enviar Notificação</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('enviar_notificacao') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Destinatários</label>
+                    <div class="mb-2">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="chkTodos"
+                                   onchange="toggleTodos(this)">
+                            <label class="form-check-label fw-bold text-primary" for="chkTodos">
+                                Enviar para todos os usuários
+                            </label>
+                        </div>
+                    </div>
+                    <div id="listaDestinatarios" class="row g-1">
+                        {% for u in lista_usuarios %}
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input chk-dest" type="checkbox"
+                                       name="destinatarios" value="{{ u[0] }}" id="dest_{{ u[0] }}">
+                                <label class="form-check-label small" for="dest_{{ u[0] }}">
+                                    {{ u[1] }} <span class="text-muted">({{ u[0] }})</span>
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Mensagem</label>
+                    <textarea name="mensagem" class="form-control" rows="3"
+                              placeholder="Digite a mensagem da notificação..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i> Enviar Notificação
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirmar Cancelamento -->
+<div class="modal fade" id="modalCancelar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-ban"></i> Confirmar Cancelamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="formCancelar">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Você está cancelando a solicitação <strong id="cancelarInfo"></strong>.
+                        Esta ação será registrada no histórico e o técnico será notificado.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Motivo do Cancelamento <span class="text-danger">*</span></label>
+                        <textarea name="motivo" class="form-control" rows="3"
+                                  placeholder="Descreva o motivo do cancelamento..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Voltar
+                    </button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-ban"></i> Confirmar Cancelamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('modalCancelar').addEventListener('show.bs.modal', function(e) {
+    const btn = e.relatedTarget;
+    const id   = btn.getAttribute('data-id');
+    const nome = btn.getAttribute('data-nome');
+    document.getElementById('cancelarInfo').textContent = `#${id} — ${nome}`;
+    document.getElementById('formCancelar').action = `/cancelar_solicitacao/${id}`;
+});
+
+function toggleTodos(chk) {
+    document.querySelectorAll('.chk-dest').forEach(c => c.checked = chk.checked);
+    if (chk.checked) {
+        // Adiciona input hidden "todos" para o backend detectar
+        let hidden = document.getElementById('inputTodos');
+        if (!hidden) {
+            hidden = document.createElement('input');
+            hidden.type = 'hidden'; hidden.name = 'destinatarios';
+            hidden.value = 'todos'; hidden.id = 'inputTodos';
+            document.querySelector('form[action*="enviar_notificacao"]').appendChild(hidden);
+        }
+    } else {
+        const hidden = document.getElementById('inputTodos');
+        if (hidden) hidden.remove();
+    }
+}
+</script>
+{% endblock %}
