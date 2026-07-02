@@ -1739,36 +1739,62 @@ def relatorio():
     cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {_and(w)}excecao_art64=TRUE", p_periodo)
     total_excecoes = cursor.fetchone()[0]
 
-    # Por Unidade
+    # Por Unidade — separa escutas (tecnico) de entregas/ausentes (tecnico_entrega)
+    _u_case = """CASE
+                    WHEN u.perfil='creas'             THEN 'CREAS'
+                    WHEN u.perfil='cras_volante'       THEN 'EQUIPE VOLANTE'
+                    WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                    ELSE COALESCE(u.cras, s.cras, 'Não informado')
+                 END"""
     cursor.execute(f"""
-        SELECT
-            CASE
-                WHEN u.perfil = 'creas'             THEN 'CREAS'
-                WHEN u.perfil = 'cras_volante'       THEN 'EQUIPE VOLANTE'
-                WHEN u.perfil IN ('admin','gestor')  THEN 'ADMINISTRAÇÃO'
-                ELSE COALESCE(u.cras, s.cras, 'Não informado')
-            END AS unidade,
-            COUNT(*) as total,
-            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregues,
-            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
-        FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        {w}
+        SELECT unidade,
+               SUM(escutas) as escutas,
+               SUM(entregas) as entregas,
+               SUM(ausentes) as ausentes,
+               SUM(escutas + entregas + ausentes) as total
+        FROM (
+            SELECT {_u_case} AS unidade,
+                   COUNT(*) as escutas, 0 as entregas, 0 as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico = u.usuario
+            {_and(w)}s.status != 'Cancelada'
+            GROUP BY unidade
+            UNION ALL
+            SELECT {_u_case} AS unidade,
+                   0 as escutas,
+                   SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregas,
+                   SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+            {_and(w)}s.tecnico_entrega IS NOT NULL AND s.status != 'Cancelada'
+            GROUP BY unidade
+        ) t
         GROUP BY unidade ORDER BY total DESC
-    """, p_periodo)
+    """, p_periodo + p_periodo)
     por_cras = cursor.fetchall()
 
-    # Por Técnico
+    # Por Técnico — separa escutas de entregas/ausentes
     cursor.execute(f"""
-        SELECT COALESCE(u.nome, s.tecnico) as nome_tecnico,
-               COUNT(*) as total,
-               SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregues,
-               SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
-        FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        {w}
-        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY total DESC
-    """, p_periodo)
+        SELECT nome_tecnico,
+               SUM(escutas) as escutas,
+               SUM(entregas) as entregas,
+               SUM(ausentes) as ausentes,
+               SUM(escutas + entregas + ausentes) as total
+        FROM (
+            SELECT COALESCE(u.nome, s.tecnico) as nome_tecnico,
+                   COUNT(*) as escutas, 0 as entregas, 0 as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico = u.usuario
+            {_and(w)}s.status != 'Cancelada'
+            GROUP BY COALESCE(u.nome, s.tecnico)
+            UNION ALL
+            SELECT COALESCE(u.nome, s.tecnico_entrega) as nome_tecnico,
+                   0 as escutas,
+                   SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) as entregas,
+                   SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico_entrega = u.usuario
+            {_and(w)}s.tecnico_entrega IS NOT NULL AND s.status != 'Cancelada'
+            GROUP BY COALESCE(u.nome, s.tecnico_entrega)
+        ) t
+        GROUP BY nome_tecnico ORDER BY total DESC
+    """, p_periodo + p_periodo)
     por_tecnico = cursor.fetchall()
 
     # Últimas entregas do período (máx 20)
@@ -1865,30 +1891,45 @@ def _coletar_dados_relatorio(periodo_inicio, periodo_fim):
     cursor.execute(f"SELECT COUNT(*) FROM solicitacoes {where + (' AND ' if where else 'WHERE ')}excecao_art64=TRUE", p_periodo)
     excecoes = cursor.fetchone()[0]
 
+    _wp = f"WHERE {cond_periodo}" if cond_periodo else ""
+    _andp = (_wp + " AND ") if _wp else "WHERE "
+    _uc = """CASE WHEN u.perfil='creas' THEN 'CREAS'
+                  WHEN u.perfil='cras_volante' THEN 'EQUIPE VOLANTE'
+                  WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
+                  ELSE COALESCE(u.cras, s.cras, 'Não informado') END"""
+
     cursor.execute(f"""
-        SELECT
-            CASE
-                WHEN u.perfil = 'creas'        THEN 'CREAS'
-                WHEN u.perfil = 'cras_volante'  THEN 'EQUIPE VOLANTE'
-                WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
-                ELSE COALESCE(u.cras, s.cras, 'Não informado')
-            END AS equipe,
-            COUNT(*),
-            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END)
-        FROM solicitacoes s
-        LEFT JOIN usuarios u ON s.tecnico = u.usuario
-        {'WHERE ' + cond_periodo if cond_periodo else ''}
-        GROUP BY equipe ORDER BY COUNT(*) DESC""", p_periodo)
+        SELECT unidade, SUM(escutas), SUM(entregas), SUM(ausentes), SUM(escutas+entregas+ausentes)
+        FROM (
+            SELECT {_uc} AS unidade, COUNT(*) as escutas, 0 as entregas, 0 as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico=u.usuario
+            {_andp}s.status!='Cancelada' GROUP BY unidade
+            UNION ALL
+            SELECT {_uc} AS unidade, 0,
+                   SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END)
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico_entrega=u.usuario
+            {_andp}s.tecnico_entrega IS NOT NULL AND s.status!='Cancelada' GROUP BY unidade
+        ) t GROUP BY unidade ORDER BY SUM(escutas+entregas+ausentes) DESC
+    """, p_periodo + p_periodo)
     por_cras = cursor.fetchall()
 
     cursor.execute(f"""
-        SELECT COALESCE(u.nome, s.tecnico), COUNT(*),
-            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END)
-        FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico=u.usuario
-        {'WHERE ' + cond_periodo if cond_periodo else ''}
-        GROUP BY COALESCE(u.nome, s.tecnico) ORDER BY COUNT(*) DESC""", p_periodo)
+        SELECT nome_tecnico, SUM(escutas), SUM(entregas), SUM(ausentes), SUM(escutas+entregas+ausentes)
+        FROM (
+            SELECT COALESCE(u.nome, s.tecnico) as nome_tecnico,
+                   COUNT(*) as escutas, 0 as entregas, 0 as ausentes
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico=u.usuario
+            {_andp}s.status!='Cancelada' GROUP BY COALESCE(u.nome, s.tecnico)
+            UNION ALL
+            SELECT COALESCE(u.nome, s.tecnico_entrega) as nome_tecnico, 0,
+                   SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END)
+            FROM solicitacoes s LEFT JOIN usuarios u ON s.tecnico_entrega=u.usuario
+            {_andp}s.tecnico_entrega IS NOT NULL AND s.status!='Cancelada'
+            GROUP BY COALESCE(u.nome, s.tecnico_entrega)
+        ) t GROUP BY nome_tecnico ORDER BY SUM(escutas+entregas+ausentes) DESC
+    """, p_periodo + p_periodo)
     por_tecnico = cursor.fetchall()
 
     conexao.close()

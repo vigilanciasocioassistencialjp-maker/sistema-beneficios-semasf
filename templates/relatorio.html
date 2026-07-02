@@ -124,9 +124,10 @@
                     <thead class="table-primary">
                         <tr>
                             <th>Unidade</th>
-                            <th>Total</th>
-                            <th>Entregues</th>
+                            <th>Escutas</th>
+                            <th>Entregas</th>
                             <th>Ausentes</th>
+                            <th>Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -136,6 +137,7 @@
                             <td>{{ c[1] }}</td>
                             <td><span class="text-success fw-bold">{{ c[2] }}</span></td>
                             <td><span class="text-danger fw-bold">{{ c[3] }}</span></td>
+                            <td><span class="fw-bold">{{ c[4] }}</span></td>
                         </tr>
                         {% else %}
                         <tr>
@@ -159,9 +161,10 @@
                     <thead class="table-info">
                         <tr>
                             <th>Técnico</th>
-                            <th>Total</th>
-                            <th>Entregues</th>
+                            <th>Escutas</th>
+                            <th>Entregas</th>
                             <th>Ausentes</th>
+                            <th>Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -171,6 +174,7 @@
                             <td>{{ t[1] }}</td>
                             <td><span class="text-success fw-bold">{{ t[2] }}</span></td>
                             <td><span class="text-danger fw-bold">{{ t[3] }}</span></td>
+                            <td><span class="fw-bold">{{ t[4] }}</span></td>
                         </tr>
                         {% else %}
                         <tr>
