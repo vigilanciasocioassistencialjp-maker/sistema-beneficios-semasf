@@ -445,5 +445,47 @@ setTimeout(function() {
 </script>
 
 {% block extra_js %}{% endblock %}
+
+{% if mostrar_modal_notif %}
+<div class="modal fade" id="modalNotifLogin" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white" style="background: linear-gradient(135deg, #1b2f5e, #2e5f9e);">
+                <h5 class="modal-title">
+                    <i class="fas fa-bell me-2"></i> Você tem notificações não lidas
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="mb-3">
+                    <span class="badge rounded-pill bg-danger" style="font-size: 2rem; padding: 0.6rem 1.2rem;">
+                        {{ notificacoes_nao_lidas }}
+                    </span>
+                </div>
+                <p class="fs-5 mb-1">
+                    {% if notificacoes_nao_lidas == 1 %}
+                        Você tem <strong>1 notificação</strong> não lida.
+                    {% else %}
+                        Você tem <strong>{{ notificacoes_nao_lidas }} notificações</strong> não lidas.
+                    {% endif %}
+                </p>
+                <p class="text-muted small">Clique em "Ver Notificações" para conferir.</p>
+            </div>
+            <div class="modal-footer justify-content-center gap-2 border-0 pb-4">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Fechar
+                </button>
+                <a href="{{ url_for('notificacoes') }}" class="btn btn-primary">
+                    <i class="fas fa-bell"></i> Ver Notificações
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new bootstrap.Modal(document.getElementById('modalNotifLogin')).show();
+    });
+</script>
+{% endif %}
 </body>
 </html>

@@ -340,10 +340,11 @@ def inject_notificacoes_count():
             cur.execute("SELECT COUNT(*) FROM notificacoes WHERE destinatario=%s AND lida=FALSE", (current_user.id,))
             count = cur.fetchone()[0]
             conn.close()
-            return {'notificacoes_nao_lidas': count}
+            mostrar_modal = session.pop('mostrar_modal_notif', False) and count > 0
+            return {'notificacoes_nao_lidas': count, 'mostrar_modal_notif': mostrar_modal}
         except:
-            return {'notificacoes_nao_lidas': 0}
-    return {'notificacoes_nao_lidas': 0}
+            return {'notificacoes_nao_lidas': 0, 'mostrar_modal_notif': False}
+    return {'notificacoes_nao_lidas': 0, 'mostrar_modal_notif': False}
 
 @app.template_filter('fromjson')
 def fromjson_filter(value):
@@ -385,6 +386,7 @@ def login():
             user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None, dados[5] if len(dados) > 5 else dados[0])
             login_user(user, remember=False)
             session.permanent = True
+            session['mostrar_modal_notif'] = True
             if ip in tentativas_login: del tentativas_login[ip]
             logger.info(f"Login: {dados[0]}")
             if dados[3] == 1:
