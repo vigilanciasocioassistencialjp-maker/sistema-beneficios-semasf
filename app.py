@@ -1714,30 +1714,66 @@ def nova_tentativa(id):
 # ele ajusta a seleção e gera o PDF para carimbo/assinatura
 # =====================================================
 
+def _filtro_unidade_entrega(unidade):
+    """Retorna (join, condicao, params) para filtrar as solicitações pela
+    unidade RESPONSÁVEL PELA ENTREGA. O critério principal é QUEM FEZ A
+    ESCUTA (unidade do técnico que registrou), não o território:
+
+    - CRAS X ........: escutas feitas pela equipe do CRAS X, exceto
+                       bairros da Equipe Volante (área rural). Se a escuta
+                       foi registrada por admin/gestor ou usuário excluído,
+                       usa o território como fallback.
+    - CREAS .........: escutas feitas por técnicos do CREAS
+                       (CRAS e CREAS atendem o mesmo território)
+    - EQUIPE VOLANTE : bairros marcados como entrega da volante (área
+                       rural) + outros municípios, independente de quem
+                       registrou a escuta (o CRAS escuta e encaminha)
+    """
+    if not unidade:
+        return "", "", []
+    if unidade == 'CREAS':
+        return ("JOIN usuarios u_fil ON s.tecnico = u_fil.usuario",
+                "u_fil.perfil = 'creas'", [])
+    if unidade == 'EQUIPE VOLANTE':
+        return ("",
+                "(s.cras = 'EQUIPE VOLANTE' OR s.bairro IN "
+                "(SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE))",
+                [])
+    return ("LEFT JOIN usuarios u_fil ON s.tecnico = u_fil.usuario",
+            "s.bairro NOT IN (SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE)"
+            " AND ((u_fil.perfil = 'cras' AND u_fil.cras = %s)"
+            "      OR (s.cras = %s AND COALESCE(u_fil.perfil, '') NOT IN ('cras', 'creas', 'cras_volante')))",
+            [unidade, unidade])
+
+
 @app.route("/lista_entrega")
 @login_required
 def lista_entrega():
     qtd = request.args.get('qtd', type=int)
-    cras_filtro = request.args.get('cras', '').strip()
+    unidade = request.args.get('cras', '').strip()
+    # Cada perfil tem sua unidade de entrega natural
     if current_user.perfil == 'cras':
-        cras_filtro = current_user.cras or ''
+        unidade = current_user.cras or ''
+    elif current_user.perfil == 'creas' and not unidade:
+        unidade = 'CREAS'
+    elif current_user.perfil == 'cras_volante' and not unidade:
+        unidade = 'EQUIPE VOLANTE'
+    if unidade == 'ADMINISTRAÇÃO':
+        unidade = ''
 
     sugestao = None
     if qtd and qtd > 0:
         qtd = min(qtd, 100)
-        filtros = ["status = 'Cadastrada'"]
-        params  = []
-        if cras_filtro:
-            filtros.append("cras = %s")
-            params.append(cras_filtro)
+        join, cond, params = _filtro_unidade_entrega(unidade)
+        where = "s.status = 'Cadastrada'" + (f" AND {cond}" if cond else "")
         conexao = get_db()
         cursor  = conexao.cursor()
         # Mais antigas primeiro (fila por ordem de chegada)
         cursor.execute(f"""
-            SELECT id, nome, cpf, bairro, data_solicitacao
-            FROM solicitacoes
-            WHERE {' AND '.join(filtros)}
-            ORDER BY id ASC
+            SELECT s.id, s.nome, s.cpf, s.bairro, s.data_solicitacao
+            FROM solicitacoes s {join}
+            WHERE {where}
+            ORDER BY s.id ASC
             LIMIT %s
         """, params + [qtd])
         rows = cursor.fetchall()
@@ -1751,13 +1787,13 @@ def lista_entrega():
         } for r in rows]
 
     pode_escolher_unidade = current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante']
-    lista_cras = get_lista_cras() if pode_escolher_unidade else []
+    lista_unidades = (get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']) if pode_escolher_unidade else []
     return render_template("lista_entrega.html",
                            qtd=qtd,
-                           cras_filtro=cras_filtro,
+                           cras_filtro=unidade,
                            sugestao=sugestao,
                            pode_escolher_unidade=pode_escolher_unidade,
-                           lista_cras=lista_cras,
+                           lista_unidades=lista_unidades,
                            current_user=current_user)
 
 
@@ -1768,18 +1804,21 @@ def api_lista_entrega_buscar_cpf(cpf):
     cpf_limpo = ''.join(filter(str.isdigit, str(cpf)))
     if len(cpf_limpo) != 11 or not validar_cpf(cpf_limpo):
         return jsonify({'erro': 'CPF inválido', 'encontrados': []})
-    filtros = ["cpf_hash = %s", "status = 'Cadastrada'"]
+    filtros = ["s.cpf_hash = %s", "s.status = 'Cadastrada'"]
     params  = [hash_cpf(cpf_limpo)]
+    join    = ""
+    # Técnico de CRAS: escutas da própria equipe ou do próprio território
     if current_user.perfil == 'cras':
-        filtros.append("cras = %s")
-        params.append(current_user.cras or '')
+        join = "LEFT JOIN usuarios u_fil ON s.tecnico = u_fil.usuario"
+        filtros.append("((u_fil.perfil = 'cras' AND u_fil.cras = %s) OR s.cras = %s)")
+        params.extend([current_user.cras or '', current_user.cras or ''])
     conexao = get_db()
     cursor  = conexao.cursor()
     cursor.execute(f"""
-        SELECT id, nome, cpf, bairro, data_solicitacao
-        FROM solicitacoes
+        SELECT s.id, s.nome, s.cpf, s.bairro, s.data_solicitacao
+        FROM solicitacoes s {join}
         WHERE {' AND '.join(filtros)}
-        ORDER BY id ASC
+        ORDER BY s.id ASC
     """, params)
     rows = cursor.fetchall()
     conexao.close()
@@ -1803,21 +1842,23 @@ def lista_entrega_pdf():
         flash("Monte a lista de entrega antes de gerar o PDF.", "warning")
         return redirect(url_for("lista_entrega"))
 
-    filtros = ["status = 'Cadastrada'", "id = ANY(%s)"]
+    filtros = ["s.status = 'Cadastrada'", "s.id = ANY(%s)"]
     params  = [ids]
-    # Técnico de CRAS só gera lista com solicitações da própria unidade
+    join    = ""
+    # Técnico de CRAS: escutas da própria equipe ou do próprio território
     if current_user.perfil == 'cras':
-        filtros.append("cras = %s")
-        params.append(current_user.cras or '')
+        join = "LEFT JOIN usuarios u_fil ON s.tecnico = u_fil.usuario"
+        filtros.append("((u_fil.perfil = 'cras' AND u_fil.cras = %s) OR s.cras = %s)")
+        params.extend([current_user.cras or '', current_user.cras or ''])
 
     conexao = get_db()
     cursor  = conexao.cursor()
     cursor.execute(f"""
-        SELECT nome, cpf, endereco, numero, bairro, telefone,
-               renda_per_capita, visita_domiciliar, cras
-        FROM solicitacoes
+        SELECT s.nome, s.cpf, s.endereco, s.numero, s.bairro, s.telefone,
+               s.renda_per_capita, s.visita_domiciliar, s.cras
+        FROM solicitacoes s {join}
         WHERE {' AND '.join(filtros)}
-        ORDER BY bairro, nome
+        ORDER BY s.bairro, s.nome
     """, params)
     linhas = cursor.fetchall()
     conexao.close()
@@ -1827,8 +1868,10 @@ def lista_entrega_pdf():
         return redirect(url_for("lista_entrega"))
 
     hoje = datetime.now(FUSO_RONDONIA)
+    # Rótulo: usa a unidade escolhida na montagem; sem ela, deduz das linhas
+    unidade_param = request.args.get('unidade', '').strip()
     unidades = sorted({r[8] for r in linhas if r[8]})
-    unidade_label = unidades[0] if len(unidades) == 1 else "DIVERSAS UNIDADES"
+    unidade_label = unidade_param or (unidades[0] if len(unidades) == 1 else "DIVERSAS UNIDADES")
 
     # ── Cabeçalho e rodapé desenhados em toda página ──────────────
     PAGE_W, PAGE_H = landscape(A4)
@@ -2784,13 +2827,13 @@ def configuracoes():
         row = cursor.fetchone()
         salario = float(row[0]) if row else 1621.00
 
-        cursor.execute("SELECT id, cras, bairro FROM cras_bairros ORDER BY cras, bairro")
+        cursor.execute("SELECT id, cras, bairro, entrega_volante FROM cras_bairros ORDER BY cras, bairro")
         bairros_por_cras = {}
         bairros_com_id   = {}
         lista_cras_set   = []
-        for bid, bcras, bbairro in cursor.fetchall():
+        for bid, bcras, bbairro, bvolante in cursor.fetchall():
             bairros_por_cras.setdefault(bcras, []).append(bbairro)
-            bairros_com_id.setdefault(bcras, []).append((bid, bbairro))
+            bairros_com_id.setdefault(bcras, []).append((bid, bbairro, bvolante))
             if bcras not in lista_cras_set:
                 lista_cras_set.append(bcras)
     finally:
@@ -2849,6 +2892,34 @@ def bairro_mover():
     conn.close()
     flash(f"✅ Bairro movido para {novo_cras}!", "success")
     return redirect(url_for("configuracoes"))
+
+@app.route("/configuracoes/bairro/volante", methods=["POST"])
+@login_required
+def bairro_volante():
+    """Alterna se o bairro é atendido pela Equipe Volante na entrega (área rural)."""
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    bairro_id = request.form.get("bairro_id", "")
+    if not bairro_id:
+        flash("❌ Bairro não identificado.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE cras_bairros SET entrega_volante = NOT entrega_volante
+        WHERE id = %s RETURNING bairro, entrega_volante
+    """, (bairro_id,))
+    row = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    if row:
+        estado = "marcado para entrega pela EQUIPE VOLANTE" if row[1] else "voltou para entrega pelo CRAS do território"
+        logger.info(f"Bairro '{row[0]}' {estado} por {current_user.id}")
+        flash(f"✅ Bairro '{row[0]}' {estado}.", "success")
+    else:
+        flash("❌ Bairro não encontrado.", "danger")
+    return redirect(url_for("configuracoes"))
+
 
 @app.route("/configuracoes/bairro/remover", methods=["POST"])
 @login_required

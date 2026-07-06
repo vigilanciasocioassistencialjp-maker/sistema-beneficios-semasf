@@ -164,11 +164,28 @@
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover mb-0">
                                         <tbody>
-                                            {% for bid, bairro in itens %}
+                                            {% for bid, bairro, volante in itens %}
                                             <tr>
-                                                <td class="align-middle">{{ bairro }}</td>
+                                                <td class="align-middle">
+                                                    {{ bairro }}
+                                                    {% if volante %}
+                                                    <span class="badge bg-info text-dark ms-1" title="A entrega das cestas deste bairro é feita pela Equipe Volante">
+                                                        <i class="fas fa-truck"></i> Equipe Volante
+                                                    </span>
+                                                    {% endif %}
+                                                </td>
                                                 <td class="text-end">
                                                     <div class="d-inline-flex gap-1">
+                                                        <!-- Alternar entrega pela Equipe Volante -->
+                                                        <form action="/configuracoes/bairro/volante" method="POST" class="d-inline">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <button type="submit"
+                                                                    class="btn btn-sm {{ 'btn-info' if volante else 'btn-outline-info' }}"
+                                                                    title="{{ 'Voltar a entrega para o CRAS do território' if volante else 'Marcar entrega pela Equipe Volante (área rural)' }}"
+                                                                    onclick="return confirm('{{ 'Devolver a entrega de ' + bairro + ' ao CRAS do território?' if volante else 'Marcar ' + bairro + ' como entrega da Equipe Volante (área rural)?' }}')">
+                                                                <i class="fas fa-truck"></i>
+                                                            </button>
+                                                        </form>
                                                         <!-- Mover para outro CRAS -->
                                                         <form action="/configuracoes/bairro/mover" method="POST" class="d-inline-flex gap-1">
                                                             <input type="hidden" name="bairro_id" value="{{ bid }}">

@@ -30,10 +30,10 @@
                 </div>
                 {% if pode_escolher_unidade %}
                 <div class="col-auto">
-                    <label class="form-label mb-1">Unidade</label>
+                    <label class="form-label mb-1">Unidade responsável pela entrega</label>
                     <select name="cras" class="form-select">
                         <option value="">Todas as unidades</option>
-                        {% for c in lista_cras %}
+                        {% for c in lista_unidades %}
                         <option value="{{ c }}" {% if c == cras_filtro %}selected{% endif %}>{{ c }}</option>
                         {% endfor %}
                     </select>
@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 let lista = {{ sugestao|tojson }};
 const META = {{ qtd or 0 }};
+const UNIDADE = {{ cras_filtro|tojson }};
 
 function renderLista() {
     const tbody = document.querySelector('#tabelaLista tbody');
@@ -207,7 +208,7 @@ document.getElementById('btnGerarPdf').addEventListener('click', function() {
         return;
     }
     const ids = lista.map(b => b.id).join(',');
-    window.open(`/lista_entrega/pdf?ids=${ids}`, '_blank');
+    window.open(`/lista_entrega/pdf?ids=${ids}&unidade=${encodeURIComponent(UNIDADE || '')}`, '_blank');
 });
 
 renderLista();

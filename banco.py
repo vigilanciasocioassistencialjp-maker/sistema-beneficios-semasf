@@ -302,6 +302,29 @@ def criar_banco():
             )
             print("✅ Bairros iniciais inseridos!")
 
+        # =====================================================
+        # MIGRAÇÃO: flag de entrega pela Equipe Volante
+        # (bairros de área rural: escuta é feita no CRAS, mas a
+        # entrega da cesta é responsabilidade da Equipe Volante)
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'cras_bairros' AND column_name = 'entrega_volante'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE cras_bairros ADD COLUMN entrega_volante BOOLEAN DEFAULT FALSE")
+            # Pré-marca os bairros claramente rurais; o gestor pode ajustar
+            # os demais na tela de Configurações
+            cursor.execute("""
+                UPDATE cras_bairros SET entrega_volante = TRUE
+                WHERE bairro LIKE '%RURAL%'
+                   OR bairro LIKE 'LINHA %'
+                   OR bairro LIKE '%ALDEIAS%'
+                   OR bairro = 'DISTRITO NOVA COLINA'
+                   OR bairro = 'SETOR CHACAREIRO'
+            """)
+            print(f"✅ Coluna entrega_volante adicionada ({cursor.rowcount} bairro(s) rural(is) pré-marcado(s))!")
+
         # MIGRAÇÃO: renomear perfil 'tecnico' → 'cras'
         cursor.execute("UPDATE usuarios SET perfil = 'cras' WHERE perfil = 'tecnico'")
         if cursor.rowcount > 0:
