@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">
+            <i class="fas fa-clipboard-list text-primary"></i> Montar Lista de Entrega
+        </h2>
+        <a href="{{ url_for('solicitacoes') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+    <p class="text-muted">
+        Informe quantas cestas serão entregues hoje. O sistema sugere as solicitações
+        <strong>mais antigas</strong> ainda pendentes; você pode remover beneficiários da lista
+        e incluir outros pelo CPF (casos mais urgentes) antes de gerar o PDF.
+    </p>
+
+    <!-- Passo 1: quantidade de cestas -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="fas fa-boxes"></i> Quantas cestas serão entregues?
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label mb-1">Quantidade de cestas</label>
+                    <input type="number" name="qtd" class="form-control" min="1" max="100"
+                           value="{{ qtd or '' }}" placeholder="Ex: 10" required style="width: 140px;">
+                </div>
+                {% if pode_escolher_unidade %}
+                <div class="col-auto">
+                    <label class="form-label mb-1">Unidade</label>
+                    <select name="cras" class="form-select">
+                        <option value="">Todas as unidades</option>
+                        {% for c in lista_cras %}
+                        <option value="{{ c }}" {% if c == cras_filtro %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-list"></i> Montar lista
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if sugestao is not none %}
+    <!-- Passo 2: revisar a lista -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-truck"></i> Beneficiários selecionados para a entrega</span>
+            <span>Selecionados: <strong id="contadorSelecionados">0</strong>{% if qtd %} / meta: {{ qtd }}{% endif %}</span>
+        </div>
+        <div class="card-body">
+            {% if not sugestao %}
+            <div class="alert alert-warning mb-3">
+                <i class="fas fa-info-circle"></i> Nenhuma solicitação pendente encontrada
+                {% if cras_filtro %}para <strong>{{ cras_filtro }}</strong>{% endif %}.
+                Você ainda pode incluir beneficiários pelo CPF abaixo.
+            </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle" id="tabelaLista">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:50px;">#</th>
+                            <th style="width:70px;">ID</th>
+                            <th>Nome</th>
+                            <th>CPF</th>
+                            <th>Bairro</th>
+                            <th>Solicitada em</th>
+                            <th style="width:110px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody><!-- preenchido via JS --></tbody>
+                </table>
+            </div>
+
+            <!-- Incluir por CPF -->
+            <div class="border rounded p-3 bg-light mt-3">
+                <label class="form-label fw-bold mb-1">
+                    <i class="fas fa-user-plus"></i> Incluir beneficiário pelo CPF
+                </label>
+                <div class="row g-2 align-items-center">
+                    <div class="col-auto">
+                        <input type="text" id="cpfIncluir" class="form-control" placeholder="000.000.000-00"
+                               maxlength="14" style="width: 180px;">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" id="btnIncluirCpf" class="btn btn-outline-primary">
+                            <i class="fas fa-plus"></i> Incluir
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <div id="msgIncluir" class="small"></div>
+                    </div>
+                </div>
+                <small class="text-muted">Somente solicitações com status <strong>Cadastrada</strong> podem ser incluídas.</small>
+            </div>
+
+            <!-- Passo 3: gerar PDF -->
+            <div class="mt-4 d-flex gap-2 align-items-center">
+                <button type="button" id="btnGerarPdf" class="btn btn-success btn-lg">
+                    <i class="fas fa-file-pdf"></i> Confirmar e Gerar PDF
+                </button>
+                <small class="text-muted">O PDF conterá somente os beneficiários listados acima.</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if sugestao is not none %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+let lista = {{ sugestao|tojson }};
+const META = {{ qtd or 0 }};
+
+function renderLista() {
+    const tbody = document.querySelector('#tabelaLista tbody');
+    if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nenhum beneficiário na lista.</td></tr>';
+    } else {
+        tbody.innerHTML = lista.map((b, i) => `
+            <tr>
+                <td>${String(i + 1).padStart(2, '0')}</td>
+                <td>#${b.id}</td>
+                <td>${b.nome}</td>
+                <td>${b.cpf}</td>
+                <td>${b.bairro}</td>
+                <td>${b.data}</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-remover="${b.id}" title="Remover da lista">
+                        <i class="fas fa-times"></i> Remover
+                    </button>
+                </td>
+            </tr>`).join('');
+    }
+    const contador = document.getElementById('contadorSelecionados');
+    contador.textContent = lista.length;
+    contador.classList.toggle('text-warning', META > 0 && lista.length > META);
+}
+
+document.querySelector('#tabelaLista tbody').addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-remover]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.remover);
+    lista = lista.filter(b => b.id !== id);
+    renderLista();
+});
+
+// Máscara de CPF no campo de inclusão
+document.getElementById('cpfIncluir').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g, '');
+    v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    this.value = v;
+});
+
+document.getElementById('btnIncluirCpf').addEventListener('click', function() {
+    const msg = document.getElementById('msgIncluir');
+    const cpfLimpo = document.getElementById('cpfIncluir').value.replace(/\D/g, '');
+    if (cpfLimpo.length !== 11) {
+        msg.innerHTML = '<span class="text-danger">Digite o CPF completo.</span>';
+        return;
+    }
+    msg.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Buscando...</span>';
+    fetch(`/api/lista_entrega/buscar_cpf/${cpfLimpo}`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.erro) { msg.innerHTML = `<span class="text-danger">${d.erro}</span>`; return; }
+            if (!d.encontrados || !d.encontrados.length) {
+                msg.innerHTML = '<span class="text-danger">Nenhuma solicitação <strong>Cadastrada</strong> encontrada para este CPF.</span>';
+                return;
+            }
+            let incluidos = 0, jaExistiam = 0;
+            d.encontrados.forEach(e => {
+                if (lista.some(x => x.id === e.id)) { jaExistiam++; }
+                else { lista.push(e); incluidos++; }
+            });
+            renderLista();
+            if (incluidos > 0) {
+                msg.innerHTML = `<span class="text-success"><i class="fas fa-check"></i> ${incluidos} solicitação(ões) incluída(s).</span>`;
+                document.getElementById('cpfIncluir').value = '';
+            } else if (jaExistiam > 0) {
+                msg.innerHTML = '<span class="text-warning">Este beneficiário já está na lista.</span>';
+            }
+        })
+        .catch(() => { msg.innerHTML = '<span class="text-danger">Erro ao buscar. Tente novamente.</span>'; });
+});
+
+// Enter no campo de CPF aciona a inclusão
+document.getElementById('cpfIncluir').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnIncluirCpf').click(); }
+});
+
+document.getElementById('btnGerarPdf').addEventListener('click', function() {
+    if (!lista.length) {
+        alert('A lista está vazia. Inclua ao menos um beneficiário.');
+        return;
+    }
+    const ids = lista.map(b => b.id).join(',');
+    window.open(`/lista_entrega/pdf?ids=${ids}`, '_blank');
+});
+
+renderLista();
+
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -20,10 +20,13 @@ import json
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import bcrypt
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 import io
 import qrcode
 import secrets
@@ -488,12 +491,27 @@ def verificar_cpf(cpf):
         # Pendente
         cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE cpf_hash = %s AND status = 'Cadastrada'", (hash_busca,))
         pendente = cursor.fetchone()[0] > 0
-        
+
         # Nome
         cursor.execute("SELECT nome FROM solicitacoes WHERE cpf_hash = %s ORDER BY id DESC LIMIT 1", (hash_busca,))
         nome_row = cursor.fetchone()
         nome = nome_row[0] if nome_row else None
-        
+
+        # Entregas anteriores (id + data) para o front-end exibir links clicáveis
+        cursor.execute("""
+            SELECT id, data_entrega FROM solicitacoes
+            WHERE cpf_hash = %s AND status = 'Entregue'
+            ORDER BY id DESC LIMIT 10
+        """, (hash_busca,))
+        entregas = []
+        for ent_id, ent_data in cursor.fetchall():
+            data_fmt = str(ent_data) if ent_data else ''
+            if '-' in data_fmt:
+                partes = data_fmt[:10].split('-')
+                if len(partes) == 3:
+                    data_fmt = f"{partes[2]}/{partes[1]}/{partes[0]}"
+            entregas.append({'id': ent_id, 'data_entrega': data_fmt})
+
         conexao.close()
         
         # Dias desde última entrega
@@ -519,7 +537,8 @@ def verificar_cpf(cpf):
             'dias_desde_ultima': dias,
             'pendente': pendente,
             'alerta': alerta,
-            'nome': nome
+            'nome': nome,
+            'entregas': entregas
         })
     except Exception as e:
         logger.error(f"Erro verificar CPF: {e}")
@@ -1671,6 +1690,260 @@ def nova_tentativa(id):
     logger.info(f"Nova tentativa: ID={id}, tentativa={tentativa_atual}, tecnico={current_user.id}")
     flash(f"✅ Solicitação #{id} reaberta para nova tentativa de entrega (tentativa {tentativa_atual}).", "success")
     return redirect(url_for("ver_solicitacao", id=id))
+
+
+# =====================================================
+# LISTA DE ENTREGA — o técnico define quantas cestas tem
+# no dia, o sistema sugere as solicitações mais antigas,
+# ele ajusta a seleção e gera o PDF para carimbo/assinatura
+# =====================================================
+
+@app.route("/lista_entrega")
+@login_required
+def lista_entrega():
+    qtd = request.args.get('qtd', type=int)
+    cras_filtro = request.args.get('cras', '').strip()
+    if current_user.perfil == 'cras':
+        cras_filtro = current_user.cras or ''
+
+    sugestao = None
+    if qtd and qtd > 0:
+        qtd = min(qtd, 100)
+        filtros = ["status = 'Cadastrada'"]
+        params  = []
+        if cras_filtro:
+            filtros.append("cras = %s")
+            params.append(cras_filtro)
+        conexao = get_db()
+        cursor  = conexao.cursor()
+        # Mais antigas primeiro (fila por ordem de chegada)
+        cursor.execute(f"""
+            SELECT id, nome, cpf, bairro, data_solicitacao
+            FROM solicitacoes
+            WHERE {' AND '.join(filtros)}
+            ORDER BY id ASC
+            LIMIT %s
+        """, params + [qtd])
+        rows = cursor.fetchall()
+        conexao.close()
+        sugestao = [{
+            'id': r[0],
+            'nome': r[1] or '—',
+            'cpf': formatar_cpf(descriptografar_cpf(r[2])) if r[2] else '—',
+            'bairro': r[3] or '—',
+            'data': str(r[4])[:10] if r[4] else '—',
+        } for r in rows]
+
+    pode_escolher_unidade = current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante']
+    lista_cras = get_lista_cras() if pode_escolher_unidade else []
+    return render_template("lista_entrega.html",
+                           qtd=qtd,
+                           cras_filtro=cras_filtro,
+                           sugestao=sugestao,
+                           pode_escolher_unidade=pode_escolher_unidade,
+                           lista_cras=lista_cras,
+                           current_user=current_user)
+
+
+@app.route("/api/lista_entrega/buscar_cpf/<cpf>")
+@login_required
+def api_lista_entrega_buscar_cpf(cpf):
+    """Busca solicitações Cadastradas de um CPF para incluir na lista de entrega."""
+    cpf_limpo = ''.join(filter(str.isdigit, str(cpf)))
+    if len(cpf_limpo) != 11 or not validar_cpf(cpf_limpo):
+        return jsonify({'erro': 'CPF inválido', 'encontrados': []})
+    filtros = ["cpf_hash = %s", "status = 'Cadastrada'"]
+    params  = [hash_cpf(cpf_limpo)]
+    if current_user.perfil == 'cras':
+        filtros.append("cras = %s")
+        params.append(current_user.cras or '')
+    conexao = get_db()
+    cursor  = conexao.cursor()
+    cursor.execute(f"""
+        SELECT id, nome, cpf, bairro, data_solicitacao
+        FROM solicitacoes
+        WHERE {' AND '.join(filtros)}
+        ORDER BY id ASC
+    """, params)
+    rows = cursor.fetchall()
+    conexao.close()
+    encontrados = [{
+        'id': r[0],
+        'nome': r[1] or '—',
+        'cpf': formatar_cpf(descriptografar_cpf(r[2])) if r[2] else '—',
+        'bairro': r[3] or '—',
+        'data': str(r[4])[:10] if r[4] else '—',
+    } for r in rows]
+    return jsonify({'encontrados': encontrados})
+
+
+@app.route("/lista_entrega/pdf")
+@login_required
+def lista_entrega_pdf():
+    # Somente as solicitações selecionadas na tela de montagem
+    ids_param = request.args.get('ids', '').strip()
+    ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()][:100]
+    if not ids:
+        flash("Monte a lista de entrega antes de gerar o PDF.", "warning")
+        return redirect(url_for("lista_entrega"))
+
+    filtros = ["status = 'Cadastrada'", "id = ANY(%s)"]
+    params  = [ids]
+    # Técnico de CRAS só gera lista com solicitações da própria unidade
+    if current_user.perfil == 'cras':
+        filtros.append("cras = %s")
+        params.append(current_user.cras or '')
+
+    conexao = get_db()
+    cursor  = conexao.cursor()
+    cursor.execute(f"""
+        SELECT nome, cpf, endereco, numero, bairro, telefone,
+               renda_per_capita, visita_domiciliar, cras
+        FROM solicitacoes
+        WHERE {' AND '.join(filtros)}
+        ORDER BY bairro, nome
+    """, params)
+    linhas = cursor.fetchall()
+    conexao.close()
+
+    if not linhas:
+        flash("Nenhuma solicitação válida (status Cadastrada) entre as selecionadas.", "warning")
+        return redirect(url_for("lista_entrega"))
+
+    hoje = datetime.now(FUSO_RONDONIA)
+    unidades = sorted({r[8] for r in linhas if r[8]})
+    unidade_label = unidades[0] if len(unidades) == 1 else "DIVERSAS UNIDADES"
+
+    # ── Cabeçalho e rodapé desenhados em toda página ──────────────
+    PAGE_W, PAGE_H = landscape(A4)
+
+    def _cabecalho_lista(canvas_obj, doc):
+        canvas_obj.saveState()
+        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
+        if os.path.exists(logo_path):
+            try:
+                canvas_obj.drawImage(ImageReader(logo_path), 1*cm, PAGE_H - 2.2*cm,
+                                     width=4.5*cm, height=1.5*cm,
+                                     preserveAspectRatio=True, mask='auto')
+            except Exception:
+                pass
+        canvas_obj.setFont("Helvetica-Bold", 12)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 1.1*cm, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+        canvas_obj.setFont("Helvetica", 9)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 1.55*cm,
+                                     "Secretaria Municipal de Assistência Social e Família - SEMASF")
+        canvas_obj.setFont("Helvetica-Bold", 11)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 2.15*cm,
+                                     "LISTA DE ENTREGA DO BENEFÍCIO EVENTUAL EMERGENCIAL (CESTA BÁSICA)")
+        canvas_obj.setFont("Helvetica-Bold", 9)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 2.6*cm,
+                                     f"DATA: {hoje.strftime('%d/%m/%Y')}   |   UNIDADE: {unidade_label}   |   CESTAS: {len(linhas)}")
+        canvas_obj.setLineWidth(0.8)
+        canvas_obj.line(1*cm, PAGE_H - 2.8*cm, PAGE_W - 1*cm, PAGE_H - 2.8*cm)
+
+        # Rodapé institucional
+        canvas_obj.setFont("Helvetica", 6.5)
+        canvas_obj.setFillColorRGB(0.35, 0.35, 0.35)
+        canvas_obj.drawString(1*cm, 0.8*cm,
+            f"Documento gerado pelo Sistema de Cestas Básicas SEMASF em {hoje.strftime('%d/%m/%Y às %H:%M')} (horário de Rondônia)")
+        canvas_obj.restoreState()
+
+    # ── Numeração "Página X de Y" em passe único ──────────────────
+    class _CanvasNumerado(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._estados = []
+
+        def showPage(self):
+            self._estados.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total = len(self._estados)
+            for estado in self._estados:
+                self.__dict__.update(estado)
+                self.setFont("Helvetica", 7.5)
+                self.setFillColorRGB(0.2, 0.2, 0.2)
+                self.drawRightString(PAGE_W - 1*cm, 0.8*cm, f"Página {self._pageNumber} de {total}")
+                super().showPage()
+            super().save()
+
+    # ── Montagem da tabela ─────────────────────────────────────────
+    estilo_celula = ParagraphStyle('celula', fontName='Helvetica', fontSize=7.5, leading=9)
+    estilo_check  = ParagraphStyle('check',  fontName='Helvetica', fontSize=7.5, leading=10, alignment=1)
+
+    cabecalho = ['ORD', 'Nome do(a) RF', 'CPF', 'Endereço', 'Bairro',
+                 'Telefone', 'Renda Per Capita', 'Entrega', 'Sol. Visita']
+    dados_tabela = [cabecalho]
+
+    for i, (nome, cpf, endereco, numero, bairro, telefone, rpc, visita, _cras) in enumerate(linhas, 1):
+        cpf_fmt = formatar_cpf(descriptografar_cpf(cpf)) if cpf else '—'
+        end_fmt = f"{endereco or ''}, nº {numero}" if numero else (endereco or '—')
+        tel_fmt = telefone or 'Não possui'
+        rpc_fmt = f"R$ {float(rpc):.2f}".replace('.', ',') if rpc is not None else 'R$ 0,00'
+        # Entrega: em branco, para marcar à caneta no ato da entrega
+        chk_entrega = Paragraph('(&nbsp;&nbsp;) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
+        # Sol. Visita: pré-marcada conforme registrado no sistema
+        if visita:
+            chk_visita = Paragraph('(X) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
+        else:
+            chk_visita = Paragraph('(&nbsp;&nbsp;) Sim<br/>(X) Não', estilo_check)
+        dados_tabela.append([
+            f"{i:02d}",
+            Paragraph((nome or '—'), estilo_celula),
+            cpf_fmt,
+            Paragraph(end_fmt, estilo_celula),
+            Paragraph(bairro or '—', estilo_celula),
+            tel_fmt,
+            rpc_fmt,
+            chk_entrega,
+            chk_visita,
+        ])
+
+    larguras = [1.1*cm, 5.6*cm, 3.0*cm, 5.8*cm, 3.2*cm, 3.0*cm, 2.4*cm, 1.9*cm, 1.9*cm]
+    tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#1B2F5E')),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1, 0), 7.5),
+        ('FONTNAME',      (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE',      (0, 1), (-1, -1), 7.5),
+        ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN',         (2, 1), (2, -1), 'CENTER'),
+        ('ALIGN',         (5, 1), (6, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID',          (0, 0), (-1, -1), 0.5, colors.black),
+        ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F8')]),
+        ('TOPPADDING',    (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+
+    estilo_assinatura = ParagraphStyle('assinatura', fontName='Helvetica', fontSize=9, leading=14)
+    assinaturas = [
+        Spacer(1, 1.4*cm),
+        Paragraph("Técnico de Referência Responsável pela entrega: ________________________________________________",
+                  estilo_assinatura),
+        Spacer(1, 0.9*cm),
+        Paragraph("Motorista Responsável pelo recebimento das escutas: _____________________________________________",
+                  estilo_assinatura),
+    ]
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        leftMargin=1*cm, rightMargin=1*cm,
+        topMargin=3.1*cm, bottomMargin=1.4*cm,
+    )
+    doc.build([tabela] + assinaturas,
+              onFirstPage=_cabecalho_lista, onLaterPages=_cabecalho_lista,
+              canvasmaker=_CanvasNumerado)
+    buffer.seek(0)
+
+    slug_unidade = unidade_label.lower().replace(' ', '_')
+    nome_arquivo = f"lista_entrega_{slug_unidade}_{hoje.strftime('%Y%m%d')}.pdf"
+    logger.info(f"Lista de entrega gerada por {current_user.id} ({unidade_label}, {len(linhas)} beneficiários)")
+    return send_file(buffer, as_attachment=True, download_name=nome_arquivo, mimetype='application/pdf')
 
 
 # =====================================================

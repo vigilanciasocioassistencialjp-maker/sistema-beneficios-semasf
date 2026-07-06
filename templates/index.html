@@ -25,6 +25,8 @@
     overflow-x: auto;
 }
 
+.wizard-steps li { cursor: pointer; }
+.wizard-steps li:hover .wizard-step-num { transform: scale(1.12); transition: transform .15s; }
 .wizard-steps li {
     flex: 1;
     text-align: center;
@@ -163,8 +165,14 @@
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label required">Telefone</label>
+                                <label class="form-label required" id="labelTelefone">Telefone</label>
                                 <input type="text" name="telefone" class="form-control" id="telefone" required>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" id="semTelefone">
+                                    <label class="form-check-label small text-muted" for="semTelefone">
+                                        Beneficiário(a) não possui telefone
+                                    </label>
+                                </div>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">E-mail</label>
@@ -529,41 +537,49 @@ document.addEventListener('DOMContentLoaded', function() {
 let stepAtual = 1;
 const TOTAL_STEPS = 5;
 
-function irParaStep(destino) {
-    // Valida campos obrigatórios do passo atual antes de avançar
-    if (destino > stepAtual) {
-        const paneAtual = document.getElementById('pane-' + stepAtual);
-        const campos = paneAtual.querySelectorAll('input[required], select[required], textarea[required]');
-        let valido = true;
-        campos.forEach(c => {
-            if (!c.value.trim()) {
-                c.classList.add('is-invalid');
-                if (valido) c.focus();
-                valido = false;
-            } else {
-                c.classList.remove('is-invalid');
-            }
-        });
-        if (!valido) {
-            paneAtual.querySelector('.is-invalid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
-        }
-    }
-
-    // Esconde pane atual, mostra destino
+function mostrarPane(destino) {
     document.getElementById('pane-' + stepAtual).classList.remove('active');
     document.getElementById('pane-' + destino).classList.add('active');
-
-    // Atualiza indicadores
     document.querySelectorAll('#wizardSteps li').forEach(li => {
         const s = parseInt(li.dataset.step);
         li.classList.remove('active', 'done');
         if (s === destino) li.classList.add('active');
         else if (s < destino) li.classList.add('done');
     });
-
     stepAtual = destino;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function validarPane(numero) {
+    const pane = document.getElementById('pane-' + numero);
+    const campos = pane.querySelectorAll('input[required], select[required], textarea[required]');
+    let valido = true;
+    campos.forEach(c => {
+        if (!c.value.trim()) {
+            c.classList.add('is-invalid');
+            valido = false;
+        } else {
+            c.classList.remove('is-invalid');
+        }
+    });
+    return valido;
+}
+
+function irParaStep(destino) {
+    // Ao avançar (inclusive pulando etapas pelo cabeçalho), valida todos
+    // os passos intermediários; para no primeiro que tiver pendência
+    if (destino > stepAtual) {
+        for (let s = stepAtual; s < destino; s++) {
+            if (!validarPane(s)) {
+                mostrarPane(s);
+                const pendente = document.getElementById('pane-' + s).querySelector('.is-invalid');
+                pendente?.focus();
+                pendente?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+        }
+    }
+    mostrarPane(destino);
 }
 
 document.querySelectorAll('.btn-wizard-next').forEach(btn => {
@@ -571,6 +587,11 @@ document.querySelectorAll('.btn-wizard-next').forEach(btn => {
 });
 document.querySelectorAll('.btn-wizard-prev').forEach(btn => {
     btn.addEventListener('click', () => irParaStep(parseInt(btn.dataset.prev)));
+});
+
+// ── Passos clicáveis no cabeçalho do wizard ────────────────────────
+document.querySelectorAll('#wizardSteps li').forEach(li => {
+    li.addEventListener('click', () => irParaStep(parseInt(li.dataset.step)));
 });
 
 // ── Remover is-invalid ao digitar ──────────────────────────────────
@@ -635,6 +656,24 @@ document.getElementById('telefone').addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'');
     v = v.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d)/,'$1-$2');
     this.value = v;
+});
+
+// ── "Não possui telefone" torna o campo opcional ───────────────────
+document.getElementById('semTelefone').addEventListener('change', function() {
+    const tel = document.getElementById('telefone');
+    const label = document.getElementById('labelTelefone');
+    if (this.checked) {
+        tel.value = 'Não possui';
+        tel.required = false;
+        tel.readOnly = true;
+        tel.classList.remove('is-invalid');
+        label.classList.remove('required');
+    } else {
+        tel.value = '';
+        tel.required = true;
+        tel.readOnly = false;
+        label.classList.add('required');
+    }
 });
 document.getElementById('cep').addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'');
@@ -796,11 +835,14 @@ rendaBrutaInput.addEventListener('input', function() {
 });
 
 function calcularRPC() {
+    const brutaPreenchida = document.getElementById('renda_bruta').value.trim() !== '';
     const bruta = desmascarar(document.getElementById('renda_bruta').value);
     const pessoas = calcularTotalPessoas();
     const rpc = bruta / pessoas;
     const rpcInput = document.getElementById('renda_per_capita');
-    rpcInput.value = rpc > 0 ? mascaraMoeda(Math.round(rpc*100).toString()) : '';
+    // Renda 0,00 é válida (famílias sem nenhuma renda): exibe "0,00"
+    // desde que o campo tenha sido preenchido
+    rpcInput.value = brutaPreenchida ? mascaraMoeda(Math.round(rpc*100).toString()) || '0,00' : '';
     verificarRPC();
 }
 
@@ -817,7 +859,7 @@ function verificarRPC() {
         </div>`;
         rpcInput.classList.add('is-invalid');
         divExcecao?.classList.replace('border-warning','border-danger');
-    } else if (rpc > 0) {
+    } else if (rpcInput.value.trim() !== '') {
         avisoRPC.innerHTML = `<div class="text-success mt-1 small"><i class="fas fa-check-circle"></i> Dentro do critério (limite: R$ ${formatarMoeda(limiteRPC)}).</div>`;
         rpcInput.classList.remove('is-invalid');
         rpcInput.classList.add('is-valid');
@@ -864,10 +906,15 @@ document.getElementById('cpf').addEventListener('blur', function() {
         .then(data => {
             const div = document.getElementById('alertaCpf');
             if (!data.valido) { div.innerHTML='<div class="alert alert-danger mt-2 py-1 small">❌ CPF inválido!</div>'; return; }
+            // Datas das entregas anteriores como links (abrem a solicitação em nova aba)
+            const linksEntregas = (data.entregas || [])
+                .map(e => `<a href="/ver_solicitacao/${e.id}" target="_blank" class="alert-link" title="Abrir solicitação #${e.id} em nova aba">${e.data_entrega || '#' + e.id}</a>`)
+                .join(', ');
+            const historicoHtml = linksEntregas ? `<br>📋 Entregas anteriores: ${linksEntregas}` : '';
             if (data.alerta==='vermelho') {
-                div.innerHTML=`<div class="alert alert-danger mt-2 py-1 small">🚨 ${data.total_recebido} cesta(s) recebida(s). Última há ${data.dias_desde_ultima} dia(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}</div>`;
+                div.innerHTML=`<div class="alert alert-danger mt-2 py-1 small">🚨 ${data.total_recebido} cesta(s) recebida(s). Última há ${data.dias_desde_ultima} dia(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}${historicoHtml}</div>`;
             } else if (data.alerta==='amarelo') {
-                div.innerHTML=`<div class="alert alert-warning mt-2 py-1 small">⚠️ ${data.total_recebido} cesta(s) recebida(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}</div>`;
+                div.innerHTML=`<div class="alert alert-warning mt-2 py-1 small">⚠️ ${data.total_recebido} cesta(s) recebida(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}${historicoHtml}</div>`;
             } else {
                 div.innerHTML='<div class="alert alert-success mt-2 py-1 small">✅ Primeira solicitação para este CPF.</div>';
             }
@@ -886,8 +933,10 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
     if (!ok) return;
 
     const rpcValor = desmascarar(document.getElementById('renda_per_capita').value);
-    if (rpcValor <= 0) {
-        alert('⚠️ Volte ao Passo 4 e preencha a Renda Familiar.');
+    // Renda 0,00 é aceita (famílias sem renda) — bloqueia apenas se o campo
+    // não foi preenchido
+    if (document.getElementById('renda_bruta').value.trim() === '') {
+        alert('⚠️ Volte ao Passo 4 e preencha a Renda Familiar (digite 0,00 se a família não possui renda).');
         irParaStep(4); return;
     }
     const excecao = document.getElementById('excecao_art64');
