@@ -72,6 +72,13 @@ app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
 
+# 🏷️ Identificador da versão em produção: o Render define RENDER_GIT_COMMIT
+# automaticamente a cada deploy (estável entre reinícios/hibernações do
+# serviço, o que evita falsos avisos de "nova versão"). Localmente usa a
+# hora de inicialização do processo.
+APP_VERSAO = (os.environ.get('RENDER_GIT_COMMIT', '')[:8]
+              or 'dev-' + datetime.now(FUSO_RONDONIA).strftime('%d%m%Y-%H%M'))
+
 #===============================================
 # 🔐 CHAVE DE CRIPTOGRAFIA - FIXA NO RENDER
 #===============================================
@@ -359,6 +366,15 @@ login_manager.login_message = None
 @login_manager.user_loader
 def load_user(user_id):
     return carregar_usuario(user_id)
+
+@app.context_processor
+def inject_versao():
+    return {'app_versao': APP_VERSAO}
+
+@app.route("/api/versao")
+def api_versao():
+    """Consultada pelas abas abertas para detectar se houve novo deploy."""
+    return jsonify({'versao': APP_VERSAO})
 
 @app.context_processor
 def inject_notificacoes_count():

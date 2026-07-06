@@ -194,6 +194,7 @@
     </style>
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="app-version" content="{{ app_versao }}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -326,7 +327,8 @@
 </div>
 
 <footer>
-    <span>&copy; 2026 · SEMASF Ji-Paraná · Sistema de Controle de Entrega de Cestas Básicas</span>
+    <span>&copy; 2026 · SEMASF Ji-Paraná · Sistema de Controle de Entrega de Cestas Básicas
+        · <span title="Informe esta versão ao suporte em caso de problemas">Versão: {{ app_versao }}</span></span>
 </footer>
 
 <!-- Modal Alterar Senha -->
@@ -441,6 +443,46 @@ setTimeout(function() {
         }
         return _fetch(url, opts);
     };
+})();
+
+// ── Verificador de nova versão ─────────────────────────────────────
+// Abas que ficam abertas por muito tempo continuam rodando o código
+// antigo mesmo após um deploy. Este verificador consulta o servidor
+// periodicamente (e sempre que o usuário volta para a aba) e exibe um
+// aviso para recarregar quando detecta que houve atualização.
+(function() {
+    const versaoAtual = document.querySelector('meta[name="app-version"]')?.content;
+    if (!versaoAtual) return;
+    let avisado = false;
+
+    function mostrarAvisoNovaVersao() {
+        if (avisado) return;
+        avisado = true;
+        const div = document.createElement('div');
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2000;';
+        div.innerHTML = `
+            <div class="alert alert-warning text-center mb-0 rounded-0 shadow" style="cursor:pointer;">
+                🔄 <strong>Nova versão do sistema disponível!</strong>
+                Clique aqui para atualizar (dados de formulários não enviados serão perdidos).
+            </div>`;
+        div.addEventListener('click', () => location.reload());
+        document.body.prepend(div);
+    }
+
+    function verificarVersao() {
+        if (avisado) return;
+        fetch('/api/versao', { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => {
+                if (d && d.versao && d.versao !== versaoAtual) mostrarAvisoNovaVersao();
+            })
+            .catch(() => {});
+    }
+
+    setInterval(verificarVersao, 5 * 60 * 1000);  // a cada 5 minutos
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') verificarVersao();
+    });
 })();
 </script>
 
