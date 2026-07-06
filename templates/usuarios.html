@@ -103,10 +103,12 @@
                         </td>
                         <td>
                             {% if u[1] != current_user.id and current_user.perfil == 'admin' %}
-                            <a href="/usuario/excluir/{{ u[0] }}" class="btn btn-sm btn-danger"
-                               onclick="return confirm('Tem certeza que deseja excluir este usuário?')">
-                                <i class="fas fa-trash"></i> Excluir
-                            </a>
+                            <form action="/usuario/excluir/{{ u[0] }}" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Tem certeza que deseja excluir este usuário?')">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i> Excluir
+                                </button>
+                            </form>
                             {% elif u[1] == current_user.id %}
                                 <span class="text-muted">(Você)</span>
                             {% else %}

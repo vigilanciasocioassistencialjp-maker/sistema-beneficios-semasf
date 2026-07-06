@@ -10,6 +10,7 @@ def _strip_html(text):
     text = _re.sub(r'<[^>]+>', '', text)
     text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"')
     return _re.sub(r'\n{3,}', '\n\n', text).strip()
+import bleach
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
@@ -46,8 +47,15 @@ import atexit
 
 app = Flask(__name__)
 
-# 🔒 Secret key
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+# 🔒 Secret key — obrigatória no ambiente (fallback aleatório derrubaria
+# todas as sessões a cada restart do Render)
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError(
+        "SECRET_KEY não definida no ambiente. Gere uma com:\n"
+        '  python -c "import secrets; print(secrets.token_hex(32))"\n'
+        "e configure a variável SECRET_KEY no Render (ou num arquivo .env local)."
+    )
 
 # 🛡️ Proteção CSRF global
 csrf = CSRFProtect(app)
@@ -56,6 +64,7 @@ csrf = CSRFProtect(app)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))
 
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
@@ -66,19 +75,36 @@ FUSO_RONDONIA = timezone(timedelta(hours=-4))
 
 CHAVE_CRIPTO = os.environ.get('CHAVE_CRIPTO')
 
-# DEBUG: Mostrar se a chave foi encontrada
-if CHAVE_CRIPTO:
-    print(f"✅ Chave ENCONTRADA no ambiente: {CHAVE_CRIPTO[:20]}...")
-else:
-    CHAVE_CRIPTO = Fernet.generate_key().decode()
-    print("=" * 60)
-    print("❌ Chave NÃO encontrada no ambiente!")
-    print(f"🔑 Nova chave gerada: {CHAVE_CRIPTO}")
-    print("⚠️  ADICIONE NO RENDER: CHAVE_CRIPTO = " + CHAVE_CRIPTO)
-    print("=" * 60)
+# Sem a chave o app NÃO pode subir: gerar uma nova a cada boot tornaria
+# todos os CPFs já criptografados permanentemente ilegíveis, e imprimir
+# a chave no console vazaria o segredo nos logs da plataforma.
+if not CHAVE_CRIPTO:
+    raise RuntimeError(
+        "CHAVE_CRIPTO não definida no ambiente. Sem ela os CPFs armazenados "
+        "não podem ser descriptografados. Gere uma com:\n"
+        '  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"\n'
+        "e configure a variável CHAVE_CRIPTO no Render (use SEMPRE a mesma chave)."
+    )
 
 # Criar o Fernet
 fernet = Fernet(CHAVE_CRIPTO.encode())
+
+# =====================================================
+# SANITIZAÇÃO DE HTML (parecer técnico vem do editor Quill)
+# =====================================================
+
+# Somente as tags de formatação que o Quill produz; tudo o mais
+# (script, style, atributos de evento etc.) é removido.
+_TAGS_PERMITIDAS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+                    'ol', 'ul', 'li', 'a', 'span', 'blockquote']
+_ATRIBUTOS_PERMITIDOS = {'a': ['href']}
+
+def sanitizar_html(texto):
+    """Remove tags/atributos perigosos do HTML do editor rich-text."""
+    if not texto:
+        return texto
+    return bleach.clean(texto, tags=_TAGS_PERMITIDAS,
+                        attributes=_ATRIBUTOS_PERMITIDOS, strip=True)
 
 # =====================================================
 # FUNÇÕES DE CPF
@@ -478,8 +504,9 @@ def verificar_cpf(cpf):
                 dias = (datetime.now() - data_ultima).days
             except: pass
         
-        # Alerta
-        if dias and dias < 90:
+        # Alerta (dias == 0 = entrega hoje, o caso mais crítico — por isso
+        # a comparação explícita com None em vez de truthiness)
+        if dias is not None and dias < 90:
             alerta = 'vermelho'
         elif total_recebido > 0:
             alerta = 'amarelo'
@@ -501,6 +528,13 @@ def verificar_cpf(cpf):
 # =====================================================
 # HELPERS - BAIRROS/CRAS (lidos do banco)
 # =====================================================
+
+def pode_acessar_solicitacao(cras_solicitacao):
+    """Mesma regra de visibilidade da listagem: perfis com visão global
+    acessam tudo; técnico de CRAS só acessa registros da própria unidade."""
+    if current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante']:
+        return True
+    return (cras_solicitacao or '') == (current_user.cras or '')
 
 def get_bairros_por_cras():
     """Retorna dict {cras: [bairros]} ordenado, lido da tabela cras_bairros."""
@@ -587,9 +621,9 @@ def inicio():
         servicos = request.form.getlist("servicos_suas")
         servicos_text = ", ".join(servicos) if servicos else ""
         
-        # Parecer
-        parecer = request.form.get("parecer", "")
-        
+        # Parecer (sanitizado: HTML do Quill pode carregar script malicioso)
+        parecer = sanitizar_html(request.form.get("parecer", ""))
+
         # Exceção Art. 64 - concessão fora dos critérios ordinários
         excecao_art64 = request.form.get("excecao_art64") == "1"
 
@@ -810,9 +844,18 @@ def ver_solicitacao(id):
         conexao.close()
         return "Não encontrada", 404
 
+    # s[13] = cras da solicitação
+    if not pode_acessar_solicitacao(s[13]):
+        conexao.close()
+        flash('❌ Você não tem permissão para acessar solicitações de outra unidade.', 'danger')
+        return redirect(url_for('solicitacoes'))
+
     s = list(s)
     if s[2]:
         s[2] = formatar_cpf(descriptografar_cpf(s[2]))
+    # Sanitiza o parecer (s[20]) — o template exibe com |safe, e registros
+    # antigos podem ter sido salvos antes da sanitização no cadastro
+    s[20] = sanitizar_html(s[20])
     if s[3]:
         try:
             if '-' in str(s[3]):
@@ -898,7 +941,7 @@ def editar_solicitacao(id):
         beneficios   = request.form.get("beneficios", "")
         vuls         = request.form.getlist("vulnerabilidade")
         servicos     = request.form.getlist("servicos_suas")
-        parecer      = request.form.get("parecer", "")
+        parecer      = sanitizar_html(request.form.get("parecer", ""))
         excecao      = request.form.get("excecao_art64") == "1"
         visita_dom   = request.form.get("visita_domiciliar") == "1"
         valor_bf     = 0.0
@@ -1037,10 +1080,15 @@ def gerar_pdf_assinatura(id):
    
     s = cursor.fetchone()
     conexao.close()
-    
+
     if not s:
         return "Solicitação não encontrada", 404
-    
+
+    # s[9] = cras da solicitação
+    if not pode_acessar_solicitacao(s[9]):
+        flash('❌ Você não tem permissão para acessar solicitações de outra unidade.', 'danger')
+        return redirect(url_for('solicitacoes'))
+
     # Mapeamento claro dos índices (DOCUMENTAÇÃO)
     ID = 0
     TECNICO = 1
@@ -1537,15 +1585,40 @@ def registrar_entrega(id):
     status = request.form.get("status_entrega")
     data = request.form.get("data_entrega")
     observacoes = request.form.get("observacoes", "").strip()
-    if not status or not data:
+    if status not in ('Entregue', 'Ausente') or not data:
         flash("Preencha todos os campos!", "danger")
         return redirect(url_for("solicitacoes"))
     conexao = get_db()
     cursor = conexao.cursor()
+
+    cursor.execute("SELECT status, cras FROM solicitacoes WHERE id=%s", (id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        flash("Solicitação não encontrada.", "danger")
+        return redirect(url_for("solicitacoes"))
+    status_atual, cras_solic = row
+
+    if not pode_acessar_solicitacao(cras_solic):
+        conexao.close()
+        flash("❌ Você não tem permissão para registrar entrega de solicitações de outra unidade.", "danger")
+        return redirect(url_for("solicitacoes"))
+
+    # Evita registrar entrega em solicitação cancelada ou sobrescrever
+    # silenciosamente uma entrega já registrada
+    if status_atual != 'Cadastrada':
+        conexao.close()
+        flash(f"❌ Só é possível registrar entrega de solicitações com status 'Cadastrada'. Status atual: {status_atual}.", "danger")
+        return redirect(url_for("solicitacoes"))
+
     cursor.execute(
         "UPDATE solicitacoes SET status=%s, data_entrega=%s, tecnico_entrega=%s, observacoes_entrega=%s WHERE id=%s",
         (status, data, current_user.id, observacoes or None, id)
     )
+    cursor.execute("""
+        INSERT INTO historico_edicoes (solicitacao_id, usuario, campo, valor_antes, valor_depois, data_hora)
+        VALUES (%s, %s, 'status', 'Cadastrada', %s, %s)
+    """, (id, current_user.id, status, datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")))
     conexao.commit()
     conexao.close()
     logger.info(f"Entrega: ID={id}, Status={status}")
@@ -1562,11 +1635,16 @@ def nova_tentativa(id):
     """Reseta status para Cadastrada e incrementa contador de tentativas."""
     conexao = get_db()
     cursor  = conexao.cursor()
-    cursor.execute("SELECT status, num_tentativas FROM solicitacoes WHERE id = %s", (id,))
+    cursor.execute("SELECT status, num_tentativas, cras FROM solicitacoes WHERE id = %s", (id,))
     row = cursor.fetchone()
     if not row or row[0] != 'Ausente':
         conexao.close()
         flash("Solicitação não encontrada ou não está com status Ausente.", "danger")
+        return redirect(url_for("solicitacoes"))
+
+    if not pode_acessar_solicitacao(row[2]):
+        conexao.close()
+        flash("❌ Você não tem permissão para reabrir solicitações de outra unidade.", "danger")
         return redirect(url_for("solicitacoes"))
 
     tentativa_atual = (row[1] or 1) + 1
@@ -2069,7 +2147,8 @@ def exportar_excel():
     wb.save(buf)
     buf.seek(0)
 
-    nome_arquivo = f"cestas_semasf_{mes}.xlsx"
+    slug = (periodo_inicio or 'tudo') + ('_a_' + periodo_fim if periodo_fim and periodo_fim != periodo_inicio else '')
+    nome_arquivo = f"cestas_semasf_{slug}.xlsx"
     return send_file(
         buf,
         as_attachment=True,
@@ -2122,9 +2201,9 @@ def relatorio_pdf(tipo):
         c.line(2*cm, y, w - 2*cm, y)
         y -= 0.4*cm
         def nova_pagina_relatorio():
-            _rodape_relatorio(c, w, mes)
+            _rodape_relatorio(c, w, label)
             c.showPage()
-            _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo)
+            _desenhar_cabecalho_relatorio(c, w, h, label, subtitulo)
             return h - 5*cm
 
         c.setFont("Helvetica", 9)
@@ -2224,7 +2303,9 @@ def novo_usuario():
     lista_cras = get_lista_cras()
     return render_template("novo_usuario.html", lista_cras=lista_cras)
 
-@app.route("/usuario/excluir/<int:id>")
+# POST obrigatório: exclusão via GET dispensa a proteção CSRF e pode ser
+# disparada por um simples link externo ou prefetch do navegador
+@app.route("/usuario/excluir/<int:id>", methods=["POST"])
 @login_required
 def excluir_usuario(id):
     if current_user.perfil != 'admin':
@@ -2234,6 +2315,8 @@ def excluir_usuario(id):
     cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
     conexao.commit()
     conexao.close()
+    logger.info(f"Usuário ID={id} excluído por {current_user.id}")
+    flash("✅ Usuário excluído.", "success")
     return redirect(url_for("listar_usuarios"))
 
 @app.route("/usuario/editar/<int:id>", methods=["POST"])

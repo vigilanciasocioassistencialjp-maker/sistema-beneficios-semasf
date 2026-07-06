@@ -16,3 +16,4 @@ APScheduler
 sendgrid
 openpyxl
 flask-wtf
+bleach
