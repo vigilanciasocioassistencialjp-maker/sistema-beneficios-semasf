@@ -1110,17 +1110,31 @@ function restaurarRascunho() {
         }
 
         if (algumCampo) {
+            // Sem botão de fechar (X) genérico: o usuário precisa escolher
+            // explicitamente "Continuar" ou "Descartar" — um fechamento
+            // acidental pelo X deixaria o rascunho salvo sem forma visível
+            // de descartá-lo nesta tela.
             const aviso = document.createElement('div');
-            aviso.className = 'alert alert-info alert-dismissible fade show mb-3';
+            aviso.className = 'alert alert-info mb-3 alert-persistente';
             aviso.innerHTML = `<i class="fas fa-history"></i> <strong>Rascunho restaurado.</strong> Os dados da última solicitação incompleta foram recuperados.
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="btnLimparRascunho">
-                    <i class="fas fa-trash"></i> Descartar rascunho
-                </button>`;
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="btnManterRascunho">
+                        <i class="fas fa-check"></i> Continuar preenchendo
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" id="btnLimparRascunho">
+                        <i class="fas fa-trash"></i> Descartar rascunho
+                    </button>
+                </div>`;
             form.prepend(aviso);
+            document.getElementById('btnManterRascunho')?.addEventListener('click', () => {
+                aviso.remove();
+            });
             document.getElementById('btnLimparRascunho')?.addEventListener('click', () => {
                 localStorage.removeItem(RASCUNHO_KEY);
-                aviso.remove();
+                // Recarrega a página: os campos já restaurados no formulário
+                // continuam preenchidos e o autosave (a cada 10s ou ao digitar)
+                // gravaria o rascunho de volta no localStorage se não recarregasse.
+                location.reload();
             });
         }
     } catch(e) {}

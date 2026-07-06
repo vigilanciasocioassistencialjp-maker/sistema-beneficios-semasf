@@ -397,8 +397,10 @@ document.querySelectorAll('.btn-ver-senha-modal').forEach(btn => {
 });
 
 // ── Auto-fechar alertas após 5 s ──
+// (exceto os marcados com .alert-persistente, como o aviso de rascunho
+// recuperado, que precisa ficar visível até o usuário decidir algo)
 setTimeout(function() {
-    document.querySelectorAll('.alert').forEach(function(el) {
+    document.querySelectorAll('.alert:not(.alert-persistente)').forEach(function(el) {
         try { new bootstrap.Alert(el).close(); } catch(e) {}
     });
 }, 5000);
