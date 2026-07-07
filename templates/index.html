@@ -1028,12 +1028,27 @@ document.getElementById('btnRevisar').addEventListener('click', function() {
 });
 
 document.getElementById('btnConfirmarSalvar').addEventListener('click', function() {
-    const rb  = document.getElementById('renda_bruta');
-    const rpc = document.getElementById('renda_per_capita');
-    if (rb)  rb.value  = desmascarar(rb.value).toFixed(2);
-    if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
-    localStorage.removeItem(RASCUNHO_KEY); // limpa antes de enviar
-    document.getElementById('solicitacaoForm').submit();
+    // Trava contra duplo clique / duplo toque: desabilita assim que o
+    // primeiro clique é processado, antes de qualquer outra coisa, para
+    // que cliques extras (rede lenta, app "acordando" no Render) sejam
+    // ignorados em vez de enviar o formulário duas vezes.
+    if (this.disabled) return;
+    this.disabled = true;
+    const textoOriginal = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+    try {
+        const rb  = document.getElementById('renda_bruta');
+        const rpc = document.getElementById('renda_per_capita');
+        if (rb)  rb.value  = desmascarar(rb.value).toFixed(2);
+        if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+        localStorage.removeItem(RASCUNHO_KEY); // limpa antes de enviar
+        document.getElementById('solicitacaoForm').submit();
+    } catch (e) {
+        // Se algo impedir o envio, reabilita o botão para o usuário tentar de novo
+        this.disabled = false;
+        this.innerHTML = textoOriginal;
+    }
 });
 
 // ── Rascunho automático (localStorage) ────────────────────────────

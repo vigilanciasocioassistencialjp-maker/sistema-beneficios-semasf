@@ -619,7 +619,26 @@ def inicio():
         
         cpf_cripto = criptografar_cpf(cpf_limpo)
         cpf_hash = hash_cpf(cpf_limpo)
-        
+
+        # 🛡️ Trava contra duplo-clique / reenvio: se este mesmo usuário
+        # acabou de submeter uma solicitação para o mesmo CPF há poucos
+        # segundos, é quase certamente um clique duplo ou uma tentativa
+        # repetida por lentidão de rede — não grava de novo.
+        agora_dt = datetime.now(FUSO_RONDONIA)
+        ultimo_cpf_hash = session.get('ultimo_cpf_hash')
+        ultimo_cpf_ts   = session.get('ultimo_cpf_ts')
+        if ultimo_cpf_hash == cpf_hash and ultimo_cpf_ts:
+            try:
+                segundos_desde = (agora_dt - datetime.fromisoformat(ultimo_cpf_ts)).total_seconds()
+            except Exception:
+                segundos_desde = 999
+            if segundos_desde < 20:
+                logger.info(f"Envio duplicado bloqueado (clique duplo): CPF já enviado há {segundos_desde:.1f}s por {current_user.id}")
+                flash('⚠️ Esta solicitação já foi registrada há poucos segundos. Evitamos um cadastro duplicado — confira na lista de solicitações.', 'warning')
+                return redirect(url_for('solicitacoes'))
+        session['ultimo_cpf_hash'] = cpf_hash
+        session['ultimo_cpf_ts']   = agora_dt.isoformat()
+
         # Dados do formulário
         nome = request.form.get("nome", "")
         data_nasc = request.form.get("data_nascimento", "")
