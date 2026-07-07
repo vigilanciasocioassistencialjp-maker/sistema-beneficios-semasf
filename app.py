@@ -387,14 +387,18 @@ def inject_notificacoes_count():
             conn.close()
             mostrar_modal = session.pop('mostrar_modal_notif', False) and count > 0
             return {'notificacoes_nao_lidas': count, 'mostrar_modal_notif': mostrar_modal}
-        except:
+        except Exception as e:
+            logger.error(f"inject_notificacoes_count: falha ao consultar notificações de {current_user.id}: {e}")
             return {'notificacoes_nao_lidas': 0, 'mostrar_modal_notif': False}
     return {'notificacoes_nao_lidas': 0, 'mostrar_modal_notif': False}
 
 @app.template_filter('fromjson')
 def fromjson_filter(value):
-    try: return json.loads(value) if value else []
-    except: return []
+    try:
+        return json.loads(value) if value else []
+    except Exception as e:
+        logger.error(f"fromjson_filter: falha ao decodificar JSON ({e}): {str(value)[:200]}")
+        return []
 
 @app.template_filter('formatar_data')
 def formatar_data(data):
@@ -403,7 +407,8 @@ def formatar_data(data):
         if isinstance(data, str) and '-' in data:
             partes = data.split('-')
             if len(partes) == 3: return f"{partes[2]}/{partes[1]}/{partes[0]}"
-    except: pass
+    except Exception as e:
+        logger.error(f"formatar_data: falha ao formatar '{data}': {e}")
     return data
 
 @app.route("/login", methods=["GET", "POST"])
@@ -536,7 +541,8 @@ def verificar_cpf(cpf):
             try:
                 data_ultima = datetime.strptime(str(ultima_entrega)[:10], '%Y-%m-%d' if '-' in str(ultima_entrega) else '%d/%m/%Y')
                 dias = (datetime.now() - data_ultima).days
-            except: pass
+            except Exception as e:
+                logger.error(f"verificar_cpf: falha ao calcular dias desde última entrega ('{ultima_entrega}'): {e}")
         
         # Alerta (dias == 0 = entrega hoje, o caso mais crítico — por isso
         # a comparação explícita com None em vez de truthiness)
@@ -609,7 +615,7 @@ def inicio():
         
         if not validar_cpf(cpf_limpo):
             flash('❌ CPF inválido!', 'danger')
-            return render_template("index.html", sucesso=False)
+            return render_template("index.html", sucesso=False, bairros_por_cras=get_bairros_por_cras())
         
         cpf_cripto = criptografar_cpf(cpf_limpo)
         cpf_hash = hash_cpf(cpf_limpo)
@@ -668,7 +674,10 @@ def inicio():
             try:
                 vbf = request.form.get("valor_bolsa_familia", "0").replace('.','').replace(',','.')
                 valor_bolsa_familia = float(vbf or 0)
-            except: pass
+            except (ValueError, AttributeError) as e:
+                logger.error(f"Cadastro: valor do Bolsa Família inválido ('{request.form.get('valor_bolsa_familia')}') por {current_user.id}: {e}")
+                flash('❌ Valor do Bolsa Família inválido. Digite apenas números (ex: 600,00).', 'danger')
+                return render_template("index.html", sucesso=False, bairros_por_cras=get_bairros_por_cras())
         visita_domiciliar = request.form.get("visita_domiciliar") == "1"
 
         # Validação server-side: renda per capita vs critério legal
@@ -676,7 +685,7 @@ def inicio():
         limite_rpc = salario_minimo / 4
         if renda_per_capita > limite_rpc and not excecao_art64:
             flash(f'❌ Renda per capita (R$ {renda_per_capita:.2f}) ultrapassa o limite legal de R$ {limite_rpc:.2f} (1/4 do salário mínimo). Marque a exceção do Art. 64 para prosseguir.', 'danger')
-            return render_template("index.html", sucesso=False)
+            return render_template("index.html", sucesso=False, bairros_por_cras=get_bairros_por_cras())
         
         tecnico = current_user.id
         data_solic = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
@@ -897,8 +906,8 @@ def ver_solicitacao(id):
                 partes = str(s[3]).split('-')
                 if len(partes) == 3:
                     s[3] = f"{partes[2]}/{partes[1]}/{partes[0]}"
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"ver_solicitacao #{id}: falha ao formatar data de nascimento '{s[3]}': {e}")
 
     # Histórico de edições
     cursor.execute("""
@@ -984,7 +993,11 @@ def editar_solicitacao(id):
             try:
                 vbf = request.form.get("valor_bolsa_familia", "0").replace('.','').replace(',','.')
                 valor_bf = float(vbf or 0)
-            except: pass
+            except (ValueError, AttributeError) as e:
+                logger.error(f"Edição #{id}: valor do Bolsa Família inválido ('{request.form.get('valor_bolsa_familia')}') por {current_user.id}: {e}")
+                flash('❌ Valor do Bolsa Família inválido. Digite apenas números (ex: 600,00). Suas demais alterações não foram salvas — refaça a edição.', 'danger')
+                conexao.close()
+                return redirect(url_for('editar_solicitacao', id=id))
 
         membros_nomes    = request.form.getlist("membro_nome[]")
         membros_idades   = request.form.getlist("membro_idade[]")
@@ -1168,8 +1181,8 @@ def gerar_pdf_assinatura(id):
             partes = str(data_nasc).split('-')
             if len(partes) == 3:
                 data_nasc = f"{partes[2]}/{partes[1]}/{partes[0]}"
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"gerar_pdf #{id}: falha ao formatar data de nascimento '{data_nasc}': {e}")
     
     # Formatar data da escuta
     data_escuta = s[DATA_ESCUTA] if s[DATA_ESCUTA] else 'N/A'
@@ -1178,8 +1191,8 @@ def gerar_pdf_assinatura(id):
             partes = str(data_escuta).split('-')
             if len(partes) == 3:
                 data_escuta = f"{partes[2]}/{partes[1]}/{partes[0]}"
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"gerar_pdf #{id}: falha ao formatar data da escuta '{data_escuta}': {e}")
     
     # Formatar data da entrega
     data_entrega_pdf = '___/___/_______'
@@ -1190,8 +1203,8 @@ def gerar_pdf_assinatura(id):
                 partes = data_entrega_pdf.split('-')
                 if len(partes) == 3:
                     data_entrega_pdf = f"{partes[2]}/{partes[1]}/{partes[0]}"
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"gerar_pdf #{id}: falha ao formatar data de entrega '{data_entrega_pdf}': {e}")
     
     # Formatar CEP
     cep_valor = ''.join(filter(str.isdigit, str(s[CEP]))) if s[CEP] else ''
@@ -1420,7 +1433,8 @@ def gerar_pdf_assinatura(id):
                 else:
                     canvas_obj.drawString(2.5*cm, y, "Família unipessoal")
                     y -= 0.35*cm
-            except:
+            except Exception as e:
+                logger.error(f"gerar_pdf #{id}: composição familiar corrompida ('{comp_familiar}'): {e}")
                 canvas_obj.drawString(2.5*cm, y, "Não informado")
                 y -= 0.35*cm
             y -= 0.2*cm
@@ -1573,7 +1587,8 @@ def gerar_pdf_assinatura(id):
                 for membro in membros[:8]:
                     y = check_space(1*cm, y)
                     y -= 0.35*cm
-            except:
+            except Exception as e:
+                logger.error(f"gerar_pdf #{id}: composição familiar corrompida na contagem de páginas: {e}")
                 y -= 0.35*cm
             y -= 0.2*cm
 
@@ -1716,18 +1731,22 @@ def nova_tentativa(id):
 
 def _filtro_unidade_entrega(unidade):
     """Retorna (join, condicao, params) para filtrar as solicitações pela
-    unidade RESPONSÁVEL PELA ENTREGA. O critério principal é QUEM FEZ A
-    ESCUTA (unidade do técnico que registrou), não o território:
+    unidade RESPONSÁVEL PELA ENTREGA.
 
-    - CRAS X ........: escutas feitas pela equipe do CRAS X, exceto
-                       bairros da Equipe Volante (área rural). Se a escuta
-                       foi registrada por admin/gestor ou usuário excluído,
-                       usa o território como fallback.
+    - CRAS X ........: escutas feitas pela equipe do CRAS X, MAIS as
+                       escutas feitas pela Equipe Volante para famílias de
+                       território URBANO do CRAS X (a Volante raramente
+                       escuta, mas quando o faz para um caso urbano, a
+                       entrega é do CRAS de referência, não da Volante).
+                       Exclui sempre bairros da Equipe Volante (área rural).
+                       Se a escuta foi registrada por admin/gestor ou
+                       usuário excluído, usa o território como fallback.
     - CREAS .........: escutas feitas por técnicos do CREAS
                        (CRAS e CREAS atendem o mesmo território)
     - EQUIPE VOLANTE : bairros marcados como entrega da volante (área
                        rural) + outros municípios, independente de quem
-                       registrou a escuta (o CRAS escuta e encaminha)
+                       registrou a escuta — inclusive quando é o próprio
+                       CRAS que escuta e encaminha a família rural
     """
     if not unidade:
         return "", "", []
@@ -1736,13 +1755,17 @@ def _filtro_unidade_entrega(unidade):
                 "u_fil.perfil = 'creas'", [])
     if unidade == 'EQUIPE VOLANTE':
         return ("",
-                "(s.cras = 'EQUIPE VOLANTE' OR s.bairro IN "
+                "(s.cras = 'EQUIPE VOLANTE' OR COALESCE(s.bairro, '') IN "
                 "(SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE))",
                 [])
+    # COALESCE no bairro é necessário porque "X NOT IN (subconsulta)" com X
+    # NULL resulta em NULL (não TRUE) em SQL — sem isso, uma solicitação com
+    # bairro vazio/nulo (dado legado) sumiria silenciosamente de toda lista
+    # de entrega, mesmo tendo sido escutada normalmente pela equipe do CRAS.
     return ("LEFT JOIN usuarios u_fil ON s.tecnico = u_fil.usuario",
-            "s.bairro NOT IN (SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE)"
+            "COALESCE(s.bairro, '') NOT IN (SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE)"
             " AND ((u_fil.perfil = 'cras' AND u_fil.cras = %s)"
-            "      OR (s.cras = %s AND COALESCE(u_fil.perfil, '') NOT IN ('cras', 'creas', 'cras_volante')))",
+            "      OR (s.cras = %s AND COALESCE(u_fil.perfil, '') NOT IN ('cras', 'creas')))",
             [unidade, unidade])
 
 
@@ -1868,10 +1891,12 @@ def lista_entrega_pdf():
         return redirect(url_for("lista_entrega"))
 
     hoje = datetime.now(FUSO_RONDONIA)
-    # Rótulo: usa a unidade escolhida na montagem; sem ela, deduz das linhas
-    unidade_param = request.args.get('unidade', '').strip()
+    # Rótulo derivado sempre dos dados reais retornados pela consulta —
+    # nunca de um parâmetro de URL, já que este é um documento oficial
+    # (carimbado e assinado) e um rótulo vindo da querystring poderia ser
+    # manipulado para exibir uma unidade diferente da real.
     unidades = sorted({r[8] for r in linhas if r[8]})
-    unidade_label = unidade_param or (unidades[0] if len(unidades) == 1 else "DIVERSAS UNIDADES")
+    unidade_label = unidades[0] if len(unidades) == 1 else "DIVERSAS UNIDADES"
 
     # ── Cabeçalho e rodapé desenhados em toda página ──────────────
     PAGE_W, PAGE_H = landscape(A4)
@@ -2097,7 +2122,8 @@ def _label_periodo(periodo_inicio, periodo_fim):
         try:
             a, m = p.split('-')
             return f"{nomes[int(m)-1]}/{a}"
-        except:
+        except Exception as e:
+            logger.error(f"_label_periodo: falha ao formatar período '{p}': {e}")
             return p
     if periodo_inicio and periodo_fim:
         if periodo_inicio == periodo_fim:
@@ -2357,7 +2383,8 @@ def _nome_mes_extenso(mes):
     try:
         ano, num = mes.split('-')
         return f"{nomes[int(num)-1]}/{ano}"
-    except:
+    except Exception as e:
+        logger.error(f"_nome_mes_extenso: falha ao formatar mês '{mes}': {e}")
         return mes
 
 def _desenhar_cabecalho_relatorio(c, w, h, mes, subtitulo):
@@ -2602,6 +2629,24 @@ def listar_usuarios():
     return render_template("usuarios.html", usuarios=usuarios, current_user=current_user,
                            lista_cras=lista_cras)
 
+def _eh_ultimo_admin(id_usuario):
+    """True se o usuário for admin E for o único admin restante no sistema.
+    Usado para bloquear exclusão/rebaixamento que travaria a prefeitura
+    fora das funções administrativas (o bootstrap automático só recria um
+    admin quando a tabela usuarios está totalmente vazia)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id_usuario,))
+    row = cursor.fetchone()
+    if not row or row[0] != 'admin':
+        conn.close()
+        return False
+    cursor.execute("SELECT COUNT(*) FROM usuarios WHERE perfil = 'admin'")
+    total_admins = cursor.fetchone()[0]
+    conn.close()
+    return total_admins <= 1
+
+
 @app.route("/usuario/novo", methods=["GET", "POST"])
 @login_required
 def novo_usuario():
@@ -2642,6 +2687,9 @@ def novo_usuario():
 def excluir_usuario(id):
     if current_user.perfil != 'admin':
         return "Acesso negado", 403
+    if _eh_ultimo_admin(id):
+        flash("❌ Não é possível excluir o único administrador do sistema.", "danger")
+        return redirect(url_for("listar_usuarios"))
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
@@ -2678,6 +2726,9 @@ def editar_perfil_usuario(id):
     perfis_validos = ['cras', 'creas', 'cras_volante', 'gestor', 'admin']
     if perfil_novo not in perfis_validos:
         flash("Perfil inválido.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    if perfil_novo != 'admin' and _eh_ultimo_admin(id):
+        flash("❌ Não é possível rebaixar o único administrador do sistema.", "danger")
         return redirect(url_for("listar_usuarios"))
     # Gestor não pode promover/rebaixar admins nem criar novos admins
     if current_user.perfil == 'gestor':
@@ -2780,7 +2831,8 @@ def get_salario_minimo():
         row = cursor.fetchone()
         conn.close()
         return float(row[0]) if row else 1621.00
-    except:
+    except Exception as e:
+        logger.error(f"get_salario_minimo: falha ao consultar salário mínimo configurado, usando fallback R$ 1621,00: {e}")
         return 1621.00
 
 @app.route("/api/configuracoes")

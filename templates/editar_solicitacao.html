@@ -322,21 +322,24 @@
         return total || 1;
     }
     function calcularRPC() {
+        // Renda 0,00 é válida (famílias sem nenhuma renda): calcula desde
+        // que o campo tenha sido preenchido, não só quando bruta > 0
+        const brutaPreenchida = document.getElementById('renda_bruta').value.trim() !== '';
         const bruta = desmascarar(document.getElementById('renda_bruta').value);
         const pessoas = calcularTotalPessoas();
         const rpc = bruta / pessoas;
-        document.getElementById('renda_per_capita').value = rpc > 0
-            ? mascaraMoeda(Math.round(rpc * 100).toString()) : '';
+        document.getElementById('renda_per_capita').value = brutaPreenchida
+            ? (mascaraMoeda(Math.round(rpc * 100).toString()) || '0,00') : '';
     }
 
-    // Aplicar máscara no valor inicial
+    // Aplicar máscara no valor inicial (inclusive quando é 0,00)
     const rbInput = document.getElementById('renda_bruta');
-    if (rbInput.value && rbInput.value !== '0.00') {
+    if (rbInput.value) {
         const numInicial = parseFloat(rbInput.value) * 100;
         rbInput.value = mascaraMoeda(Math.round(numInicial).toString());
     }
     const rpcInput = document.getElementById('renda_per_capita');
-    if (rpcInput.value && rpcInput.value !== '0.00') {
+    if (rpcInput.value) {
         const numInicial = parseFloat(rpcInput.value) * 100;
         rpcInput.value = mascaraMoeda(Math.round(numInicial).toString());
     }

@@ -123,7 +123,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 let lista = {{ sugestao|tojson }};
 const META = {{ qtd or 0 }};
-const UNIDADE = {{ cras_filtro|tojson }};
 
 function renderLista() {
     const tbody = document.querySelector('#tabelaLista tbody');
@@ -207,8 +206,11 @@ document.getElementById('btnGerarPdf').addEventListener('click', function() {
         alert('A lista está vazia. Inclua ao menos um beneficiário.');
         return;
     }
+    // O rótulo "UNIDADE" impresso no PDF é sempre calculado no servidor a
+    // partir dos dados reais das solicitações selecionadas (não é enviado
+    // por aqui), para não depender de um parâmetro de URL manipulável.
     const ids = lista.map(b => b.id).join(',');
-    window.open(`/lista_entrega/pdf?ids=${ids}&unidade=${encodeURIComponent(UNIDADE || '')}`, '_blank');
+    window.open(`/lista_entrega/pdf?ids=${ids}`, '_blank');
 });
 
 renderLista();
