@@ -1037,6 +1037,12 @@ document.getElementById('btnConfirmarSalvar').addEventListener('click', function
     const textoOriginal = this.innerHTML;
     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
 
+    // Trava o autosave a partir daqui: se o servidor demorar a responder
+    // (ex.: Render "acordando"), o setInterval de 10s ou algum evento de
+    // digitação não pode ressuscitar no localStorage os dados de uma
+    // solicitação que já foi enviada com sucesso.
+    envioEmAndamento = true;
+
     try {
         const rb  = document.getElementById('renda_bruta');
         const rpc = document.getElementById('renda_per_capita');
@@ -1045,7 +1051,8 @@ document.getElementById('btnConfirmarSalvar').addEventListener('click', function
         localStorage.removeItem(RASCUNHO_KEY); // limpa antes de enviar
         document.getElementById('solicitacaoForm').submit();
     } catch (e) {
-        // Se algo impedir o envio, reabilita o botão para o usuário tentar de novo
+        // Se algo impedir o envio, reabilita o botão e o autosave para o usuário tentar de novo
+        envioEmAndamento = false;
         this.disabled = false;
         this.innerHTML = textoOriginal;
     }
@@ -1058,6 +1065,12 @@ document.getElementById('btnConfirmarSalvar').addEventListener('click', function
 const RASCUNHO_KEY = 'rascunho_solicitacao_v2';
 const form = document.getElementById('solicitacaoForm');
 
+// Fica true a partir do clique em "Confirmar e Salvar", impedindo que o
+// autosave (setInterval ou eventos de digitação) grave de novo um
+// rascunho que já foi enviado com sucesso, caso o servidor demore a
+// responder (ex.: Render "acordando").
+let envioEmAndamento = false;
+
 // Campos de texto/select simples a salvar
 const CAMPOS_SIMPLES = [
     'nome','cpf','data_nascimento','telefone','email',
@@ -1066,6 +1079,7 @@ const CAMPOS_SIMPLES = [
 ];
 
 function salvarRascunho() {
+    if (envioEmAndamento) return;
     try {
         const dados = {};
         CAMPOS_SIMPLES.forEach(nome => {
