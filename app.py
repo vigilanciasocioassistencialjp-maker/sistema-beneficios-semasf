@@ -2072,6 +2072,33 @@ def dashboard():
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cadastrada'")
     pendentes = cursor.fetchone()[0]
 
+    # Tempo médio de espera da concessão: escuta → entrega, considerando também
+    # escutas ainda não entregues (usa a data de hoje como fim provisório).
+    # Exclui solicitações canceladas, que não representam mais uma espera real.
+    cursor.execute("""
+        SELECT ROUND(AVG(
+            CASE
+                WHEN status = 'Entregue' AND data_entrega ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                    THEN (data_entrega::date - data_escuta::date)
+                ELSE (CURRENT_DATE - data_escuta::date)
+            END
+        )::numeric, 1)
+        FROM solicitacoes
+        WHERE status IN ('Cadastrada', 'Ausente', 'Entregue')
+          AND data_escuta ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+    """)
+    tempo_medio_espera = cursor.fetchone()[0]
+
+    # Escuta mais antiga ainda aguardando concessão (status pendente)
+    cursor.execute("""
+        SELECT id, nome, (CURRENT_DATE - data_escuta::date) AS dias
+        FROM solicitacoes
+        WHERE status = 'Cadastrada' AND data_escuta ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+        ORDER BY data_escuta::date ASC
+        LIMIT 1
+    """)
+    escuta_mais_antiga = cursor.fetchone()
+
     # Por equipe (CRAS/perfil do técnico que registrou — produção real da equipe)
     cursor.execute("""
         SELECT
@@ -2110,9 +2137,46 @@ def dashboard():
         total_entregues=entregues,
         total_ausentes=ausentes,
         total_pendentes=pendentes,
+        tempo_medio_espera=tempo_medio_espera,
+        escuta_mais_antiga=escuta_mais_antiga,
         por_cras=por_cras,
         por_mes=por_mes,
         datetime=datetime,
+        current_user=current_user
+    )
+
+@app.route("/dashboard/escutas_aguardando")
+@login_required
+def escutas_aguardando():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return redirect(url_for('solicitacoes'))
+
+    conexao = get_db()
+    cursor  = conexao.cursor()
+    cursor.execute("""
+        SELECT s.id, s.nome, COALESCE(u.cras, s.cras, 'Não informado') AS unidade,
+               COALESCE(u.nome, s.tecnico) AS tecnico_nome, s.data_escuta,
+               (CURRENT_DATE - s.data_escuta::date) AS dias
+        FROM solicitacoes s
+        LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        WHERE s.status = 'Cadastrada' AND s.data_escuta ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+        ORDER BY s.data_escuta::date ASC
+        LIMIT 10
+    """)
+    dados_raw = cursor.fetchall()
+    conexao.close()
+
+    dados = []
+    for row in dados_raw:
+        row = list(row)
+        partes = str(row[4]).split('-')
+        if len(partes) == 3:
+            row[4] = f"{partes[2]}/{partes[1]}/{partes[0]}"
+        dados.append(row)
+
+    return render_template(
+        "escutas_aguardando.html",
+        dados=dados,
         current_user=current_user
     )
 
