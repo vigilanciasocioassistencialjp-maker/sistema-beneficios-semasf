@@ -70,6 +70,7 @@
                     <div>
                         <div class="text-muted small fw-bold text-uppercase">Total</div>
                         <div class="fs-2 fw-bold" style="color:var(--semasf-blue)">{{ total_solicitacoes }}</div>
+                        <small class="text-muted">{{ total_canceladas }} canceladas (não incluídas)</small>
                     </div>
                     <i class="fas fa-folder-open stat-icon" style="color:var(--semasf-blue)"></i>
                 </div>
@@ -256,6 +257,11 @@ new Chart(document.getElementById('graficoCras'), {
                 label: 'Ausentes',
                 data: crasDados.map(r => r[3]),
                 backgroundColor: redColor + 'cc'
+            },
+            {
+                label: 'Canceladas',
+                data: crasDados.map(r => r[4]),
+                backgroundColor: '#6c757dcc'
             }
         ]
     },

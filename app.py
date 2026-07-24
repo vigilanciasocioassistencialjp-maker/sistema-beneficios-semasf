@@ -2199,8 +2199,8 @@ def dashboard():
     conexao = get_db()
     cursor  = conexao.cursor()
 
-    # Totais gerais
-    cursor.execute("SELECT COUNT(*) FROM solicitacoes")
+    # Totais gerais (canceladas ficam fora do total ativo, mas são contadas à parte)
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status != 'Cancelada'")
     total = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Entregue'")
     entregues = cursor.fetchone()[0]
@@ -2208,6 +2208,8 @@ def dashboard():
     ausentes = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cadastrada'")
     pendentes = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cancelada'")
+    canceladas = cursor.fetchone()[0]
 
     # Tempo médio de espera da concessão: escuta → entrega, considerando
     # apenas solicitações já entregues (evita distorção de escutas ainda em aberto).
@@ -2231,6 +2233,8 @@ def dashboard():
     escuta_mais_antiga = cursor.fetchone()
 
     # Por equipe (CRAS/perfil do técnico que registrou — produção real da equipe)
+    # "total" conta só solicitações ativas; canceladas entram numa coluna à parte
+    # para dar noção do volume de cancelamentos sem distorcer o total de produção.
     cursor.execute("""
         SELECT
             CASE
@@ -2239,22 +2243,24 @@ def dashboard():
                 WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
                 ELSE COALESCE(u.cras, s.cras, 'Não informado')
             END AS equipe,
-            COUNT(*) AS total,
-            SUM(CASE WHEN s.status='Entregue' THEN 1 ELSE 0 END) AS entregues,
-            SUM(CASE WHEN s.status='Ausente'  THEN 1 ELSE 0 END) AS ausentes
+            SUM(CASE WHEN s.status != 'Cancelada' THEN 1 ELSE 0 END) AS total,
+            SUM(CASE WHEN s.status='Entregue'  THEN 1 ELSE 0 END) AS entregues,
+            SUM(CASE WHEN s.status='Ausente'   THEN 1 ELSE 0 END) AS ausentes,
+            SUM(CASE WHEN s.status='Cancelada' THEN 1 ELSE 0 END) AS canceladas
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
         GROUP BY equipe ORDER BY total DESC
     """)
     por_cras = cursor.fetchall()
 
-    # Últimos 6 meses (para gráfico de linha)
+    # Últimos 6 meses (para gráfico de linha) — exclui canceladas
     cursor.execute("""
         SELECT TO_CHAR(TO_DATE(SUBSTRING(data_solicitacao, 7, 4) || '-' ||
                                 SUBSTRING(data_solicitacao, 4, 2) || '-01', 'YYYY-MM-DD'), 'YYYY-MM') AS mes,
                COUNT(*) AS total
         FROM solicitacoes
         WHERE data_solicitacao ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
+          AND status != 'Cancelada'
         GROUP BY mes ORDER BY mes DESC LIMIT 6
     """)
     por_mes_raw = cursor.fetchall()
@@ -2268,6 +2274,7 @@ def dashboard():
         total_entregues=entregues,
         total_ausentes=ausentes,
         total_pendentes=pendentes,
+        total_canceladas=canceladas,
         tempo_medio_espera=tempo_medio_espera,
         escuta_mais_antiga=escuta_mais_antiga,
         por_cras=por_cras,
