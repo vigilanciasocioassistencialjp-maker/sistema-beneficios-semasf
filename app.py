@@ -2236,6 +2236,11 @@ def dashboard():
     # Não existe mais um bucket "ADMINISTRAÇÃO": solicitações de contas admin/gestor
     # caem na unidade informada no cadastro (s.cras) ou em "Não informado", sem
     # perder a contagem. Todas as canceladas do sistema somam numa coluna final única.
+    #
+    # "Ausentes" é acumulativo: num_tentativas só sobe quando uma visita "Ausente"
+    # é reaberta (rota /nova_tentativa), então (num_tentativas - 1) preserva quantas
+    # vezes o técnico foi até a casa e não encontrou ninguém, mesmo que a solicitação
+    # já tenha sido entregue depois. Sem isso, cada reabertura apagava a visita anterior.
     cursor.execute("""
         SELECT
             CASE
@@ -2245,13 +2250,16 @@ def dashboard():
             END AS equipe,
             SUM(CASE WHEN s.status != 'Cancelada' THEN 1 ELSE 0 END) AS total,
             SUM(CASE WHEN s.status='Entregue'  THEN 1 ELSE 0 END) AS entregues,
-            SUM(CASE WHEN s.status='Ausente'   THEN 1 ELSE 0 END) AS ausentes
+            SUM((COALESCE(s.num_tentativas, 1) - 1)
+                + CASE WHEN s.status='Ausente' THEN 1 ELSE 0 END) AS ausentes,
+            SUM(CASE WHEN s.status='Entregue' AND COALESCE(s.num_tentativas, 1) >= 2
+                     THEN 1 ELSE 0 END) AS entregues_apos_tentativa
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
         GROUP BY equipe ORDER BY total DESC
     """)
     por_cras = [list(row) + [0] for row in cursor.fetchall()]
-    por_cras.append(['Canceladas', 0, 0, 0, canceladas])
+    por_cras.append(['Canceladas', 0, 0, 0, 0, canceladas])
 
     # Últimos 6 meses (para gráfico de linha) — exclui canceladas
     cursor.execute("""

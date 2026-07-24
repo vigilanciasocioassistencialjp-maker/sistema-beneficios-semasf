@@ -259,8 +259,13 @@ new Chart(document.getElementById('graficoCras'), {
                 backgroundColor: redColor + 'cc'
             },
             {
-                label: 'Canceladas',
+                label: 'Entregues após tentativa',
                 data: crasDados.map(r => r[4]),
+                backgroundColor: goldColor + 'cc'
+            },
+            {
+                label: 'Canceladas',
+                data: crasDados.map(r => r[5]),
                 backgroundColor: '#6c757dcc'
             }
         ]
