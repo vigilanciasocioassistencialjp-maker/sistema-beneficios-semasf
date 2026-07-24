@@ -117,6 +117,11 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if current_user.perfil == 'admin' %}
+                            <button type="button" class="btn btn-sm btn-warning mb-1" data-bs-toggle="modal" data-bs-target="#resetSenhaModal{{ u[0] }}">
+                                <i class="fas fa-key"></i> Resetar Senha
+                            </button>
+                            {% endif %}
                             {% if u[1] != current_user.id and current_user.perfil == 'admin' %}
                             <form action="/usuario/excluir/{{ u[0] }}" method="POST" class="d-inline"
                                   onsubmit="return confirm('Tem certeza que deseja excluir este usuário?')">
@@ -137,5 +142,58 @@
         </div>
     </div>
 </div>
+
+{% if current_user.perfil == 'admin' %}
+{% for u in usuarios %}
+<div class="modal fade" id="resetSenhaModal{{ u[0] }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/usuario/resetar_senha/{{ u[0] }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-key"></i> Resetar senha de {{ u[2] or u[1] }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Defina uma nova senha temporária. O usuário será obrigado a trocá-la
+                        no próximo login.
+                    </p>
+                    <label class="form-label">Nova senha</label>
+                    <div class="input-group">
+                        <input type="password" name="nova_senha" class="form-control" required>
+                        <button type="button" class="btn btn-outline-secondary btn-ver-senha-reset" tabindex="-1">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Mínimo 6 caracteres, 1 maiúscula e 1 número.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning"><i class="fas fa-save"></i> Redefinir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<script>
+document.querySelectorAll('.btn-ver-senha-reset').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        const input = this.previousElementSibling;
+        const icon  = this.querySelector('i');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'fas fa-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'fas fa-eye';
+        }
+    });
+});
+</script>
+
 <div style="height: 80px;"></div>
 {% endblock %}

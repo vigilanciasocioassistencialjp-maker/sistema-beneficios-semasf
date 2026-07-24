@@ -3029,6 +3029,34 @@ def editar_email_usuario(id):
     flash("✅ E-mail atualizado!", "success")
     return redirect(url_for("listar_usuarios"))
 
+@app.route("/usuario/resetar_senha/<int:id>", methods=["POST"])
+@login_required
+def resetar_senha_usuario(id):
+    # Fallback manual enquanto o envio de e-mail não está confiável:
+    # somente admin pode forçar uma nova senha para qualquer usuário.
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    nova = request.form.get("nova_senha", "")
+    if len(nova) < 6:
+        flash("❌ Mínimo 6 caracteres!", "danger")
+    elif not any(c.isupper() for c in nova):
+        flash("❌ A senha precisa ter pelo menos uma letra maiúscula!", "danger")
+    elif not any(c.isdigit() for c in nova):
+        flash("❌ A senha precisa ter pelo menos um número!", "danger")
+    else:
+        hash_nova = bcrypt.hashpw(nova.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        conexao = get_db()
+        cursor = conexao.cursor()
+        cursor.execute(
+            "UPDATE usuarios SET senha = %s, primeiro_acesso = 1, reset_token = NULL, reset_token_expira = NULL WHERE id = %s",
+            (hash_nova, id)
+        )
+        conexao.commit()
+        conexao.close()
+        logger.info(f"Senha do usuário ID={id} resetada manualmente por {current_user.id}")
+        flash("✅ Senha redefinida! O usuário precisará trocá-la no próximo login.", "success")
+    return redirect(url_for("listar_usuarios"))
+
 @app.route("/usuario/alterar_senha", methods=["POST"])
 @login_required
 def alterar_senha_simples():
