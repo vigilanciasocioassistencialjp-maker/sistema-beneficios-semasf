@@ -2233,25 +2233,26 @@ def dashboard():
     escuta_mais_antiga = cursor.fetchone()
 
     # Por equipe (CRAS/perfil do técnico que registrou — produção real da equipe)
-    # "total" conta só solicitações ativas; canceladas entram numa coluna à parte
-    # para dar noção do volume de cancelamentos sem distorcer o total de produção.
+    # Contas admin/gestor não são uma unidade de atendimento real, então ficam
+    # fora do agrupamento por CRAS; todas as canceladas do sistema (de qualquer
+    # unidade, inclusive admin/gestor) são somadas numa única coluna ao final.
     cursor.execute("""
         SELECT
             CASE
                 WHEN u.perfil = 'creas'       THEN 'CREAS'
                 WHEN u.perfil = 'cras_volante' THEN 'EQUIPE VOLANTE'
-                WHEN u.perfil IN ('admin','gestor') THEN 'ADMINISTRAÇÃO'
                 ELSE COALESCE(u.cras, s.cras, 'Não informado')
             END AS equipe,
             SUM(CASE WHEN s.status != 'Cancelada' THEN 1 ELSE 0 END) AS total,
             SUM(CASE WHEN s.status='Entregue'  THEN 1 ELSE 0 END) AS entregues,
-            SUM(CASE WHEN s.status='Ausente'   THEN 1 ELSE 0 END) AS ausentes,
-            SUM(CASE WHEN s.status='Cancelada' THEN 1 ELSE 0 END) AS canceladas
+            SUM(CASE WHEN s.status='Ausente'   THEN 1 ELSE 0 END) AS ausentes
         FROM solicitacoes s
         LEFT JOIN usuarios u ON s.tecnico = u.usuario
+        WHERE u.perfil IS NULL OR u.perfil NOT IN ('admin', 'gestor')
         GROUP BY equipe ORDER BY total DESC
     """)
-    por_cras = cursor.fetchall()
+    por_cras = [list(row) + [0] for row in cursor.fetchall()]
+    por_cras.append(['Canceladas', 0, 0, 0, canceladas])
 
     # Últimos 6 meses (para gráfico de linha) — exclui canceladas
     cursor.execute("""
