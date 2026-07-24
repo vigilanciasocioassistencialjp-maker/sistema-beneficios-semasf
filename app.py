@@ -2209,20 +2209,14 @@ def dashboard():
     cursor.execute("SELECT COUNT(*) FROM solicitacoes WHERE status='Cadastrada'")
     pendentes = cursor.fetchone()[0]
 
-    # Tempo médio de espera da concessão: escuta → entrega, considerando também
-    # escutas ainda não entregues (usa a data de hoje como fim provisório).
-    # Exclui solicitações canceladas, que não representam mais uma espera real.
+    # Tempo médio de espera da concessão: escuta → entrega, considerando
+    # apenas solicitações já entregues (evita distorção de escutas ainda em aberto).
     cursor.execute("""
-        SELECT ROUND(AVG(
-            CASE
-                WHEN status = 'Entregue' AND data_entrega ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-                    THEN (data_entrega::date - data_escuta::date)
-                ELSE (CURRENT_DATE - data_escuta::date)
-            END
-        )::numeric, 1)
+        SELECT ROUND(AVG(data_entrega::date - data_escuta::date)::numeric, 1)
         FROM solicitacoes
-        WHERE status IN ('Cadastrada', 'Ausente', 'Entregue')
+        WHERE status = 'Entregue'
           AND data_escuta ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+          AND data_entrega ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
     """)
     tempo_medio_espera = cursor.fetchone()[0]
 
