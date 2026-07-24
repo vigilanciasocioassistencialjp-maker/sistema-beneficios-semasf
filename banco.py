@@ -79,6 +79,18 @@ def criar_banco():
             )
         ''')
         
+        # =====================================================
+        # MIGRAÇÃO: Recuperação de senha por e-mail
+        # =====================================================
+        for col, tipo in [('email', 'TEXT'), ('reset_token', 'TEXT'), ('reset_token_expira', 'TIMESTAMPTZ')]:
+            cursor.execute(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='usuarios' AND column_name='{col}'
+            """)
+            if not cursor.fetchone():
+                cursor.execute(f"ALTER TABLE usuarios ADD COLUMN {col} {tipo}")
+                print(f"✅ Coluna usuarios.{col} adicionada!")
+
         # Tabela de solicitações (com cpf_hash desde o início)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS solicitacoes (

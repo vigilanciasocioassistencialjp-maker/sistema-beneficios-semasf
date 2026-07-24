@@ -204,6 +204,11 @@ tentativas_login = defaultdict(list)
 MAX_TENTATIVAS = 5
 BLOQUEIO_MINUTOS = 15
 
+# 🛡️ Força bruta - recuperação de senha
+tentativas_recuperacao = defaultdict(list)
+MAX_TENTATIVAS_RECUPERACAO = 5
+RESET_TOKEN_VALIDADE_MINUTOS = 60
+
 # 🔧 Criar banco
 criar_banco()
 
@@ -289,6 +294,36 @@ def enviar_backup_email():
         print(f"Erro no backup automatico: {e}")
         logger.error(f"Erro no backup automatico: {e}")
         raise
+
+def enviar_email_recuperacao_senha(destinatario, nome, link):
+    """Envia o link de redefinição de senha via SendGrid. Retorna True/False."""
+    if not SENDGRID_API_KEY:
+        logger.error("Recuperação de senha: SENDGRID_API_KEY não configurada.")
+        return False
+    try:
+        corpo = (
+            f"Olá, {nome}!\n\n"
+            f"Recebemos uma solicitação para redefinir a senha da sua conta no "
+            f"Sistema de Benefícios Eventuais - SEMASF Ji-Paraná.\n\n"
+            f"Para criar uma nova senha, acesse o link abaixo (válido por "
+            f"{RESET_TOKEN_VALIDADE_MINUTOS} minutos):\n{link}\n\n"
+            f"Se você não solicitou essa alteração, apenas ignore este e-mail "
+            f"e sua senha atual continuará funcionando normalmente.\n\n"
+            f"-- Sistema SEMASF"
+        )
+        mensagem = Mail(
+            from_email=EMAIL_REMETENTE,
+            to_emails=destinatario,
+            subject="[SEMASF] Redefinição de senha",
+            plain_text_content=corpo
+        )
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(mensagem)
+        logger.info(f"E-mail de recuperação de senha enviado para {destinatario} — status {response.status_code}")
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao enviar e-mail de recuperação de senha para {destinatario}: {e}")
+        return False
 
 scheduler = BackgroundScheduler(timezone='America/Porto_Velho')
 scheduler.add_job(
@@ -427,11 +462,11 @@ def login():
         senha = request.form["senha"]
         conexao = get_db()
         cursor = conexao.cursor()
-        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome FROM usuarios WHERE usuario = %s", (usuario,))
+        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email FROM usuarios WHERE usuario = %s", (usuario,))
         dados = cursor.fetchone()
         cursor.close()
         conexao.close()
-        
+
         if dados and bcrypt.checkpw(senha.encode('utf-8'), dados[1].encode('utf-8')):
             user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None, dados[5] if len(dados) > 5 else dados[0])
             login_user(user, remember=False)
@@ -441,12 +476,91 @@ def login():
             logger.info(f"Login: {dados[0]}")
             if dados[3] == 1:
                 return redirect(url_for("trocar_senha", primeiro_acesso=True))
+            if not dados[6]:
+                return redirect(url_for("definir_email"))
             return redirect(url_for("dashboard") if dados[2] in ['admin', 'gestor'] else url_for("solicitacoes"))
         else:
             tentativas_login[ip].append(agora)
             erro = "❌ Usuário ou senha incorretos!"
     
     return render_template("login.html", erro=erro, bloqueado=False)
+
+# =====================================================
+# ESQUECI / REDEFINIR SENHA
+# =====================================================
+
+@app.route("/esqueci_senha", methods=["GET", "POST"])
+def esqueci_senha():
+    erro = sucesso = None
+    if request.method == "POST":
+        ip = request.remote_addr
+        agora = datetime.now(FUSO_RONDONIA)
+        tentativas_recuperacao[ip] = [t for t in tentativas_recuperacao[ip] if t > agora - timedelta(minutes=BLOQUEIO_MINUTOS)]
+
+        if len(tentativas_recuperacao[ip]) >= MAX_TENTATIVAS_RECUPERACAO:
+            erro = f"⛔ Muitas tentativas. Aguarde {BLOQUEIO_MINUTOS} min."
+        else:
+            tentativas_recuperacao[ip].append(agora)
+            usuario_login = request.form.get("usuario", "").strip()
+            conexao = get_db()
+            cursor = conexao.cursor()
+            cursor.execute("SELECT usuario, nome, email FROM usuarios WHERE usuario = %s", (usuario_login,))
+            dados = cursor.fetchone()
+            if dados and dados[2]:
+                token_bruto = secrets.token_urlsafe(32)
+                token_hash = hashlib.sha256(token_bruto.encode()).hexdigest()
+                expira = agora + timedelta(minutes=RESET_TOKEN_VALIDADE_MINUTOS)
+                cursor.execute(
+                    "UPDATE usuarios SET reset_token = %s, reset_token_expira = %s WHERE usuario = %s",
+                    (token_hash, expira, dados[0])
+                )
+                conexao.commit()
+                link = url_for("redefinir_senha", token=token_bruto, _external=True)
+                enviar_email_recuperacao_senha(dados[2], dados[1], link)
+                logger.info(f"Recuperação de senha solicitada: {dados[0]}")
+            conexao.close()
+            # Mensagem genérica: não revela se o usuário existe ou tem e-mail cadastrado
+            sucesso = "✅ Se o usuário existir e tiver um e-mail cadastrado, enviamos um link de redefinição de senha."
+    return render_template("esqueci_senha.html", erro=erro, sucesso=sucesso)
+
+@app.route("/redefinir_senha/<token>", methods=["GET", "POST"])
+def redefinir_senha(token):
+    erro = sucesso = None
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT usuario, reset_token_expira FROM usuarios WHERE reset_token = %s", (token_hash,))
+    dados = cursor.fetchone()
+    conexao.close()
+
+    agora = datetime.now(FUSO_RONDONIA)
+    token_valido = bool(dados) and dados[1] is not None and dados[1] > agora
+
+    if not token_valido:
+        return render_template("redefinir_senha.html", erro="⛔ Link inválido ou expirado. Solicite um novo.",
+                               sucesso=None, token_valido=False)
+
+    if request.method == "POST":
+        nova = request.form.get("nova_senha", "")
+        confirma = request.form.get("confirmar_senha", "")
+        if len(nova) < 6: erro = "Mínimo 6 caracteres!"
+        elif nova != confirma: erro = "Senhas não conferem!"
+        elif not any(c.isupper() for c in nova): erro = "Precisa de maiúscula!"
+        elif not any(c.isdigit() for c in nova): erro = "Precisa de número!"
+        else:
+            hash_nova = bcrypt.hashpw(nova.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            conexao = get_db()
+            cursor = conexao.cursor()
+            cursor.execute(
+                "UPDATE usuarios SET senha = %s, primeiro_acesso = 0, reset_token = NULL, reset_token_expira = NULL WHERE usuario = %s",
+                (hash_nova, dados[0])
+            )
+            conexao.commit()
+            conexao.close()
+            logger.info(f"Senha redefinida via recuperação por e-mail: {dados[0]}")
+            sucesso = "✅ Senha redefinida com sucesso! Você já pode fazer login."
+
+    return render_template("redefinir_senha.html", erro=erro, sucesso=sucesso, token_valido=True)
 
 # =====================================================
 # TROCAR SENHA
@@ -475,6 +589,29 @@ def trocar_senha():
             if request.args.get('primeiro_acesso'):
                 return redirect(url_for("dashboard") if current_user.perfil in ['admin', 'gestor'] else url_for("solicitacoes"))
     return render_template("trocar_senha.html", erro=erro, sucesso=sucesso)
+
+# =====================================================
+# DEFINIR EMAIL (obrigatório para habilitar recuperação de senha)
+# =====================================================
+
+@app.route("/definir_email", methods=["GET", "POST"])
+@login_required
+def definir_email():
+    erro = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        if not email or '@' not in email or '.' not in email.split('@')[-1]:
+            erro = "Informe um e-mail válido."
+        else:
+            conexao = get_db()
+            cursor = conexao.cursor()
+            cursor.execute("UPDATE usuarios SET email = %s WHERE usuario = %s", (email, current_user.id))
+            conexao.commit()
+            conexao.close()
+            logger.info(f"E-mail cadastrado: {current_user.id}")
+            flash("✅ E-mail cadastrado com sucesso!", "success")
+            return redirect(url_for("dashboard") if current_user.perfil in ['admin', 'gestor'] else url_for("solicitacoes"))
+    return render_template("definir_email.html", erro=erro)
 
 # =====================================================
 # LOGOUT
@@ -2705,7 +2842,7 @@ def listar_usuarios():
         return redirect(url_for("dashboard"))
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios ORDER BY id")
+    cursor.execute("SELECT id, usuario, nome, perfil, cras, email FROM usuarios ORDER BY id")
     usuarios = cursor.fetchall()
     conexao.close()
     lista_cras = get_lista_cras()
@@ -2862,6 +2999,25 @@ def editar_cras_usuario(id):
     conexao.close()
     logger.info(f"CRAS do usuário ID={id} alterado para {cras} por {current_user.id}")
     flash("✅ CRAS atualizado!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/usuario/editar_email/<int:id>", methods=["POST"])
+@login_required
+def editar_email_usuario(id):
+    # Somente administradores podem cadastrar/alterar o e-mail de outro usuário
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+    email = request.form.get("email", "").strip()
+    if email and ('@' not in email or '.' not in email.split('@')[-1]):
+        flash("❌ Informe um e-mail válido.", "danger")
+        return redirect(url_for("listar_usuarios"))
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("UPDATE usuarios SET email = %s WHERE id = %s", (email or None, id))
+    conexao.commit()
+    conexao.close()
+    logger.info(f"E-mail do usuário ID={id} alterado por {current_user.id}")
+    flash("✅ E-mail atualizado!", "success")
     return redirect(url_for("listar_usuarios"))
 
 @app.route("/usuario/alterar_senha", methods=["POST"])
