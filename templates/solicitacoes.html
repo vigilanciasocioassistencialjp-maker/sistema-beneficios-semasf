@@ -475,6 +475,11 @@ if (formEntrega) {
                 setTimeout(() => {
                     window.location.reload();
                 }, 500);
+            } else if (response.status === 400) {
+                // Provável token CSRF expirado (página aberta há muito tempo):
+                // recarregar é a única forma de obter um token novo.
+                alert('Sua sessão nesta página expirou. A página será recarregada — depois disso, registre a entrega novamente.');
+                window.location.reload();
             } else {
                 alert('Erro ao registrar entrega. Tente novamente.');
             }

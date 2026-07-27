@@ -69,6 +69,12 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))
 
+# 🔑 Token CSRF deve durar tanto quanto a sessão. Sem isso, o token embutido
+# na página expira em 1h (padrão do Flask-WTF) mesmo com a sessão ainda
+# ativa, e formulários enviados após esse tempo falham com 400 "CSRF token
+# has expired" mesmo que o usuário continue logado.
+app.config['WTF_CSRF_TIME_LIMIT'] = int(app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
 
