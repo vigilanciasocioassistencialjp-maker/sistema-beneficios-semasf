@@ -229,7 +229,14 @@ new Chart(document.getElementById('graficoPizza'), {
             legend: { position: 'bottom' },
             tooltip: {
                 callbacks: {
-                    label: ctx => ` ${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/{{ total_solicitacoes }}*100)}%)`
+                    // "Ausentes" é acumulativo (pode contar mais de uma vez por
+                    // solicitação), então o percentual usa a soma das 3 fatias
+                    // como base, não o total de solicitações.
+                    label: ctx => {
+                        const somaFatias = {{ total_entregues }} + {{ total_pendentes }} + {{ total_ausentes }};
+                        const pct = somaFatias ? Math.round(ctx.parsed / somaFatias * 100) : 0;
+                        return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                    }
                 }
             }
         }
