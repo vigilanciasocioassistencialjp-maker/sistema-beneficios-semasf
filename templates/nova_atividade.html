@@ -26,7 +26,10 @@
                     <select name="servico" class="form-select">
                         <option value="">— Selecione —</option>
                         {% for u in lista_unidades %}
-                        <option value="{{ u }}">{{ u }}</option>
+                        <option value="{{ u }}"
+                                {% if u == 'Gestão/SEMASF' and current_user.perfil in ['admin', 'gestor'] %}selected{% endif %}>
+                            {{ u }}
+                        </option>
                         {% endfor %}
                     </select>
                 </div>
