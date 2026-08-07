@@ -1,4 +1,5 @@
 import os
+import logging
 import psycopg2
 import bcrypt
 from psycopg2 import pool as pg_pool
@@ -48,6 +49,32 @@ def _devolver_conexao(conn):
             _pool.putconn(conn)
         except Exception:
             pass
+
+
+class DBLogHandler(logging.Handler):
+    """Handler de logging que grava cada registro na tabela auditoria_log.
+
+    O Render não tem disco persistente neste serviço, então um arquivo de
+    log sozinho (RotatingFileHandler) é apagado a cada deploy/restart. Este
+    handler faz o mesmo log sobreviver, gravando no Postgres via o pool de
+    conexões já existente. Se a gravação falhar (ex: pool momentaneamente
+    esgotado), não deve derrubar a requisição — por isso o try/except aqui
+    dentro em vez de deixar a exceção subir."""
+
+    def emit(self, record):
+        try:
+            conn = get_db_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO auditoria_log (nivel, mensagem) VALUES (%s, %s)",
+                    (record.levelname, record.getMessage())
+                )
+                conn.commit()
+            finally:
+                _devolver_conexao(conn)
+        except Exception:
+            self.handleError(record)
 
 
 # =====================================================
@@ -354,6 +381,23 @@ def criar_banco():
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE usuarios ADD COLUMN acesso_atividades BOOLEAN DEFAULT FALSE")
             print("✅ Coluna usuarios.acesso_atividades adicionada!")
+
+        # Tabela de auditoria (persiste os logs mesmo sem disco no Render —
+        # ver DBLogHandler acima)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auditoria_log (
+                id SERIAL PRIMARY KEY,
+                nivel TEXT NOT NULL,
+                mensagem TEXT NOT NULL,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        ''')
+        cursor.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = 'auditoria_log' AND indexname = 'idx_auditoria_log_criado_em'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("CREATE INDEX idx_auditoria_log_criado_em ON auditoria_log (criado_em DESC)")
 
         # Tabela de serviços da secretaria (além de CRAS/CREAS/Equipe Volante,
         # que continuam fixos por estarem ligados a perfis com comportamento

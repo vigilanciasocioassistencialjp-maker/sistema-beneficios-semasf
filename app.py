@@ -14,7 +14,7 @@ import bleach
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
-from banco import criar_banco, get_db_connection, _devolver_conexao
+from banco import criar_banco, get_db_connection, _devolver_conexao, DBLogHandler
 import storage_fotos
 import os
 import json
@@ -209,7 +209,19 @@ handler = RotatingFileHandler('logs/auditoria.log', maxBytes=10000000, backupCou
 handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%d/%m/%Y %H:%M:%S'))
 logger = logging.getLogger('auditoria')
 logger.addHandler(handler)
+# 🗄️ O arquivo acima some a cada deploy (sem disco persistente no Render) —
+# este handler grava o mesmo log na tabela auditoria_log, que sobrevive.
+logger.addHandler(DBLogHandler())
 logger.setLevel(logging.INFO)
+
+# Log de acesso a cada request (before_request) fica só no arquivo: é alto
+# volume e baixo valor de auditoria (toda página vista, inclusive polling de
+# /api/versao a cada 5min por aba aberta) — gravar isso no banco também
+# inflaria a tabela de auditoria sem necessidade.
+logger_acessos = logging.getLogger('acessos')
+logger_acessos.addHandler(handler)
+logger_acessos.setLevel(logging.INFO)
+logger_acessos.propagate = False
 
 # 🛡️ Força bruta
 tentativas_login = defaultdict(list)
@@ -367,7 +379,7 @@ def before_request():
         return redirect(url, 301)
     if request.endpoint and request.endpoint != 'static':
         usuario = current_user.id if current_user.is_authenticated else 'não autenticado'
-        logger.info(f"Acesso: {request.method} {request.path} | IP: {request.remote_addr} | Usuário: {usuario}")
+        logger_acessos.info(f"Acesso: {request.method} {request.path} | IP: {request.remote_addr} | Usuário: {usuario}")
 
 @app.after_request
 def adicionar_headers_no_cache(response):
@@ -2512,7 +2524,7 @@ def editar_atividade(id):
 def excluir_atividade(id):
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT criado_por FROM atividades_fotos WHERE id = %s", (id,))
+    cursor.execute("SELECT criado_por, titulo FROM atividades_fotos WHERE id = %s", (id,))
     row = cursor.fetchone()
     if not row:
         conexao.close()
@@ -2521,6 +2533,7 @@ def excluir_atividade(id):
         conexao.close()
         flash('❌ Você não tem permissão para excluir esta atividade.', 'danger')
         return redirect(url_for('ver_atividade', id=id))
+    titulo = row[1]
 
     cursor.execute("SELECT storage_path FROM fotos_atividade WHERE atividade_id = %s", (id,))
     caminhos = [r[0] for r in cursor.fetchall()]
@@ -2534,7 +2547,7 @@ def excluir_atividade(id):
         except Exception as e:
             logger.error(f"excluir_atividade: falha ao excluir foto '{path}' do Storage: {e}")
 
-    logger.info(f"Atividade #{id} excluída por {current_user.id}")
+    logger.info(f"Atividade #{id} '{titulo}' excluída ({len(caminhos)} foto(s)) por {current_user.id}")
     flash('✅ Atividade excluída.', 'success')
     return redirect(url_for('atividades'))
 
@@ -2544,7 +2557,7 @@ def excluir_foto_atividade(foto_id):
     conexao = get_db()
     cursor = conexao.cursor()
     cursor.execute("""
-        SELECT f.atividade_id, f.storage_path, a.criado_por
+        SELECT f.atividade_id, f.storage_path, a.criado_por, a.titulo
         FROM fotos_atividade f JOIN atividades_fotos a ON f.atividade_id = a.id
         WHERE f.id = %s
     """, (foto_id,))
@@ -2552,7 +2565,7 @@ def excluir_foto_atividade(foto_id):
     if not row:
         conexao.close()
         return "Foto não encontrada", 404
-    atividade_id, path, criado_por = row
+    atividade_id, path, criado_por, titulo = row
 
     if not _pode_gerenciar_atividade(criado_por):
         conexao.close()
@@ -2568,6 +2581,7 @@ def excluir_foto_atividade(foto_id):
     except Exception as e:
         logger.error(f"excluir_foto_atividade: falha ao excluir '{path}' do Storage: {e}")
 
+    logger.info(f"Foto #{foto_id} ('{path}') da atividade #{atividade_id} '{titulo}' excluída por {current_user.id}")
     flash('✅ Foto removida.', 'success')
     return redirect(url_for('editar_atividade', id=atividade_id))
 
