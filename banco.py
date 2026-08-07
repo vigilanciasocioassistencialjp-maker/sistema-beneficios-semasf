@@ -342,6 +342,44 @@ def criar_banco():
         if cursor.rowcount > 0:
             print(f"✅ {cursor.rowcount} usuário(s) migrado(s): perfil 'tecnico' → 'cras'")
 
+        # =====================================================
+        # MIGRAÇÃO: acesso à página de Fotos das Atividades — permissão
+        # extra que se soma ao perfil já existente do usuário (cras/creas/
+        # cras_volante/gestor/admin mantêm exatamente o acesso que já têm)
+        # =====================================================
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'usuarios' AND column_name = 'acesso_atividades'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN acesso_atividades BOOLEAN DEFAULT FALSE")
+            print("✅ Coluna usuarios.acesso_atividades adicionada!")
+
+        # Tabela de atividades/ações registradas para o Quadrimestral
+        # (fotos de atendimentos/grupos com legenda, enviadas por coordenadoras)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS atividades_fotos (
+                id SERIAL PRIMARY KEY,
+                titulo TEXT NOT NULL,
+                data_atividade TEXT NOT NULL,
+                servico TEXT,
+                descricao TEXT,
+                criado_por TEXT NOT NULL,
+                criado_em TEXT NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fotos_atividade (
+                id SERIAL PRIMARY KEY,
+                atividade_id INTEGER NOT NULL REFERENCES atividades_fotos(id) ON DELETE CASCADE,
+                storage_path TEXT NOT NULL,
+                legenda TEXT,
+                ordem INTEGER DEFAULT 0,
+                criado_em TEXT NOT NULL
+            )
+        ''')
+
         # Tabela de configurações do sistema
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS configuracoes (

@@ -15,6 +15,7 @@ from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from usuarios import Usuario, carregar_usuario
 from banco import criar_banco, get_db_connection, _devolver_conexao
+import storage_fotos
 import os
 import json
 from datetime import datetime, timezone, timedelta
@@ -74,6 +75,11 @@ app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))
 # ativa, e formulários enviados após esse tempo falham com 400 "CSRF token
 # has expired" mesmo que o usuário continue logado.
 app.config['WTF_CSRF_TIME_LIMIT'] = int(app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+
+# 📷 Limite de tamanho do corpo da requisição (fotos das atividades) —
+# evita que um upload gigante seja lido inteiro na memória antes mesmo do
+# Pillow validar/comprimir. 10 fotos x ~5MB de folga cada.
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 # 🕐 Fuso horário de Rondônia (UTC-4)
 FUSO_RONDONIA = timezone(timedelta(hours=-4))
@@ -348,6 +354,12 @@ print("Agendador de backup iniciado (todo dia às 8h, horario de Rondonia)")
 # HTTPS
 # ===================================================
 
+def pagina_inicial(perfil):
+    """Rota para onde cada perfil deve ir após login/troca de senha/e-mail."""
+    if perfil in ('admin', 'gestor'):
+        return 'dashboard'
+    return 'solicitacoes'
+
 @app.before_request
 def before_request():
     if os.environ.get('RENDER') and not request.is_secure:
@@ -468,13 +480,14 @@ def login():
         senha = request.form["senha"]
         conexao = get_db()
         cursor = conexao.cursor()
-        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email FROM usuarios WHERE usuario = %s", (usuario,))
+        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email, acesso_atividades FROM usuarios WHERE usuario = %s", (usuario,))
         dados = cursor.fetchone()
         cursor.close()
         conexao.close()
 
         if dados and bcrypt.checkpw(senha.encode('utf-8'), dados[1].encode('utf-8')):
-            user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None, dados[5] if len(dados) > 5 else dados[0])
+            user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None,
+                            dados[5] if len(dados) > 5 else dados[0], dados[7] if len(dados) > 7 else False)
             login_user(user, remember=False)
             session.permanent = True
             session['mostrar_modal_notif'] = True
@@ -484,7 +497,7 @@ def login():
                 return redirect(url_for("trocar_senha", primeiro_acesso=True))
             if not dados[6]:
                 return redirect(url_for("definir_email"))
-            return redirect(url_for("dashboard") if dados[2] in ['admin', 'gestor'] else url_for("solicitacoes"))
+            return redirect(url_for(pagina_inicial(dados[2])))
         else:
             tentativas_login[ip].append(agora)
             erro = "❌ Usuário ou senha incorretos!"
@@ -593,7 +606,7 @@ def trocar_senha():
             logger.info(f"Senha alterada: {current_user.id}")
             sucesso = "✅ Senha alterada!"
             if request.args.get('primeiro_acesso'):
-                return redirect(url_for("dashboard") if current_user.perfil in ['admin', 'gestor'] else url_for("solicitacoes"))
+                return redirect(url_for(pagina_inicial(current_user.perfil)))
     return render_template("trocar_senha.html", erro=erro, sucesso=sucesso)
 
 # =====================================================
@@ -616,7 +629,7 @@ def definir_email():
             conexao.close()
             logger.info(f"E-mail cadastrado: {current_user.id}")
             flash("✅ E-mail cadastrado com sucesso!", "success")
-            return redirect(url_for("dashboard") if current_user.perfil in ['admin', 'gestor'] else url_for("solicitacoes"))
+            return redirect(url_for(pagina_inicial(current_user.perfil)))
     return render_template("definir_email.html", erro=erro)
 
 # =====================================================
@@ -2193,6 +2206,355 @@ def lista_entrega_pdf():
 
 
 # =====================================================
+# FOTOS DAS ATIVIDADES (evidências para o Quadrimestral)
+# =====================================================
+
+def _url_foto(path):
+    if not path:
+        return None
+    try:
+        return storage_fotos.url_publica(path)
+    except storage_fotos.StorageNaoConfigurado:
+        return None
+
+def _pode_gerenciar_atividade(criado_por):
+    return current_user.perfil in ('admin', 'gestor') or criado_por == current_user.id
+
+def _pode_acessar_atividades():
+    """Admin/gestor sempre têm acesso; os demais perfis (cras/creas/
+    cras_volante) só se tiverem a permissão extra 'acesso_atividades'
+    marcada — mantendo intactos os privilégios normais de solicitações."""
+    return current_user.perfil in ('admin', 'gestor') or current_user.acesso_atividades
+
+@app.route("/atividades")
+@login_required
+def atividades():
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    periodo_inicio = request.args.get('periodo_inicio', '').strip()
+    periodo_fim    = request.args.get('periodo_fim', '').strip()
+    busca_servico  = request.args.get('busca_servico', '').strip()
+
+    filtros = []
+    params  = []
+    if periodo_inicio:
+        filtros.append("a.data_atividade >= %s")
+        params.append(periodo_inicio)
+    if periodo_fim:
+        filtros.append("a.data_atividade <= %s")
+        params.append(periodo_fim)
+    if busca_servico:
+        filtros.append("a.servico = %s")
+        params.append(busca_servico)
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute(f"""
+        SELECT a.id, a.titulo, a.data_atividade, a.servico, a.criado_por,
+               COALESCE(u.nome, a.criado_por),
+               (SELECT COUNT(*) FROM fotos_atividade f WHERE f.atividade_id = a.id),
+               (SELECT f.storage_path FROM fotos_atividade f
+                WHERE f.atividade_id = a.id ORDER BY f.ordem, f.id LIMIT 1)
+        FROM atividades_fotos a
+        LEFT JOIN usuarios u ON a.criado_por = u.usuario
+        {where}
+        ORDER BY a.data_atividade DESC, a.id DESC
+    """, params)
+    linhas = cursor.fetchall()
+    conexao.close()
+
+    lista_atividades = []
+    for (aid, titulo, data_ativ, servico, criado_por, criado_por_nome, num_fotos, capa) in linhas:
+        lista_atividades.append({
+            'id': aid, 'titulo': titulo, 'data_atividade': data_ativ,
+            'servico': servico, 'criado_por': criado_por, 'criado_por_nome': criado_por_nome,
+            'num_fotos': num_fotos, 'capa_url': _url_foto(capa),
+            'pode_gerenciar': _pode_gerenciar_atividade(criado_por),
+        })
+
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+
+    return render_template(
+        "atividades.html",
+        atividades=lista_atividades,
+        lista_unidades=lista_unidades,
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
+        busca_servico=busca_servico,
+        storage_configurado=storage_fotos.esta_configurado(),
+    )
+
+@app.route("/atividades/nova", methods=["GET", "POST"])
+@login_required
+def nova_atividade():
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo", "").strip()
+        data_atividade = request.form.get("data_atividade", "").strip()
+        servico = request.form.get("servico", "").strip()
+        descricao = request.form.get("descricao", "").strip()
+        # Pareia arquivo+legenda pelo índice da LINHA antes de filtrar — se
+        # filtrássemos os arquivos vazios primeiro, uma linha sem foto (mas
+        # com legenda preenchida) desalinharia as legendas das linhas seguintes.
+        arquivos_brutos = request.files.getlist("fotos[]")
+        legendas_brutas = request.form.getlist("legenda[]")
+        pares = [(f, legendas_brutas[i] if i < len(legendas_brutas) else '')
+                 for i, f in enumerate(arquivos_brutos) if f and f.filename]
+
+        if not titulo or not data_atividade:
+            flash('❌ Preencha o título e a data da atividade.', 'danger')
+            return render_template("nova_atividade.html", lista_unidades=lista_unidades)
+        if not pares:
+            flash('❌ Envie pelo menos uma foto.', 'danger')
+            return render_template("nova_atividade.html", lista_unidades=lista_unidades)
+        if not storage_fotos.esta_configurado():
+            flash('❌ Envio de fotos ainda não está configurado. Contate o administrador.', 'danger')
+            return render_template("nova_atividade.html", lista_unidades=lista_unidades)
+
+        # Comprime tudo antes de gravar qualquer coisa no banco, para não
+        # deixar uma atividade "pela metade" se um dos arquivos for inválido.
+        try:
+            comprimidas = [(storage_fotos.comprimir_imagem(f), legenda) for f, legenda in pares]
+        except storage_fotos.ImagemInvalida as e:
+            flash(f'❌ {e}', 'danger')
+            return render_template("nova_atividade.html", lista_unidades=lista_unidades)
+
+        agora = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
+        conexao = get_db()
+        cursor = conexao.cursor()
+        cursor.execute("""
+            INSERT INTO atividades_fotos (titulo, data_atividade, servico, descricao, criado_por, criado_em)
+            VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (titulo, data_atividade, servico, descricao, current_user.id, agora))
+        atividade_id = cursor.fetchone()[0]
+
+        falhas = 0
+        for i, (dados_bytes, legenda) in enumerate(comprimidas):
+            path = storage_fotos.gerar_caminho(atividade_id)
+            try:
+                storage_fotos.upload_foto(dados_bytes, path)
+                cursor.execute("""
+                    INSERT INTO fotos_atividade (atividade_id, storage_path, legenda, ordem, criado_em)
+                    VALUES (%s,%s,%s,%s,%s)
+                """, (atividade_id, path, legenda, i, agora))
+            except Exception as e:
+                falhas += 1
+                logger.error(f"nova_atividade: falha ao enviar foto {i} da atividade {atividade_id}: {e}")
+
+        conexao.commit()
+        conexao.close()
+        logger.info(f"Atividade cadastrada: '{titulo}' por {current_user.id} ({len(comprimidas) - falhas} foto(s))")
+
+        if falhas:
+            flash(f'⚠️ Atividade criada, mas {falhas} foto(s) falharam ao enviar. Tente adicioná-las novamente na edição.', 'warning')
+        else:
+            flash('✅ Atividade registrada!', 'success')
+        return redirect(url_for("ver_atividade", id=atividade_id))
+
+    return render_template("nova_atividade.html", lista_unidades=lista_unidades)
+
+@app.route("/atividades/<int:id>")
+@login_required
+def ver_atividade(id):
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        SELECT a.id, a.titulo, a.data_atividade, a.servico, a.descricao,
+               a.criado_por, COALESCE(u.nome, a.criado_por), a.criado_em
+        FROM atividades_fotos a
+        LEFT JOIN usuarios u ON a.criado_por = u.usuario
+        WHERE a.id = %s
+    """, (id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        return "Atividade não encontrada", 404
+
+    cursor.execute("""
+        SELECT id, storage_path, legenda FROM fotos_atividade
+        WHERE atividade_id = %s ORDER BY ordem, id
+    """, (id,))
+    fotos = [{'id': fid, 'url': _url_foto(path), 'legenda': legenda}
+             for (fid, path, legenda) in cursor.fetchall()]
+    conexao.close()
+
+    atividade = {
+        'id': row[0], 'titulo': row[1], 'data_atividade': row[2], 'servico': row[3],
+        'descricao': row[4], 'criado_por': row[5], 'criado_por_nome': row[6], 'criado_em': row[7],
+    }
+
+    return render_template(
+        "ver_atividade.html",
+        atividade=atividade,
+        fotos=fotos,
+        pode_gerenciar=_pode_gerenciar_atividade(atividade['criado_por']),
+    )
+
+@app.route("/atividades/<int:id>/editar", methods=["GET", "POST"])
+@login_required
+def editar_atividade(id):
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT titulo, data_atividade, servico, descricao, criado_por FROM atividades_fotos WHERE id = %s", (id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        return "Atividade não encontrada", 404
+
+    if not _pode_gerenciar_atividade(row[4]):
+        conexao.close()
+        flash('❌ Você não tem permissão para editar esta atividade.', 'danger')
+        return redirect(url_for('ver_atividade', id=id))
+
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo", "").strip()
+        data_atividade = request.form.get("data_atividade", "").strip()
+        servico = request.form.get("servico", "").strip()
+        descricao = request.form.get("descricao", "").strip()
+
+        if not titulo or not data_atividade:
+            flash('❌ Preencha o título e a data da atividade.', 'danger')
+        else:
+            cursor.execute("""
+                UPDATE atividades_fotos SET titulo=%s, data_atividade=%s, servico=%s, descricao=%s
+                WHERE id=%s
+            """, (titulo, data_atividade, servico, descricao, id))
+
+            # Legendas das fotos já existentes (campo legenda_<id> por foto)
+            cursor.execute("SELECT id FROM fotos_atividade WHERE atividade_id = %s", (id,))
+            for (foto_id,) in cursor.fetchall():
+                campo = f"legenda_{foto_id}"
+                if campo in request.form:
+                    cursor.execute("UPDATE fotos_atividade SET legenda=%s WHERE id=%s",
+                                   (request.form.get(campo, "").strip(), foto_id))
+
+            # Novas fotos adicionadas na edição — pareia arquivo+legenda pelo
+            # índice da linha antes de filtrar (mesmo motivo do nova_atividade:
+            # uma linha sem foto mas com legenda desalinharia as seguintes).
+            arquivos_brutos = request.files.getlist("fotos[]")
+            legendas_brutas = request.form.getlist("legenda[]")
+            pares = [(f, legendas_brutas[i] if i < len(legendas_brutas) else '')
+                     for i, f in enumerate(arquivos_brutos) if f and f.filename]
+            if pares:
+                if not storage_fotos.esta_configurado():
+                    flash('⚠️ Metadados salvos, mas o envio de fotos não está configurado.', 'warning')
+                else:
+                    agora = datetime.now(FUSO_RONDONIA).strftime("%d/%m/%Y %H:%M:%S")
+                    cursor.execute("SELECT COALESCE(MAX(ordem), -1) FROM fotos_atividade WHERE atividade_id = %s", (id,))
+                    proxima_ordem = cursor.fetchone()[0] + 1
+                    falhas = 0
+                    for i, (arquivo, legenda) in enumerate(pares):
+                        try:
+                            dados_bytes = storage_fotos.comprimir_imagem(arquivo)
+                            path = storage_fotos.gerar_caminho(id)
+                            storage_fotos.upload_foto(dados_bytes, path)
+                            cursor.execute("""
+                                INSERT INTO fotos_atividade (atividade_id, storage_path, legenda, ordem, criado_em)
+                                VALUES (%s,%s,%s,%s,%s)
+                            """, (id, path, legenda, proxima_ordem + i, agora))
+                        except Exception as e:
+                            falhas += 1
+                            logger.error(f"editar_atividade: falha ao adicionar foto à atividade {id}: {e}")
+                    if falhas:
+                        flash(f'⚠️ {falhas} foto(s) não puderam ser adicionadas.', 'warning')
+
+            conexao.commit()
+            conexao.close()
+            logger.info(f"Atividade #{id} editada por {current_user.id}")
+            flash('✅ Atividade atualizada!', 'success')
+            return redirect(url_for('ver_atividade', id=id))
+
+    cursor.execute("SELECT id, storage_path, legenda FROM fotos_atividade WHERE atividade_id = %s ORDER BY ordem, id", (id,))
+    fotos = [{'id': fid, 'url': _url_foto(path), 'legenda': legenda}
+             for (fid, path, legenda) in cursor.fetchall()]
+    conexao.close()
+
+    atividade = {'id': id, 'titulo': row[0], 'data_atividade': row[1], 'servico': row[2], 'descricao': row[3]}
+    return render_template("editar_atividade.html", atividade=atividade, fotos=fotos, lista_unidades=lista_unidades)
+
+@app.route("/atividades/<int:id>/excluir", methods=["POST"])
+@login_required
+def excluir_atividade(id):
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT criado_por FROM atividades_fotos WHERE id = %s", (id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        return "Atividade não encontrada", 404
+    if not _pode_gerenciar_atividade(row[0]):
+        conexao.close()
+        flash('❌ Você não tem permissão para excluir esta atividade.', 'danger')
+        return redirect(url_for('ver_atividade', id=id))
+
+    cursor.execute("SELECT storage_path FROM fotos_atividade WHERE atividade_id = %s", (id,))
+    caminhos = [r[0] for r in cursor.fetchall()]
+    cursor.execute("DELETE FROM atividades_fotos WHERE id = %s", (id,))
+    conexao.commit()
+    conexao.close()
+
+    for path in caminhos:
+        try:
+            storage_fotos.excluir_foto(path)
+        except Exception as e:
+            logger.error(f"excluir_atividade: falha ao excluir foto '{path}' do Storage: {e}")
+
+    logger.info(f"Atividade #{id} excluída por {current_user.id}")
+    flash('✅ Atividade excluída.', 'success')
+    return redirect(url_for('atividades'))
+
+@app.route("/atividades/foto/<int:foto_id>/excluir", methods=["POST"])
+@login_required
+def excluir_foto_atividade(foto_id):
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        SELECT f.atividade_id, f.storage_path, a.criado_por
+        FROM fotos_atividade f JOIN atividades_fotos a ON f.atividade_id = a.id
+        WHERE f.id = %s
+    """, (foto_id,))
+    row = cursor.fetchone()
+    if not row:
+        conexao.close()
+        return "Foto não encontrada", 404
+    atividade_id, path, criado_por = row
+
+    if not _pode_gerenciar_atividade(criado_por):
+        conexao.close()
+        flash('❌ Você não tem permissão para excluir esta foto.', 'danger')
+        return redirect(url_for('editar_atividade', id=atividade_id))
+
+    cursor.execute("DELETE FROM fotos_atividade WHERE id = %s", (foto_id,))
+    conexao.commit()
+    conexao.close()
+
+    try:
+        storage_fotos.excluir_foto(path)
+    except Exception as e:
+        logger.error(f"excluir_foto_atividade: falha ao excluir '{path}' do Storage: {e}")
+
+    flash('✅ Foto removida.', 'success')
+    return redirect(url_for('editar_atividade', id=atividade_id))
+
+# =====================================================
 # DASHBOARD
 # =====================================================
 
@@ -2876,7 +3238,7 @@ def listar_usuarios():
         return redirect(url_for("dashboard"))
     conexao = get_db()
     cursor = conexao.cursor()
-    cursor.execute("SELECT id, usuario, nome, perfil, cras, email FROM usuarios ORDER BY id")
+    cursor.execute("SELECT id, usuario, nome, perfil, cras, email, acesso_atividades FROM usuarios ORDER BY id")
     usuarios = cursor.fetchall()
     conexao.close()
     lista_cras = get_lista_cras()
@@ -2909,6 +3271,7 @@ def novo_usuario():
         perfil = request.form.get("perfil", "")
         # CRAS só faz sentido para técnico de CRAS; demais perfis ficam NULL
         cras = request.form.get("cras") if perfil == "cras" else None
+        acesso_atividades = request.form.get("acesso_atividades") == "1"
         if len(senha) < 6:
             flash("Mínimo 6 caracteres!", "danger")
         else:
@@ -2917,8 +3280,8 @@ def novo_usuario():
             cursor = conexao.cursor()
             try:
                 cursor.execute(
-                    "INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso) VALUES (%s,%s,%s,%s,%s,1)",
-                    (request.form.get("usuario"), request.form.get("nome"), hash_senha, perfil, cras)
+                    "INSERT INTO usuarios (usuario, nome, senha, perfil, cras, primeiro_acesso, acesso_atividades) VALUES (%s,%s,%s,%s,%s,1,%s)",
+                    (request.form.get("usuario"), request.form.get("nome"), hash_senha, perfil, cras, acesso_atividades)
                 )
                 conexao.commit()
                 flash("✅ Usuário criado!", 'success')
@@ -3033,6 +3396,36 @@ def editar_cras_usuario(id):
     conexao.close()
     logger.info(f"CRAS do usuário ID={id} alterado para {cras} por {current_user.id}")
     flash("✅ CRAS atualizado!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/usuario/toggle_atividades/<int:id>", methods=["POST"])
+@login_required
+def toggle_acesso_atividades(id):
+    """Liga/desliga o acesso à página de Fotos das Atividades para um
+    usuário, sem alterar o perfil (e portanto sem mexer nos privilégios
+    de solicitações que ele já tem)."""
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    conexao = get_db()
+    cursor = conexao.cursor()
+    if current_user.perfil == 'gestor':
+        cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id,))
+        row = cursor.fetchone()
+        if row and row[0] == 'admin':
+            conexao.close()
+            flash("❌ Gestores não podem alterar dados de administradores.", "danger")
+            return redirect(url_for("listar_usuarios"))
+    cursor.execute("""
+        UPDATE usuarios SET acesso_atividades = NOT COALESCE(acesso_atividades, FALSE)
+        WHERE id = %s RETURNING acesso_atividades
+    """, (id,))
+    row = cursor.fetchone()
+    conexao.commit()
+    conexao.close()
+    if row:
+        estado = "concedido" if row[0] else "removido"
+        logger.info(f"Acesso a Fotos das Atividades {estado} para usuário ID={id} por {current_user.id}")
+        flash(f"✅ Acesso a Fotos das Atividades {estado}!", "success")
     return redirect(url_for("listar_usuarios"))
 
 @app.route("/usuario/editar_email/<int:id>", methods=["POST"])

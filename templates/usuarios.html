@@ -44,6 +44,7 @@
                         <th>Perfil</th>
                         <th>CRAS</th>
                         <th>E-mail</th>
+                        <th>Fotos das Atividades</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -114,6 +115,18 @@
                             </form>
                             {% else %}
                                 <span class="text-muted small">{{ u[5] or '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pode_editar_este %}
+                            <form action="{{ url_for('toggle_acesso_atividades', id=u[0]) }}" method="POST" class="d-inline">
+                                <button type="submit" class="btn btn-sm {{ 'btn-success' if u[6] else 'btn-outline-secondary' }}"
+                                        title="Clique para {{ 'remover' if u[6] else 'conceder' }} o acesso">
+                                    <i class="fas fa-images"></i> {{ 'Ativo' if u[6] else 'Inativo' }}
+                                </button>
+                            </form>
+                            {% else %}
+                                <span class="badge {{ 'bg-success' if u[6] else 'bg-secondary' }}">{{ 'Ativo' if u[6] else 'Inativo' }}</span>
                             {% endif %}
                         </td>
                         <td>
