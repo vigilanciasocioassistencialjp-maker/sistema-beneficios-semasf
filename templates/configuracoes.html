@@ -225,6 +225,64 @@
             </div>
         </div>
 
+        <!-- Gerenciamento de Serviços da Secretaria -->
+        <div class="card border-primary mt-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-hands-helping"></i> Serviços da Secretaria</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Serviços além de CRAS/CREAS/Equipe Volante (CCVB, Casa da Mulher, acolhimento, PROCAD-SUAS,
+                    ACESSUAS, etc.). Usados no cadastro de "Técnico de Serviço" e para marcar de qual serviço
+                    são as fotos em Fotos das Atividades.
+                </p>
+
+                <!-- Adicionar novo serviço -->
+                <form action="/configuracoes/servico/adicionar" method="POST" class="row g-2 align-items-end mb-4">
+                    <div class="col-md-9">
+                        <label class="form-label fw-bold"><i class="fas fa-plus-circle text-success"></i> Novo serviço</label>
+                        <input type="text" name="nome" class="form-control" placeholder="Nome do serviço" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> Adicionar Serviço
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Lista de serviços -->
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <tbody>
+                            {% for sid, snome in servicos %}
+                            <tr>
+                                <td class="align-middle" style="width:60%;">
+                                    <form action="/configuracoes/servico/renomear" method="POST" class="d-inline-flex gap-1 w-100">
+                                        <input type="hidden" name="servico_id" value="{{ sid }}">
+                                        <input type="text" name="novo_nome" value="{{ snome }}" class="form-control form-control-sm">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salvar novo nome">
+                                            <i class="fas fa-save"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                <td class="text-end align-middle">
+                                    <form action="/configuracoes/servico/remover" method="POST" class="d-inline">
+                                        <input type="hidden" name="servico_id" value="{{ sid }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                onclick="return confirm('Remover o serviço \'{{ snome }}\' da lista? Usuários e registros que já usam esse nome não são afetados.')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Backup -->
         <div class="card border-success mt-4">
             <div class="card-header bg-success text-white">

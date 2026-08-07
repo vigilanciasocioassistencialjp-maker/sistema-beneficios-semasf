@@ -758,6 +758,19 @@ def get_lista_cras():
         conn.close()
     return [r[0] for r in rows]
 
+def get_lista_servicos():
+    """Retorna lista de serviços cadastrados na tabela servicos, ordenados.
+    Não inclui CREAS/EQUIPE VOLANTE — esses continuam fixos, ligados a
+    perfis com comportamento próprio."""
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nome FROM servicos ORDER BY nome")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return [r[0] for r in rows]
+
 # =====================================================
 # PÁGINA PRINCIPAL - NOVA SOLICITAÇÃO
 # =====================================================
@@ -957,7 +970,7 @@ def solicitacoes(pagina=1):
     # Listas para dropdowns
     cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
     lista_tecnicos = cursor.fetchall()
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
     nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
     lista_meses_sol = []
@@ -2275,7 +2288,7 @@ def atividades():
             'pode_gerenciar': _pode_gerenciar_atividade(criado_por),
         })
 
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
 
     return render_template(
         "atividades.html",
@@ -2294,7 +2307,7 @@ def nova_atividade():
         flash('❌ Você não tem acesso a essa área.', 'danger')
         return redirect(url_for(pagina_inicial(current_user.perfil)))
 
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
 
     if request.method == "POST":
         titulo = request.form.get("titulo", "").strip()
@@ -2422,7 +2435,7 @@ def editar_atividade(id):
         flash('❌ Você não tem permissão para editar esta atividade.', 'danger')
         return redirect(url_for('ver_atividade', id=id))
 
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE']
+    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
 
     if request.method == "POST":
         titulo = request.form.get("titulo", "").strip()
@@ -3242,8 +3255,9 @@ def listar_usuarios():
     usuarios = cursor.fetchall()
     conexao.close()
     lista_cras = get_lista_cras()
+    lista_servicos = get_lista_servicos()
     return render_template("usuarios.html", usuarios=usuarios, current_user=current_user,
-                           lista_cras=lista_cras)
+                           lista_cras=lista_cras, lista_servicos=lista_servicos)
 
 def _eh_ultimo_admin(id_usuario):
     """True se o usuário for admin E for o único admin restante no sistema.
@@ -3269,8 +3283,8 @@ def novo_usuario():
     if request.method == "POST":
         senha = request.form.get("senha", "")
         perfil = request.form.get("perfil", "")
-        # CRAS só faz sentido para técnico de CRAS; demais perfis ficam NULL
-        cras = request.form.get("cras") if perfil == "cras" else None
+        # CRAS/serviço só fazem sentido para esses dois perfis; demais ficam NULL
+        cras = request.form.get("cras") if perfil in ("cras", "servico") else None
         acesso_atividades = request.form.get("acesso_atividades") == "1"
         if len(senha) < 6:
             flash("Mínimo 6 caracteres!", "danger")
@@ -3295,7 +3309,8 @@ def novo_usuario():
             finally:
                 conexao.close()
     lista_cras = get_lista_cras()
-    return render_template("novo_usuario.html", lista_cras=lista_cras)
+    lista_servicos = get_lista_servicos()
+    return render_template("novo_usuario.html", lista_cras=lista_cras, lista_servicos=lista_servicos)
 
 # POST obrigatório: exclusão via GET dispensa a proteção CSRF e pode ser
 # disparada por um simples link externo ou prefetch do navegador
@@ -3340,33 +3355,39 @@ def editar_perfil_usuario(id):
     if current_user.perfil not in ['admin', 'gestor']:
         return "Acesso negado", 403
     perfil_novo = request.form.get("perfil", "")
-    perfis_validos = ['cras', 'creas', 'cras_volante', 'gestor', 'admin']
+    perfis_validos = ['cras', 'creas', 'cras_volante', 'servico', 'gestor', 'admin']
     if perfil_novo not in perfis_validos:
         flash("Perfil inválido.", "danger")
         return redirect(url_for("listar_usuarios"))
     if perfil_novo != 'admin' and _eh_ultimo_admin(id):
         flash("❌ Não é possível rebaixar o único administrador do sistema.", "danger")
         return redirect(url_for("listar_usuarios"))
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id,))
+    row = cursor.fetchone()
+    perfil_atual = row[0] if row else None
+
     # Gestor não pode promover/rebaixar admins nem criar novos admins
     if current_user.perfil == 'gestor':
-        conexao = get_db()
-        cursor = conexao.cursor()
-        cursor.execute("SELECT perfil FROM usuarios WHERE id = %s", (id,))
-        row = cursor.fetchone()
-        conexao.close()
-        if row and row[0] == 'admin':
+        if perfil_atual == 'admin':
+            conexao.close()
             flash("❌ Gestores não podem alterar perfil de administradores.", "danger")
             return redirect(url_for("listar_usuarios"))
         if perfil_novo == 'admin':
+            conexao.close()
             flash("❌ Gestores não podem criar administradores.", "danger")
             return redirect(url_for("listar_usuarios"))
-    conexao = get_db()
-    cursor = conexao.cursor()
-    # Se deixou de ser técnico CRAS, limpa o CRAS vinculado
-    if perfil_novo != 'cras':
-        cursor.execute("UPDATE usuarios SET perfil = %s, cras = NULL WHERE id = %s", (perfil_novo, id))
-    else:
+
+    # 'cras' e 'servico' guardam o nome da unidade/serviço na mesma coluna
+    # `cras`, mas com significados diferentes — ao trocar de um perfil pro
+    # outro (ou pra qualquer outro perfil), o valor antigo fica sem sentido
+    # e precisa ser limpo; só preserva quando o perfil não mudou de fato.
+    if perfil_novo == perfil_atual:
         cursor.execute("UPDATE usuarios SET perfil = %s WHERE id = %s", (perfil_novo, id))
+    else:
+        cursor.execute("UPDATE usuarios SET perfil = %s, cras = NULL WHERE id = %s", (perfil_novo, id))
     conexao.commit()
     conexao.close()
     logger.info(f"Perfil do usuário ID={id} alterado para {perfil_novo} por {current_user.id}")
@@ -3582,6 +3603,9 @@ def configuracoes():
             bairros_com_id.setdefault(bcras, []).append((bid, bbairro, bvolante))
             if bcras not in lista_cras_set:
                 lista_cras_set.append(bcras)
+
+        cursor.execute("SELECT id, nome FROM servicos ORDER BY nome")
+        servicos = cursor.fetchall()
     finally:
         conn.close()
 
@@ -3594,6 +3618,7 @@ def configuracoes():
         bairros_por_cras=bairros_por_cras,
         bairros_com_id=bairros_com_id,
         lista_cras=lista_cras_set,
+        servicos=servicos,
         current_user=current_user
     )
 
@@ -3682,6 +3707,74 @@ def bairro_remover():
     conn.commit()
     conn.close()
     flash("✅ Bairro removido.", "success")
+    return redirect(url_for("configuracoes"))
+
+# =====================================================
+# SERVIÇOS DA SECRETARIA (além de CRAS/CREAS/Equipe Volante)
+# =====================================================
+
+@app.route("/configuracoes/servico/adicionar", methods=["POST"])
+@login_required
+def servico_adicionar():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    nome = request.form.get("nome", "").strip()
+    if not nome:
+        flash("❌ Informe o nome do serviço.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO servicos (nome) VALUES (%s)", (nome,))
+        conn.commit()
+        logger.info(f"Serviço '{nome}' adicionado por {current_user.id}")
+        flash(f"✅ Serviço '{nome}' adicionado!", "success")
+    except Exception:
+        conn.rollback()
+        flash(f"❌ Serviço '{nome}' já existe.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("configuracoes"))
+
+@app.route("/configuracoes/servico/renomear", methods=["POST"])
+@login_required
+def servico_renomear():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    servico_id = request.form.get("servico_id", "")
+    novo_nome = request.form.get("novo_nome", "").strip()
+    if not servico_id or not novo_nome:
+        flash("❌ Dados inválidos.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE servicos SET nome = %s WHERE id = %s", (novo_nome, servico_id))
+        conn.commit()
+        logger.info(f"Serviço ID={servico_id} renomeado para '{novo_nome}' por {current_user.id}")
+        flash("✅ Serviço renomeado!", "success")
+    except Exception:
+        conn.rollback()
+        flash(f"❌ Já existe um serviço chamado '{novo_nome}'.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("configuracoes"))
+
+@app.route("/configuracoes/servico/remover", methods=["POST"])
+@login_required
+def servico_remover():
+    if current_user.perfil not in ['admin', 'gestor']:
+        return "Acesso negado", 403
+    servico_id = request.form.get("servico_id", "")
+    if not servico_id:
+        flash("❌ Serviço não identificado.", "danger")
+        return redirect(url_for("configuracoes"))
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM servicos WHERE id = %s", (servico_id,))
+    conn.commit()
+    conn.close()
+    flash("✅ Serviço removido da lista.", "success")
     return redirect(url_for("configuracoes"))
 
 # =====================================================

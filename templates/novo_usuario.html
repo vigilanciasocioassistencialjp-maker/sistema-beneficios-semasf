@@ -56,6 +56,7 @@
                                 <option value="cras">🔵 Técnico CRAS</option>
                                 <option value="creas">🟠 Técnico CREAS</option>
                                 <option value="cras_volante">🟢 Equipe Volante</option>
+                                <option value="servico">📋 Técnico de Serviço</option>
                                 <option value="gestor">🔴 Gestor Secretaria</option>
                                 <option value="admin">🟣 Administrador</option>
                             </select>
@@ -65,6 +66,9 @@
                                     <strong>Técnico CRAS:</strong> cadastra e registra entregas apenas do seu CRAS.<br>
                                     <strong>Técnico CREAS:</strong> cadastra e registra entregas de todos os bairros.<br>
                                     <strong>Equipe Volante:</strong> cadastra e registra entregas de todos os bairros (área rural).<br>
+                                    <strong>Técnico de Serviço:</strong> demais serviços da secretaria (CCVB, Casa da
+                                    Mulher, acolhimento, PROCAD-SUAS, ACESSUAS, etc.) — cadastra em qualquer bairro,
+                                    mas só vê as solicitações registradas pelo próprio serviço.<br>
                                     <strong>Gestor:</strong> acesso a relatórios e visualização geral.<br>
                                     <strong>Admin:</strong> acesso total ao sistema.
                                 </small>
@@ -90,7 +94,7 @@
                             <label class="form-label">
                                 <i class="fas fa-building"></i> CRAS de Referência
                             </label>
-                            <select name="cras" class="form-select">
+                            <select name="cras" id="selectCras" class="form-select">
                                 <option value="">Selecione o CRAS</option>
                                 {% for c in lista_cras %}
                                 <option value="{{ c }}">{{ c }}</option>
@@ -100,6 +104,26 @@
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle"></i>
                                     <strong>Obrigatório para Técnico CRAS.</strong> Define quais bairros o técnico poderá atender.
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Serviço de Referência — apenas para Técnico de Serviço -->
+                        <div class="mb-3" id="divServico" style="display:none;">
+                            <label class="form-label">
+                                <i class="fas fa-hands-helping"></i> Serviço de Referência
+                            </label>
+                            <select name="cras" id="selectServico" class="form-select">
+                                <option value="">Selecione o serviço</option>
+                                {% for s in lista_servicos %}
+                                <option value="{{ s }}">{{ s }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    <strong>Obrigatório para Técnico de Serviço.</strong> Novos serviços podem ser
+                                    cadastrados em Configurações.
                                 </small>
                             </div>
                         </div>
@@ -127,15 +151,24 @@
 <script>
     const perfilSelect = document.getElementById('perfil');
     const divCras = document.getElementById('divCras');
-    const crasSelect = document.querySelector('select[name="cras"]');
+    const divServico = document.getElementById('divServico');
+    const crasSelect = document.getElementById('selectCras');
+    const servicoSelect = document.getElementById('selectServico');
 
+    // Os dois selects usam name="cras" (só um está ativo por vez) — o
+    // inativo precisa ficar "disabled" para não ser enviado junto no POST
+    // (um input escondido com display:none ainda é submetido pelo navegador).
     function atualizarCras() {
-        if (perfilSelect.value === 'cras') {
-            divCras.style.display = 'block';
-        } else {
-            divCras.style.display = 'none';
-            crasSelect.value = '';
-        }
+        const ehCras = perfilSelect.value === 'cras';
+        const ehServico = perfilSelect.value === 'servico';
+
+        divCras.style.display = ehCras ? 'block' : 'none';
+        crasSelect.disabled = !ehCras;
+        if (!ehCras) crasSelect.value = '';
+
+        divServico.style.display = ehServico ? 'block' : 'none';
+        servicoSelect.disabled = !ehServico;
+        if (!ehServico) servicoSelect.value = '';
     }
 
     perfilSelect.addEventListener('change', atualizarCras);

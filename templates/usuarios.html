@@ -42,7 +42,7 @@
                         <th>Usuário (Login)</th>
                         <th>Nome Completo</th>
                         <th>Perfil</th>
-                        <th>CRAS</th>
+                        <th>CRAS / Serviço</th>
                         <th>E-mail</th>
                         <th>Fotos das Atividades</th>
                         <th>Ações</th>
@@ -72,6 +72,7 @@
                                         <option value="cras"  {% if u[3] == 'cras'  %}selected{% endif %}>Técnico CRAS</option>
                                         <option value="creas" {% if u[3] == 'creas' %}selected{% endif %}>Técnico CREAS</option>
                                         <option value="cras_volante" {% if u[3] == 'cras_volante' %}selected{% endif %}>Equipe Volante</option>
+                                        <option value="servico" {% if u[3] == 'servico' %}selected{% endif %}>Técnico de Serviço</option>
                                         <option value="gestor" {% if u[3] == 'gestor' %}selected{% endif %}>Gestor</option>
                                         {% if current_user.perfil == 'admin' %}
                                         <option value="admin" {% if u[3] == 'admin' %}selected{% endif %}>Admin</option>
@@ -97,7 +98,19 @@
                                     <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
                                 </div>
                             </form>
-                            {% elif u[3] == 'cras' %}
+                            {% elif u[3] == 'servico' and pode_editar_este %}
+                            <form action="/usuario/editar_cras/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="cras" class="form-select" style="width: 200px;">
+                                        <option value="">— Selecione —</option>
+                                        {% for s in lista_servicos %}
+                                        <option value="{{ s }}" {% if u[4] == s %}selected{% endif %}>{{ s }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
+                                </div>
+                            </form>
+                            {% elif u[3] in ('cras', 'servico') %}
                                 <span class="text-muted small">{{ u[4] or '—' }}</span>
                             {% else %}
                                 <span class="text-muted">—</span>

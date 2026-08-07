@@ -213,7 +213,7 @@
                                 <label class="form-label required">Bairro</label>
                                 <select name="bairro" class="form-select" id="bairro" required>
                                     <option value="">Selecione o bairro</option>
-                                    {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante'] %}
+                                    {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante', 'servico'] %}
                                         {% for cras_nome, bairros in bairros_por_cras.items() %}
                                         <optgroup label="{{ cras_nome }}">
                                             {% for b in bairros %}

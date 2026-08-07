@@ -355,6 +355,37 @@ def criar_banco():
             cursor.execute("ALTER TABLE usuarios ADD COLUMN acesso_atividades BOOLEAN DEFAULT FALSE")
             print("✅ Coluna usuarios.acesso_atividades adicionada!")
 
+        # Tabela de serviços da secretaria (além de CRAS/CREAS/Equipe Volante,
+        # que continuam fixos por estarem ligados a perfis com comportamento
+        # próprio) — editável pelo admin/gestor em Configurações. Usada tanto
+        # para marcar de qual serviço são as fotos de uma atividade quanto
+        # para o campo "unidade de referência" do perfil 'servico'.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS servicos (
+                id SERIAL PRIMARY KEY,
+                nome TEXT UNIQUE NOT NULL
+            )
+        ''')
+        cursor.execute("SELECT COUNT(*) FROM servicos")
+        if cursor.fetchone()[0] == 0:
+            servicos_iniciais = [
+                ('Centro de Convivência Viver Bem – CCVB',),
+                ('CREAS – Medidas Socioeducativas em Meio Aberto',),
+                ('CREAS – Serviço Especializado em Abordagem Social',),
+                ('Instituição de Acolhimento Adélia Francisca Santana',),
+                ('Instituição de Acolhimento Girassol',),
+                ('Casa da Mulher Jiparanaense',),
+                ('Serviço de Acolhimento Familiar em Família Acolhedora para Crianças e Adolescentes',),
+                ('Serviço de Acolhimento Familiar em Família Acolhedora para Pessoas Idosas',),
+                ('Programa de Fortalecimento do Atendimento do Cadastro Único no Sistema Único de Assistência Social – PROCAD-SUAS',),
+                ('Programa de Promoção do Acesso ao Mundo do Trabalho – ACESSUAS Trabalho',),
+            ]
+            cursor.executemany(
+                "INSERT INTO servicos (nome) VALUES (%s) ON CONFLICT (nome) DO NOTHING",
+                servicos_iniciais
+            )
+            print("✅ Serviços iniciais inseridos!")
+
         # Tabela de atividades/ações registradas para o Quadrimestral
         # (fotos de atendimentos/grupos com legenda, enviadas por coordenadoras)
         cursor.execute('''
