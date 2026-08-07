@@ -67,6 +67,7 @@ def upload_foto(dados_bytes, path):
         f"{url}/storage/v1/object/{bucket}/{path}",
         headers={
             'Authorization': f'Bearer {chave}',
+            'apikey': chave,
             'Content-Type': 'image/jpeg',
             'x-upsert': 'true',
         },
@@ -81,7 +82,7 @@ def excluir_foto(path):
     url, chave, bucket = _config()
     resposta = requests.delete(
         f"{url}/storage/v1/object/{bucket}/{path}",
-        headers={'Authorization': f'Bearer {chave}'},
+        headers={'Authorization': f'Bearer {chave}', 'apikey': chave},
         timeout=30,
     )
     # 404 aqui só significa que o arquivo já não existia — não é um erro
