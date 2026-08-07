@@ -2360,7 +2360,9 @@ def nova_atividade():
                 """, (atividade_id, path, legenda, i, agora))
             except Exception as e:
                 falhas += 1
-                logger.error(f"nova_atividade: falha ao enviar foto {i} da atividade {atividade_id}: {e}")
+                msg = f"nova_atividade: falha ao enviar foto {i} da atividade {atividade_id}: {type(e).__name__}: {e}"
+                logger.error(msg)
+                print(msg)  # também visível no console/log do Render (logger só grava em arquivo local)
 
         conexao.commit()
         conexao.close()
@@ -2485,7 +2487,9 @@ def editar_atividade(id):
                             """, (id, path, legenda, proxima_ordem + i, agora))
                         except Exception as e:
                             falhas += 1
-                            logger.error(f"editar_atividade: falha ao adicionar foto à atividade {id}: {e}")
+                            msg = f"editar_atividade: falha ao adicionar foto à atividade {id}: {type(e).__name__}: {e}"
+                            logger.error(msg)
+                            print(msg)  # também visível no console/log do Render (logger só grava em arquivo local)
                     if falhas:
                         flash(f'⚠️ {falhas} foto(s) não puderam ser adicionadas.', 'warning')
 
