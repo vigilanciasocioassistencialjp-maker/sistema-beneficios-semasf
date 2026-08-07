@@ -3426,7 +3426,7 @@ def editar_cras_usuario(id):
 @app.route("/usuario/toggle_atividades/<int:id>", methods=["POST"])
 @login_required
 def toggle_acesso_atividades(id):
-    """Liga/desliga o acesso à página de Fotos das Atividades para um
+    """Liga/desliga o acesso à página de Fotos Quadrimestral para um
     usuário, sem alterar o perfil (e portanto sem mexer nos privilégios
     de solicitações que ele já tem)."""
     if current_user.perfil not in ['admin', 'gestor']:
@@ -3449,8 +3449,8 @@ def toggle_acesso_atividades(id):
     conexao.close()
     if row:
         estado = "concedido" if row[0] else "removido"
-        logger.info(f"Acesso a Fotos das Atividades {estado} para usuário ID={id} por {current_user.id}")
-        flash(f"✅ Acesso a Fotos das Atividades {estado}!", "success")
+        logger.info(f"Acesso a Fotos Quadrimestral {estado} para usuário ID={id} por {current_user.id}")
+        flash(f"✅ Acesso a Fotos Quadrimestral {estado}!", "success")
     return redirect(url_for("listar_usuarios"))
 
 @app.route("/usuario/editar_email/<int:id>", methods=["POST"])

@@ -343,7 +343,7 @@ def criar_banco():
             print(f"✅ {cursor.rowcount} usuário(s) migrado(s): perfil 'tecnico' → 'cras'")
 
         # =====================================================
-        # MIGRAÇÃO: acesso à página de Fotos das Atividades — permissão
+        # MIGRAÇÃO: acesso à página de Fotos Quadrimestral — permissão
         # extra que se soma ao perfil já existente do usuário (cras/creas/
         # cras_volante/gestor/admin mantêm exatamente o acesso que já têm)
         # =====================================================

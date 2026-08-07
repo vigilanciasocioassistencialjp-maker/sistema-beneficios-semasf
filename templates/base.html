@@ -284,7 +284,7 @@
                 {% if eh_admin_gestor or current_user.acesso_atividades %}
                 <li class="nav-item">
                     <a class="nav-link {{ 'active' if ep == 'atividades' }}" href="{{ url_for('atividades') }}">
-                        <i class="fas fa-images"></i> Fotos das Atividades
+                        <i class="fas fa-images"></i> Fotos Quadrimestral
                     </a>
                 </li>
                 {% endif %}
@@ -353,8 +353,8 @@
                                     {% endif %}
                                 </span>
                                 {% if current_user.acesso_atividades %}
-                                <span class="user-profile" title="Também tem acesso a Fotos das Atividades">
-                                    <i class="fas fa-images"></i> Fotos das Atividades
+                                <span class="user-profile" title="Também tem acesso a Fotos Quadrimestral">
+                                    <i class="fas fa-images"></i> Fotos Quadrimestral
                                 </span>
                                 {% endif %}
                             </h6>
