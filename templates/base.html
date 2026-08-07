@@ -72,21 +72,56 @@
 
         @media (max-width: 992px) {
             .navbar-nav { margin-top: 12px; }
-            .user-info   { margin: 8px 0; justify-content: center; }
         }
 
-        .user-info {
+        /* ── Dropdowns da navbar (Administração / Conta) ── */
+        .navbar .dropdown-menu {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            padding: 6px;
+            margin-top: 8px;
+            min-width: 220px;
+        }
+
+        .navbar .dropdown-item {
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .navbar .dropdown-item:hover,
+        .navbar .dropdown-item:focus { background-color: #f0f2f5; }
+
+        .navbar .dropdown-item.text-danger:hover { background-color: #fdecea; }
+
+        .navbar .dropdown-header {
+            font-weight: 700;
+            color: var(--semasf-navy);
+            white-space: normal;
+        }
+
+        /* ── Botão de conta (avatar + nome) ── */
+        .user-toggle {
             background-color: rgba(255,255,255,0.12);
             border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 20px;
-            padding: 4px 14px;
-            margin: 0 6px;
+            border-radius: 20px !important;
+            padding: 5px 12px 5px 9px !important;
             display: inline-flex;
             align-items: center;
             gap: 7px;
         }
 
-        .user-name    { font-weight: 600; color: #fff; }
+        .user-toggle:hover,
+        .user-toggle:focus {
+            background-color: rgba(255,255,255,0.2) !important;
+            color: #fff !important;
+        }
+
+        .user-toggle::after { margin-left: 6px; }
+
+        .user-name { font-weight: 600; color: #fff; }
 
         .user-profile {
             font-size: 0.75rem;
@@ -95,6 +130,10 @@
             background-color: var(--semasf-gold);
             color: var(--semasf-navy);
             font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: fit-content;
         }
 
         /* ── Cards ── */
@@ -200,9 +239,11 @@
 <body>
 
 {% if current_user.is_authenticated %}
+{% set ep = request.endpoint %}
+{% set eh_admin_gestor = current_user.perfil in ['admin', 'gestor'] %}
 <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('dashboard') if current_user.perfil in ['admin', 'gestor'] else url_for('solicitacoes') }}">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('dashboard') if eh_admin_gestor else url_for('solicitacoes') }}">
             <span style="background:#fff;border-radius:6px;padding:2px 6px;display:inline-flex;align-items:center;">
                 <img src="{{ url_for('static', filename='img/logo_prefeitura.png') }}"
                      alt="Prefeitura de Ji-Paraná"
@@ -218,86 +259,67 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarMain">
-            <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <!-- Navegação principal -->
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
-                    <div class="user-info">
-                        <i class="fas fa-user-circle fa-lg"></i>
-                        <span class="user-name">{{ current_user.nome if current_user.nome else current_user.id }}</span>
-                        <span class="user-profile">
-                            {% if current_user.perfil == 'admin' %}
-                                <i class="fas fa-crown"></i> Administrador
-                            {% elif current_user.perfil == 'gestor' %}
-                                <i class="fas fa-chart-line"></i> Gestor
-                            {% elif current_user.perfil == 'cras_volante' %}
-                                <i class="fas fa-road"></i> Equipe Volante
-                            {% elif current_user.perfil == 'servico' %}
-                                <i class="fas fa-hands-helping"></i> {{ current_user.cras or 'Serviço' }}
-                            {% else %}
-                                <i class="fas fa-clipboard-list"></i> Técnico
-                            {% endif %}
-                        </span>
-                        {% if current_user.acesso_atividades %}
-                        <span class="user-profile" title="Também tem acesso a Fotos das Atividades">
-                            <i class="fas fa-images"></i>
-                        </span>
-                        {% endif %}
-                    </div>
-                </li>
-
-                <li class="nav-item">
-                    <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#alterarSenhaModal">
-                        <i class="fas fa-key"></i> Redefinir Senha
-                    </a>
-                </li>
-
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('solicitacoes') }}">
+                    <a class="nav-link {{ 'active' if ep == 'solicitacoes' }}" href="{{ url_for('solicitacoes') }}">
                         <i class="fas fa-clipboard-list"></i> Solicitações
                     </a>
                 </li>
 
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('relatorio') }}">
+                    <a class="nav-link {{ 'active' if ep == 'relatorio' }}" href="{{ url_for('relatorio') }}">
                         <i class="fas fa-calendar-alt"></i> Relatórios
                     </a>
                 </li>
 
-                {% if current_user.perfil in ['admin', 'gestor'] %}
+                {% if eh_admin_gestor %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('dashboard') }}">
+                    <a class="nav-link {{ 'active' if ep == 'dashboard' }}" href="{{ url_for('dashboard') }}">
                         <i class="fas fa-chart-line"></i> Dashboard
                     </a>
                 </li>
                 {% endif %}
 
-                {% if current_user.perfil in ['admin', 'gestor'] or current_user.acesso_atividades %}
+                {% if eh_admin_gestor or current_user.acesso_atividades %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('atividades') }}">
+                    <a class="nav-link {{ 'active' if ep == 'atividades' }}" href="{{ url_for('atividades') }}">
                         <i class="fas fa-images"></i> Fotos das Atividades
                     </a>
                 </li>
                 {% endif %}
 
-                {% if current_user.perfil in ['admin', 'gestor'] %}
-                <li class="nav-item">
-                    <a class="nav-link" href="/usuarios">
-                        <i class="fas fa-users-cog"></i> Usuários
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('configuracoes') }}">
-                        <i class="fas fa-sliders-h"></i> Configurações
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('administracao') }}">
+                {% if eh_admin_gestor %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {{ 'active' if ep in ['listar_usuarios', 'configuracoes', 'administracao'] }}"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-tools"></i> Administração
                     </a>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'listar_usuarios' }}" href="/usuarios">
+                                <i class="fas fa-users-cog me-2"></i>Usuários
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'configuracoes' }}" href="{{ url_for('configuracoes') }}">
+                                <i class="fas fa-sliders-h me-2"></i>Configurações
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'administracao' }}" href="{{ url_for('administracao') }}">
+                                <i class="fas fa-tools me-2"></i>Administração do Sistema
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 {% endif %}
+            </ul>
 
+            <!-- Notificações e conta -->
+            <ul class="navbar-nav mb-2 mb-lg-0 align-items-center">
                 <li class="nav-item">
-                    <a class="nav-link position-relative" href="{{ url_for('notificacoes') }}">
+                    <a class="nav-link position-relative {{ 'active' if ep == 'notificacoes' }}" href="{{ url_for('notificacoes') }}" title="Notificações">
                         <i class="fas fa-bell"></i>
                         {% if notificacoes_nao_lidas > 0 %}
                         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
@@ -308,10 +330,47 @@
                     </a>
                 </li>
 
-                <li class="nav-item">
-                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">
-                        <i class="fas fa-sign-out-alt"></i> Sair
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle user-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-user-circle fa-lg"></i>
+                        <span class="user-name">{{ current_user.nome if current_user.nome else current_user.id }}</span>
                     </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <h6 class="dropdown-header d-flex flex-column gap-1">
+                                {{ current_user.nome if current_user.nome else current_user.id }}
+                                <span class="user-profile">
+                                    {% if current_user.perfil == 'admin' %}
+                                        <i class="fas fa-crown"></i> Administrador
+                                    {% elif current_user.perfil == 'gestor' %}
+                                        <i class="fas fa-chart-line"></i> Gestor
+                                    {% elif current_user.perfil == 'cras_volante' %}
+                                        <i class="fas fa-road"></i> Equipe Volante
+                                    {% elif current_user.perfil == 'servico' %}
+                                        <i class="fas fa-hands-helping"></i> {{ current_user.cras or 'Serviço' }}
+                                    {% else %}
+                                        <i class="fas fa-clipboard-list"></i> Técnico
+                                    {% endif %}
+                                </span>
+                                {% if current_user.acesso_atividades %}
+                                <span class="user-profile" title="Também tem acesso a Fotos das Atividades">
+                                    <i class="fas fa-images"></i> Fotos das Atividades
+                                </span>
+                                {% endif %}
+                            </h6>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#alterarSenhaModal">
+                                <i class="fas fa-key me-2"></i>Redefinir Senha
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i>Sair
+                            </a>
+                        </li>
+                    </ul>
                 </li>
             </ul>
         </div>
