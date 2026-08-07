@@ -27,9 +27,12 @@ class ImagemInvalida(Exception):
 
 
 def _config():
-    url = os.environ.get('SUPABASE_URL')
-    chave = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
-    bucket = os.environ.get('SUPABASE_STORAGE_BUCKET')
+    # .strip() nos 3 valores: espaço/quebra de linha grudado ao colar a
+    # variável no Render é um erro comum e silencioso (o valor "existe",
+    # então passa no if abaixo, mas o bucket/URL fica sutilmente errado).
+    url = (os.environ.get('SUPABASE_URL') or '').strip()
+    chave = (os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or '').strip()
+    bucket = (os.environ.get('SUPABASE_STORAGE_BUCKET') or '').strip()
     if not (url and chave and bucket):
         raise StorageNaoConfigurado(
             "Envio de fotos não configurado: defina SUPABASE_URL, "
@@ -63,8 +66,9 @@ def gerar_caminho(atividade_id):
 
 def upload_foto(dados_bytes, path):
     url, chave, bucket = _config()
+    url_completa = f"{url}/storage/v1/object/{bucket}/{path}"
     resposta = requests.post(
-        f"{url}/storage/v1/object/{bucket}/{path}",
+        url_completa,
         headers={
             'Authorization': f'Bearer {chave}',
             'apikey': chave,
@@ -75,7 +79,10 @@ def upload_foto(dados_bytes, path):
         timeout=30,
     )
     if resposta.status_code >= 300:
-        raise RuntimeError(f"Falha ao enviar foto para o Supabase Storage: {resposta.status_code} {resposta.text[:300]}")
+        raise RuntimeError(
+            f"Falha ao enviar foto para o Supabase Storage: {resposta.status_code} {resposta.text[:300]} "
+            f"| bucket={bucket!r} | url={url_completa}"
+        )
 
 
 def excluir_foto(path):
