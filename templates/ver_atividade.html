@@ -38,7 +38,7 @@
             <h3>{{ atividade.titulo }}</h3>
             <p class="mb-1 text-muted">
                 <i class="fas fa-calendar-alt"></i> {{ atividade.data_atividade|formatar_data }}
-                {% if atividade.servico %} &nbsp;·&nbsp; <i class="fas fa-building"></i> {{ atividade.servico }}{% endif %}
+                {% if atividade.servico %} &nbsp;·&nbsp; <i class="fas fa-building"></i> <span title="{{ atividade.servico }}">{{ atividade.servico|nome_curto_servico }}</span>{% endif %}
             </p>
             <p class="mb-1 text-muted small">
                 <i class="fas fa-user"></i> Registrado por {{ atividade.criado_por_nome }}

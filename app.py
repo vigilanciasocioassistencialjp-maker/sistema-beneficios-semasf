@@ -477,6 +477,22 @@ def formatar_data(data):
         logger.error(f"formatar_data: falha ao formatar '{data}': {e}")
     return data
 
+# Nomes completos dos serviços (cadastro/filtros/registros) continuam intactos
+# — este mapeamento só encurta o texto exibido nos cards da página Fotos
+# Quadrimestral, que ficavam confusos com nomes de serviço muito extensos.
+NOMES_CURTOS_SERVICO = {
+    'Instituição de Acolhimento Adélia Francisca Santana': 'Instituição Adélia Francisca',
+    'Instituição de Acolhimento Girassol': 'Instituição Girassol',
+    'Programa de Promoção do Acesso ao Mundo do Trabalho – ACESSUAS Trabalho': 'Acessuas Trabalho',
+    'Programa de Fortalecimento do Atendimento do Cadastro Único no Sistema Único de Assistência Social – PROCAD-SUAS': 'PROCAD-SUAS',
+    'Serviço de Acolhimento Familiar em Família Acolhedora para Crianças e Adolescentes': 'Família Acolhedora - Crianças e Adolescentes',
+    'Serviço de Acolhimento Familiar em Família Acolhedora para Pessoas Idosas': 'Família Acolhedora - Pessoa Idosa',
+}
+
+@app.template_filter('nome_curto_servico')
+def nome_curto_servico(nome):
+    return NOMES_CURTOS_SERVICO.get(nome, nome)
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = None
