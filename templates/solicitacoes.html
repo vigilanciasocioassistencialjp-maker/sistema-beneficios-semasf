@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Cabeçalho da página -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">
+            <i class="fas fa-boxes text-success"></i> Solicitações de Cesta Básica
+        </h2>
+    </div>
+
+    <!-- Botão Nova Solicitação -->
+    <div class="mb-4 d-flex gap-2 flex-wrap">
+        <a href="/" class="btn btn-success">
+            <i class="fas fa-plus"></i> Nova Solicitação
+        </a>
+        <a href="{{ url_for('lista_entrega', cras=busca_unidade if current_user.perfil in ['admin','gestor','creas','cras_volante'] else None) }}"
+           class="btn btn-outline-primary"
+           title="Monte a lista dos beneficiários que receberão cesta hoje e gere o PDF para carimbo e assinatura">
+            <i class="fas fa-clipboard-list"></i> Lista de Entrega
+        </a>
+    </div>
+
+    <!-- Filtros server-side -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="fas fa-filter"></i> Filtros de Busca
+            {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer or periodo_inicio or periodo_fim %}
+            <span class="badge bg-warning text-dark ms-2">Filtros ativos</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('solicitacoes') }}" class="row g-2">
+                <!-- Período -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">PERÍODO DE</label>
+                    <select name="periodo_inicio" class="form-select">
+                        <option value="">— Início —</option>
+                        {% for m in lista_meses|reverse %}
+                        <option value="{{ m.valor }}" {% if m.valor == periodo_inicio %}selected{% endif %}>{{ m.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">ATÉ</label>
+                    <select name="periodo_fim" class="form-select">
+                        <option value="">— Fim —</option>
+                        {% for m in lista_meses|reverse %}
+                        <option value="{{ m.valor }}" {% if m.valor == periodo_fim %}selected{% endif %}>{{ m.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6"></div>
+                <!-- Linha 1 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">NOME DO BENEFICIÁRIO</label>
+                    <input type="text" name="busca_nome" class="form-control"
+                           placeholder="Digite o nome..." value="{{ busca_nome }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">CPF</label>
+                    <input type="text" name="busca_cpf" class="form-control"
+                           placeholder="000.000.000-00" value="{{ busca_cpf }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold small text-muted">STATUS</label>
+                    <select name="busca_status" class="form-select">
+                        <option value="">Todos</option>
+                        <option value="Cadastrada" {% if busca_status == 'Cadastrada' %}selected{% endif %}>🟡 Cadastrada</option>
+                        <option value="Entregue"   {% if busca_status == 'Entregue'   %}selected{% endif %}>✅ Entregue</option>
+                        <option value="Ausente"    {% if busca_status == 'Ausente'    %}selected{% endif %}>❌ Ausente</option>
+                        <option value="Visita"     {% if busca_status == 'Visita'     %}selected{% endif %}>🏠 Visita Domiciliar</option>
+                        <option value="Cancelada"  {% if busca_status == 'Cancelada'  %}selected{% endif %}>🚫 Cancelada</option>
+                    </select>
+                </div>
+                {% if current_user.perfil in ['admin', 'gestor', 'creas', 'cras_volante'] %}
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted">UNIDADE RESPONSÁVEL</label>
+                    <select name="busca_unidade" class="form-select">
+                        <option value="">Todas as Unidades</option>
+                        {% for u in lista_unidades %}
+                        <option value="{{ u }}" {% if busca_unidade == u %}selected{% endif %}>{{ u }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Linha 2 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ESCUTA)</label>
+                    <select name="busca_tecnico_escuta" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_escuta == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ENTREGA)</label>
+                    <select name="busca_tecnico_entrega" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_entrega == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">TÉCNICO (ESCUTA OU ENTREGA)</label>
+                    <select name="busca_tecnico_qualquer" class="form-select">
+                        <option value="">Todos</option>
+                        {% for t in lista_tecnicos %}
+                        <option value="{{ t[0] }}" {% if busca_tecnico_qualquer == t[0] %}selected{% endif %}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <!-- Botões -->
+                <div class="col-12 d-flex gap-2 mt-1">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                    {% if busca_nome or busca_status or busca_cpf or busca_unidade or busca_tecnico_escuta or busca_tecnico_entrega or busca_tecnico_qualquer %}
+                    <a href="{{ url_for('solicitacoes') }}" class="btn btn-secondary">
+                        <i class="fas fa-eraser"></i> Limpar Filtros
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle" id="tabelaSolicitacoes">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Técnico</th>
+                    <th>Nome</th>
+                    <th>CPF</th>
+                    <th>Bairro</th>
+                    <th>Unidade</th>
+                    <th>Data Solicitação</th>
+                    <th>Status</th>
+                    <th>Marcadores</th>
+                    <th style="width: 180px">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in solicitacoes %}
+                <tr data-status="{{ s[7] }}" data-nome="{{ s[2].lower() }}" data-id="{{ s[0] }}">
+                    <td class="fw-bold">#{{ s[0] }}</td>
+                    <td>{{ s[1] }}</td>
+                    <td>{{ s[2] }}</td>
+                    <td>{{ s[3] }}</td>
+                    <td>{{ s[4] }}</td>
+                    <td>{{ s[5] }}</td>
+                    <td>{{ s[6] }}</td>
+                    <td>
+                        <span class="badge
+                            {% if s[7] == 'Cadastrada' %}bg-warning text-dark
+                            {% elif s[7] == 'Entregue' %}bg-success
+                            {% elif s[7] == 'Ausente' %}bg-danger
+                            {% elif s[7] == 'Cancelada' %}bg-secondary
+                            {% else %}bg-secondary
+                            {% endif %}">
+                            {% if s[7] == 'Cadastrada' %}🟡
+                            {% elif s[7] == 'Entregue' %}✅
+                            {% elif s[7] == 'Ausente' %}❌
+                            {% endif %}
+                            {{ s[7] }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if s[8] %}
+                        <span class="badge bg-info text-dark" title="Visita domiciliar solicitada">
+                            <i class="fas fa-home"></i> Visita
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <a href="/ver_solicitacao/{{ s[0] }}" class="btn btn-outline-secondary" title="Visualizar">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <a href="/gerar_pdf/{{ s[0] }}" class="btn btn-outline-primary btn-gerar-pdf" title="Gerar PDF" target="_blank">
+                                <i class="fas fa-print"></i>
+                            </a>
+
+                            <!-- Lógica de botão de entrega baseada no status -->
+                            {% if s[7] == 'Cadastrada' %}
+                            <button type="button" class="btn btn-outline-success btn-registrar-entrega" title="Registrar Entrega"
+                                    data-id="{{ s[0] }}" data-nome="{{ s[2] }}">
+                                <i class="fas fa-truck"></i>
+                            </button>
+                            {% elif s[7] == 'Entregue' %}
+                            <button type="button" class="btn btn-secondary" disabled title="Cesta já entregue">
+                                <i class="fas fa-check-circle"></i>
+                            </button>
+                            {% elif s[7] == 'Ausente' %}
+                            <form method="POST" action="/nova_tentativa/{{ s[0] }}" class="d-inline"
+                                  onsubmit="return confirm('Reabrir #{{ s[0] }} para nova tentativa de entrega?')">
+                                <button type="submit" class="btn btn-sm btn-outline-warning"
+                                        title="Nova tentativa de entrega">
+                                    <i class="fas fa-redo"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="text-center py-4 text-muted">
+                        <i class="fas fa-inbox fa-3x mb-2 d-block"></i>
+                        Nenhuma solicitação encontrada
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginação -->
+    {% if total_paginas > 1 %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% set pg_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
+            {% if pagina_atual > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, **pg_args) }}">
+                    <i class="fas fa-chevron-left"></i> Anterior
+                </a>
+            </li>
+            {% endif %}
+
+            {% for p in range(1, total_paginas + 1) %}
+            <li class="page-item {% if p == pagina_atual %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=p, **pg_args) }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if pagina_atual < total_paginas %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual+1, **pg_args) }}">
+                    Próxima <i class="fas fa-chevron-right"></i>
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<!-- Modal para Registrar Entrega -->
+<div class="modal fade" id="modalEntrega" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-truck"></i> Registrar Entrega
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEntrega" method="POST">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-user"></i> Beneficiário:</strong> <span id="beneficiarioNome"></span><br>
+                        <strong><i class="fas fa-hashtag"></i> Solicitação ID:</strong> <span id="solicitacaoId"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Status da Entrega *</label>
+                        <select class="form-select" id="status_entrega" name="status_entrega" required>
+                            <option value="">Selecione...</option>
+                            <option value="Entregue">✅ Entregue</option>
+                            <option value="Ausente">❌ Ausente</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Data da Entrega *</label>
+                        <input type="date" class="form-control" id="data_entrega" name="data_entrega" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Observações</label>
+                        <textarea class="form-control" id="observacoes" name="observacoes" rows="3"
+                                  placeholder="Motivo da ausência, observações sobre a entrega, etc..."></textarea>
+                    </div>
+
+                    <div class="alert alert-warning small" id="avisoEntregue" style="display:none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Atenção:</strong> A entrega é definitiva e não poderá ser desfeita.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Confirmar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// =============================================
+// MODAL DE ENTREGA
+// =============================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("Página carregada - Sistema de entregas ativo");
+
+    // Adicionar evento a todos os botões de registrar entrega
+    const botoes = document.querySelectorAll('.btn-registrar-entrega');
+    console.log(`Encontrados ${botoes.length} botões de registrar entrega`);
+
+    botoes.forEach(botao => {
+        botao.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const nome = this.getAttribute('data-nome');
+            console.log(`Botão clicado - ID: ${id}, Nome: ${nome}`);
+            abrirModalEntrega(id, nome);
+        });
+    });
+});
+
+function abrirModalEntrega(id, nome) {
+    console.log("Abrindo modal para solicitação:", id, nome);
+
+    try {
+        // Preencher os dados
+        const beneficiarioSpan = document.getElementById('beneficiarioNome');
+        const solicitacaoSpan = document.getElementById('solicitacaoId');
+
+        if (beneficiarioSpan) beneficiarioSpan.textContent = nome;
+        if (solicitacaoSpan) solicitacaoSpan.textContent = id;
+
+        const form = document.getElementById('formEntrega');
+        if (form) {
+            form.action = '/registrar_entrega/' + id;
+        }
+
+        // Data atual
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+        const dia = String(hoje.getDate()).padStart(2, '0');
+        const dataHoje = ano + '-' + mes + '-' + dia;
+
+        const dataInput = document.getElementById('data_entrega');
+        if (dataInput) {
+            dataInput.value = dataHoje;
+        }
+
+        // Limpar campos anteriores
+        const statusSelect = document.getElementById('status_entrega');
+        if (statusSelect) {
+            statusSelect.value = '';
+        }
+
+        const obsTextarea = document.getElementById('observacoes');
+        if (obsTextarea) {
+            obsTextarea.value = '';
+        }
+
+        // Remover backdrops residuais
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+
+        // Abrir o modal
+        const modalElement = document.getElementById('modalEntrega');
+        if (modalElement) {
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+            console.log("Modal aberto com sucesso");
+        } else {
+            console.error("Elemento modalEntrega não encontrado");
+            alert("Erro: Modal não encontrado. Contate o administrador.");
+        }
+
+    } catch (error) {
+        console.error("Erro ao abrir modal:", error);
+        alert("Erro ao abrir o formulário de entrega: " + error.message);
+    }
+}
+
+// Indicador de carregamento nos botões de PDF
+document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const icon = this.querySelector('i');
+        icon.className = 'fas fa-spinner fa-spin';
+        this.title = 'Gerando PDF...';
+        setTimeout(() => {
+            icon.className = 'fas fa-print';
+            this.title = 'Gerar PDF';
+        }, 4000);
+    });
+});
+
+// Mostrar aviso apenas para Entregue
+document.getElementById('status_entrega').addEventListener('change', function() {
+    document.getElementById('avisoEntregue').style.display = this.value === 'Entregue' ? 'block' : 'none';
+});
+
+// Limpar modal ao fechar
+const modalElement = document.getElementById('modalEntrega');
+if (modalElement) {
+    modalElement.addEventListener('hidden.bs.modal', function() {
+        console.log("Modal fechado, limpando...");
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+    });
+}
+
+// =============================================
+// VALIDAÇÃO E ENVIO DO FORMULÁRIO (VIA AJAX)
+// =============================================
+
+const formEntrega = document.getElementById('formEntrega');
+if (formEntrega) {
+    formEntrega.addEventListener('submit', function(e) {
+        e.preventDefault(); // IMPEDE o envio tradicional (recarregar página)
+        
+        const status = document.getElementById('status_entrega').value;
+        const data = document.getElementById('data_entrega').value;
+        const observacoes = document.getElementById('observacoes').value;
+
+        if (!status) {
+            alert('Selecione o status da entrega!');
+            return false;
+        }
+
+        if (!data) {
+            alert('Selecione a data da entrega!');
+            return false;
+        }
+
+        // 🔧 FECHAR O MODAL IMEDIATAMENTE
+        const modalElement = document.getElementById('modalEntrega');
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
+        }
+        
+        // Remover backdrop
+        setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            backdrops.forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+        }, 150);
+
+        // Enviar via AJAX
+        const formData = new FormData();
+        formData.append('status_entrega', status);
+        formData.append('data_entrega', data);
+        formData.append('observacoes', observacoes);
+
+        fetch(formEntrega.action, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.ok) {
+                // Recarregar a página após 500ms
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else if (response.status === 400) {
+                // Provável token CSRF expirado (página aberta há muito tempo):
+                // recarregar é a única forma de obter um token novo.
+                alert('Sua sessão nesta página expirou. A página será recarregada — depois disso, registre a entrega novamente.');
+                window.location.reload();
+            } else {
+                alert('Erro ao registrar entrega. Tente novamente.');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            alert('Erro ao registrar entrega. Tente novamente.');
+        });
+    });
+}
+</script>
+{% endblock %}

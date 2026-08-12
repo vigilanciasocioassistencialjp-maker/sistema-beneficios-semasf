@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Registrar Entrega</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 50px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #28a745;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-voltar {
+            background-color: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #17a2b8;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📦 Registrar Entrega</h2>
+        
+        {% if solicitacao %}
+        <div class="alert-info">
+            <strong>Beneficiário:</strong> {{ solicitacao[1] }}<br>
+            <strong>CPF:</strong> {{ solicitacao[2] }}
+        </div>
+        
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label><strong>Data da Entrega:</strong></label>
+            <input type="date" name="data_entrega" value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+            
+            <label><strong>Observações (opcional):</strong></label>
+            <textarea name="observacoes" rows="3" placeholder="Informações adicionais..."></textarea>
+            
+            <button type="submit" onclick="return confirm('Confirmar entrega?')">✅ Confirmar Entrega</button>
+            <a href="/solicitacoes" class="btn-voltar">⬅️ Voltar</a>
+        </form>
+        {% else %}
+        <p>Solicitação não encontrada!</p>
+        {% endif %}
+    </div>
+</body>
+</html>

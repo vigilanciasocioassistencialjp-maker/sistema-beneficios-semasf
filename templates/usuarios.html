@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <!-- Cabeçalho -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-users text-success"></i>
+                Gerenciar Usuários
+            </h2>
+        </div>
+
+        <!-- Botão Novo Usuário -->
+        <div class="mb-3 text-end">
+            <a href="/usuario/novo" class="btn btn-success">
+                <i class="fas fa-user-plus"></i> Novo Usuário
+            </a>
+        </div>
+
+        <!-- Mensagens de feedback -->
+        {% if erro %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ erro }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if sucesso %}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            {{ sucesso }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Tabela de Usuários -->
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuário (Login)</th>
+                        <th>Nome Completo</th>
+                        <th>Perfil</th>
+                        <th>CRAS / Serviço</th>
+                        <th>E-mail</th>
+                        <th>Fotos Quadrimestral</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u[0] }}</td>
+                        <td>{{ u[1] }}</td>
+                        <td>
+                            <form action="/usuario/editar/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <input type="text" name="nome" value="{{ u[2] if u[2] else u[1] }}" class="form-control" style="width: 180px;">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </form>
+                          </td>
+                        <td>
+                            {% set pode_editar_este = current_user.perfil == 'admin' or (current_user.perfil == 'gestor' and u[3] != 'admin') %}
+                            {% if pode_editar_este %}
+                            <form action="/usuario/editar_perfil/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="perfil" class="form-select" style="width: 150px;">
+                                        <option value="cras"  {% if u[3] == 'cras'  %}selected{% endif %}>Técnico CRAS</option>
+                                        <option value="creas" {% if u[3] == 'creas' %}selected{% endif %}>Técnico CREAS</option>
+                                        <option value="cras_volante" {% if u[3] == 'cras_volante' %}selected{% endif %}>Equipe Volante</option>
+                                        <option value="servico" {% if u[3] == 'servico' %}selected{% endif %}>Técnico de Serviço</option>
+                                        <option value="gestor" {% if u[3] == 'gestor' %}selected{% endif %}>Gestor</option>
+                                        {% if current_user.perfil == 'admin' %}
+                                        <option value="admin" {% if u[3] == 'admin' %}selected{% endif %}>Admin</option>
+                                        {% endif %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
+                                </div>
+                            </form>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ u[3] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u[3] == 'cras' and pode_editar_este %}
+                            <form action="/usuario/editar_cras/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="cras" class="form-select" style="width: 200px;">
+                                        <option value="">— Selecione —</option>
+                                        {% for c in lista_cras %}
+                                        <option value="{{ c }}" {% if u[4] == c %}selected{% endif %}>{{ c }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
+                                </div>
+                            </form>
+                            {% elif u[3] == 'servico' and pode_editar_este %}
+                            <form action="/usuario/editar_cras/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <select name="cras" class="form-select" style="width: 200px;">
+                                        <option value="">— Selecione —</option>
+                                        {% for s in lista_servicos %}
+                                        <option value="{{ s }}" {% if u[4] == s %}selected{% endif %}>{{ s }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i></button>
+                                </div>
+                            </form>
+                            {% elif u[3] in ('cras', 'servico') %}
+                                <span class="text-muted small">{{ u[4] or '—' }}</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if current_user.perfil == 'admin' %}
+                            <form action="/usuario/editar_email/{{ u[0] }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm">
+                                    <input type="email" name="email" value="{{ u[5] or '' }}" class="form-control" placeholder="sem e-mail" style="width: 190px;">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </form>
+                            {% else %}
+                                <span class="text-muted small">{{ u[5] or '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pode_editar_este %}
+                            <form action="{{ url_for('toggle_acesso_atividades', id=u[0]) }}" method="POST" class="d-inline">
+                                <button type="submit" class="btn btn-sm {{ 'btn-success' if u[6] else 'btn-outline-secondary' }}"
+                                        title="Clique para {{ 'remover' if u[6] else 'conceder' }} o acesso">
+                                    <i class="fas fa-images"></i> {{ 'Ativo' if u[6] else 'Inativo' }}
+                                </button>
+                            </form>
+                            {% else %}
+                                <span class="badge {{ 'bg-success' if u[6] else 'bg-secondary' }}">{{ 'Ativo' if u[6] else 'Inativo' }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if current_user.perfil == 'admin' %}
+                            <button type="button" class="btn btn-sm btn-warning mb-1" data-bs-toggle="modal" data-bs-target="#resetSenhaModal{{ u[0] }}">
+                                <i class="fas fa-key"></i> Resetar Senha
+                            </button>
+                            {% endif %}
+                            {% if u[1] != current_user.id and current_user.perfil == 'admin' %}
+                            <form action="/usuario/excluir/{{ u[0] }}" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Tem certeza que deseja excluir este usuário?')">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i> Excluir
+                                </button>
+                            </form>
+                            {% elif u[1] == current_user.id %}
+                                <span class="text-muted">(Você)</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if current_user.perfil == 'admin' %}
+{% for u in usuarios %}
+<div class="modal fade" id="resetSenhaModal{{ u[0] }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/usuario/resetar_senha/{{ u[0] }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-key"></i> Resetar senha de {{ u[2] or u[1] }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Defina uma nova senha temporária. O usuário será obrigado a trocá-la
+                        no próximo login.
+                    </p>
+                    <label class="form-label">Nova senha</label>
+                    <div class="input-group">
+                        <input type="password" name="nova_senha" class="form-control" required>
+                        <button type="button" class="btn btn-outline-secondary btn-ver-senha-reset" tabindex="-1">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Mínimo 6 caracteres, 1 maiúscula e 1 número.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning"><i class="fas fa-save"></i> Redefinir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<script>
+document.querySelectorAll('.btn-ver-senha-reset').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        const input = this.previousElementSibling;
+        const icon  = this.querySelector('i');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'fas fa-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'fas fa-eye';
+        }
+    });
+});
+</script>
+
+<div style="height: 80px;"></div>
+{% endblock %}

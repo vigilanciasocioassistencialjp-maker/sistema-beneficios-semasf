@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <!-- Cabeçalho -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Detalhes da Solicitação</h2>
+        </div>
+
+        <!-- Botões de ação -->
+        <div class="mb-3">
+            <a href="/solicitacoes" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Voltar para lista
+            </a>
+            <a href="/gerar_pdf/{{ solicitacao[0] }}" class="btn btn-primary btn-gerar-pdf" target="_blank">
+                <i class="fas fa-print"></i> <span class="pdf-label">Gerar PDF</span>
+            </a>
+            {% if solicitacao[29] %}
+            <span class="badge bg-info text-dark fs-6 ms-2">
+                <i class="fas fa-home"></i> Visita Domiciliar Solicitada
+            </span>
+            {% endif %}
+            {% set ja_entregue = solicitacao[21] in ('Entregue', 'Ausente') %}
+            {% set eh_autor = current_user.id == solicitacao[22] %}
+            {% if current_user.perfil == 'admin' or (eh_autor and not ja_entregue) %}
+            <a href="/editar_solicitacao/{{ solicitacao[0] }}" class="btn btn-warning">
+                <i class="fas fa-edit"></i> Editar
+            </a>
+            {% endif %}
+            {% if solicitacao[21] == 'Ausente' and current_user.perfil != 'gestor' %}
+            <form method="POST" action="/nova_tentativa/{{ solicitacao[0] }}" class="d-inline">
+                <button type="submit" class="btn btn-outline-warning"
+                        onclick="return confirm('Reabrir solicitação #{{ solicitacao[0] }} para nova tentativa de entrega?')">
+                    <i class="fas fa-redo"></i> Nova Tentativa
+                </button>
+            </form>
+            {% endif %}
+        </div>
+
+        {% if solicitacao %}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <strong>Dados do Beneficiário</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Nome:</strong> {{ solicitacao[1] }}</p>
+                        <p><strong>CPF:</strong> {{ solicitacao[2] }}</p>
+                        <p><strong>Data Nascimento:</strong> {{ solicitacao[3] if solicitacao[3] else 'Não informado' }}</p>
+                        <p><strong>Telefone:</strong> {{ solicitacao[4] if solicitacao[4] else 'Não informado' }}</p>
+                        <p><strong>E-mail:</strong> {{ solicitacao[6] if solicitacao[6] else 'Não informado' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <strong>Endereço</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Endereço:</strong> {{ solicitacao[7] if solicitacao[7] else 'Não informado' }}, {{ solicitacao[8] if solicitacao[8] else 'S/N' }}</p>
+                        <p><strong>Complemento:</strong> {{ solicitacao[9] if solicitacao[9] else 'Não informado' }}</p>
+                        <p><strong>Bairro:</strong> {{ solicitacao[10] }}</p>
+                        <p><strong>CEP:</strong> {{ solicitacao[11] if solicitacao[11] else 'Não informado' }}</p>
+                        <p><strong>Referência:</strong> {{ solicitacao[12] if solicitacao[12] else 'Não informado' }}</p>
+                        <p><strong>CRAS:</strong> {{ solicitacao[13] }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <strong>Informações Socioeconômicas</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Renda Bruta:</strong> R$ {{ solicitacao[14] if solicitacao[14] else 'Não informada' }}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ {{ solicitacao[15] if solicitacao[15] else 'Não informada' }}</p>
+                        <p><strong>Benefícios:</strong> {{ solicitacao[16] if solicitacao[16] else 'Nenhum' }}
+                            {% if solicitacao[16] == 'Bolsa Família' and solicitacao[28] %}
+                            — <strong>R$ {{ "%.2f"|format(solicitacao[28])|replace(".", "X")|replace(",", ".")|replace("X", ",") }}</strong>
+                            {% endif %}
+                        </p>
+                        <p><strong>Vulnerabilidades:</strong> {{ solicitacao[17] if solicitacao[17] else 'Não informado' }}</p>
+                        <p><strong>Serviços SUAS:</strong> {{ solicitacao[24] if solicitacao[24] else 'Não informado' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <strong>Composição Familiar</strong>
+                    </div>
+                    <div class="card-body">
+                        {% if solicitacao[23] %}
+                        <table class="table table-sm">
+                            <thead>
+                                <tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for membro in solicitacao[23]|fromjson %}
+                                <tr>
+                                    <td>{{ membro.nome }}</td>
+                                    <td>{{ membro.idade }}</td>
+                                    <td>{{ membro.vinculo }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p>Não informado</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header bg-warning">
+                <strong>Parecer Técnico / Histórico Familiar</strong>
+            </div>
+            <div class="card-body">
+                {% if solicitacao[20] %}
+                    {{ solicitacao[20]|safe }}
+                {% else %}
+                    <p class="text-muted">Sem parecer técnico registrado</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <strong>Registro de Atendimento</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Técnico que realizou a Escuta:</strong>
+                            {% if solicitacao[25] %}
+                                {{ solicitacao[25] }}
+                            {% else %}
+                                {{ solicitacao[22] }}
+                            {% endif %}
+                        </p>
+                        <p><strong>Data da Solicitação:</strong> {{ solicitacao[5] }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <strong>Registro de Entrega</strong>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Status:</strong>
+                            <span class="badge
+                                {% if solicitacao[21] == 'Cadastrada' %}bg-warning
+                                {% elif solicitacao[21] == 'Entregue' %}bg-success
+                                {% elif solicitacao[21] == 'Ausente' %}bg-danger
+                                {% else %}bg-secondary
+                                {% endif %}">
+                                {{ solicitacao[21] }}
+                            </span>
+                            {% if solicitacao[27] and solicitacao[27] > 1 %}
+                            <span class="badge bg-secondary ms-1">
+                                <i class="fas fa-redo"></i> Tentativa {{ solicitacao[27] }}
+                            </span>
+                            {% endif %}
+                        </p>
+
+                        {% if solicitacao[18] %}
+                        <p><strong>Data da Entrega:</strong>
+                            {{ solicitacao[18]|formatar_data }}
+                        </p>
+                        <p><strong>Técnico que entregou:</strong>
+                            {% if solicitacao[26] %}
+                                {{ solicitacao[26] }}
+                            {% else %}
+                                {{ solicitacao[19] if solicitacao[19] else 'Não registrado' }}
+                            {% endif %}
+                        </p>
+                        {% else %}
+                        <p class="text-muted mt-2">
+                            <i class="fas fa-clock"></i>
+                            <em>Entrega ainda não registrada</em>
+                        </p>
+                        {% if current_user.perfil != 'gestor' %}
+                        <button type="button" class="btn btn-sm btn-success mt-2"
+                                data-bs-toggle="modal" data-bs-target="#modalEntregaVer">
+                            <i class="fas fa-truck"></i> Registrar Entrega
+                        </button>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-danger">
+            Solicitação não encontrada!
+        </div>
+        {% endif %}
+
+        <!-- ── Histórico de edições ── -->
+        {% if historico %}
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#collapseHistorico">
+                <span><i class="fas fa-history"></i> Histórico de Edições
+                    <span class="badge bg-secondary ms-1">{{ historico|length }}</span>
+                </span>
+                <i class="fas fa-chevron-down small"></i>
+            </div>
+            <div class="collapse" id="collapseHistorico">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Usuário</th>
+                                    <th>Campo</th>
+                                    <th>Valor anterior</th>
+                                    <th>Novo valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in historico %}
+                                <tr>
+                                    <td class="text-nowrap">{{ h[4] }}</td>
+                                    <td>{{ h[3] }}</td>
+                                    <td><strong>{{ h[0] }}</strong></td>
+                                    <td class="text-danger small">{{ h[1] or '—' }}</td>
+                                    <td class="text-success small">{{ h[2] or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+<!-- Modal Registrar Entrega -->
+<div class="modal fade" id="modalEntregaVer" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-truck"></i> Registrar Entrega</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEntregaVer" method="POST" action="/registrar_entrega/{{ solicitacao[0] }}">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-user"></i> Beneficiário:</strong> {{ solicitacao[1] }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Status da Entrega *</label>
+                        <select class="form-select" name="status_entrega" id="status_entrega_ver" required>
+                            <option value="">Selecione...</option>
+                            <option value="Entregue">✅ Entregue</option>
+                            <option value="Ausente">❌ Ausente</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Data *</label>
+                        <input type="date" class="form-control" name="data_entrega" id="data_entrega_ver" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Observações</label>
+                        <textarea class="form-control" name="observacoes" rows="3"
+                                  placeholder="Motivo da ausência, observações..."></textarea>
+                    </div>
+                    <div class="alert alert-warning small" id="avisoEntregueVer" style="display:none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Atenção:</strong> A entrega é definitiva e não poderá ser desfeita.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// Preenche data de hoje ao abrir o modal
+document.getElementById('modalEntregaVer').addEventListener('show.bs.modal', function() {
+    const hoje = new Date();
+    const data = hoje.getFullYear() + '-' +
+                 String(hoje.getMonth()+1).padStart(2,'0') + '-' +
+                 String(hoje.getDate()).padStart(2,'0');
+    document.getElementById('data_entrega_ver').value = data;
+    document.getElementById('status_entrega_ver').value = '';
+    document.getElementById('avisoEntregueVer').style.display = 'none';
+});
+
+// Mostra aviso apenas para Entregue
+document.getElementById('status_entrega_ver').addEventListener('change', function() {
+    document.getElementById('avisoEntregueVer').style.display = this.value === 'Entregue' ? 'block' : 'none';
+});
+
+// Envia via AJAX e recarrega a página para mostrar o resultado
+document.getElementById('formEntregaVer').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const status = document.getElementById('status_entrega_ver').value;
+    const data   = document.getElementById('data_entrega_ver').value;
+    if (!status || !data) return;
+
+    const formData = new FormData(this);
+    fetch(this.action, { method: 'POST', body: formData })
+        .then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Erro ao registrar. Tente novamente.');
+            }
+        })
+        .catch(() => alert('Erro ao registrar. Tente novamente.'));
+});
+
+document.querySelectorAll('.btn-gerar-pdf').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const icon = this.querySelector('i');
+        const label = this.querySelector('.pdf-label');
+        icon.className = 'fas fa-spinner fa-spin';
+        if (label) label.textContent = ' Gerando...';
+        setTimeout(() => {
+            icon.className = 'fas fa-print';
+            if (label) label.textContent = ' Gerar PDF';
+        }, 4000);
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

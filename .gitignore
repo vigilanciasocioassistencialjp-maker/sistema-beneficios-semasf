@@ -1,0 +1,45 @@
+# Banco de dados (MUITO IMPORTANTE - NUNCA COMMITAR!)
+*.db
+*.sqlite
+*.sqlite3
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+ENV/
+
+# Arquivos temporários do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configurações da IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Credenciais do Google (NUNCA COMMITAR!)
+*.json
+*.pickle
+credentials_oauth.json
+token.pickle
+
+# Exportações para o Sheets (contêm CPF, NUNCA COMMITAR!)
+export_looker_*.csv
+.ultima_exportacao_sheets.txt
+
+# Ferramenta local de exportação pro Sheets — só usada nesta máquina,
+# não faz parte do sistema (app.py não importa nada disso)
+exportar_para_sheets.py
+atualizar_planilha.bat
+atualizar_planilha.ps1
+
+# Arquivos de log
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

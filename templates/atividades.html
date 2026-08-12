@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0">
+            <i class="fas fa-images text-success"></i> Fotos Quadrimestral
+        </h2>
+        <a href="{{ url_for('nova_atividade') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Nova Atividade
+        </a>
+    </div>
+
+    {% if not storage_configurado %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle"></i>
+        O envio de fotos ainda não foi configurado pelo administrador. As atividades existentes
+        continuam visíveis, mas não é possível enviar novas fotos por enquanto.
+    </div>
+    {% endif %}
+
+    <p class="text-muted">
+        Registre aqui as fotos dos atendimentos, ações e grupos da rede socioassistencial.
+        Elas ficam organizadas por atividade e período, prontas para reunir na apresentação
+        do Quadrimestral.
+    </p>
+
+    <!-- Atalho de quadrimestre -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('atividades') }}" class="d-flex flex-wrap align-items-center gap-2">
+                {% if busca_servico %}<input type="hidden" name="busca_servico" value="{{ busca_servico }}">{% endif %}
+                <span class="fw-bold small text-muted me-1">QUADRIMESTRE</span>
+                {% for q, rotulo in [(1, '1º (Jan-Abr)'), (2, '2º (Mai-Ago)'), (3, '3º (Set-Dez)')] %}
+                <button type="submit" name="quadrimestre" value="{{ q }}"
+                        class="btn btn-sm {{ 'btn-success' if quadrimestre|string == q|string else 'btn-outline-success' }}"
+                        onclick="document.getElementById('campo-ano').value=document.getElementById('input-ano').value;">
+                    {{ rotulo }}
+                </button>
+                {% endfor %}
+                <select id="input-ano" class="form-select form-select-sm w-auto" style="min-width:90px;"
+                        onchange="document.getElementById('campo-ano').value=this.value;">
+                    {% for a in anos_disponiveis %}
+                    <option value="{{ a }}" {% if ano|string == a|string %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" id="campo-ano" name="ano" value="{{ ano }}">
+                <a href="{{ url_for('atividades', tudo=1, busca_servico=busca_servico) }}" class="btn btn-sm btn-outline-secondary ms-auto">
+                    <i class="fas fa-rotate-left"></i> Ver todo o histórico
+                </a>
+            </form>
+        </div>
+    </div>
+
+    <!-- Resumo por serviço -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span><i class="fas fa-building"></i> Fotos por serviço — {{ qtd_servicos_enviaram }}/{{ qtd_servicos_total }} enviaram
+                ({{ total_fotos_periodo }} foto(s) no período)</span>
+            {% if total_fotos_periodo %}
+            <a class="btn btn-sm btn-light"
+               href="{{ url_for('download_zip_atividades', periodo_inicio=periodo_inicio, periodo_fim=periodo_fim) }}">
+                <i class="fas fa-file-zipper"></i> Baixar tudo do período (.zip)
+            </a>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <div class="row g-2">
+                {% for r in resumo_servicos %}
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-2 {{ 'border-success bg-success bg-opacity-10' if r.num_fotos else 'border-secondary-subtle' }}">
+                        <a href="{{ url_for('atividades', periodo_inicio=periodo_inicio, periodo_fim=periodo_fim, quadrimestre=quadrimestre, ano=ano, busca_servico=r.servico) }}"
+                           class="text-decoration-none text-dark small fw-{{ 'bold' if r.num_fotos else 'normal' }} text-truncate me-2"
+                           title="{{ r.servico }}">
+                            {{ r.servico }}
+                        </a>
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="badge rounded-pill {{ 'bg-success' if r.num_fotos else 'bg-secondary' }}">
+                                {{ r.num_fotos }}
+                            </span>
+                            {% if r.num_fotos %}
+                            <a href="{{ url_for('download_zip_atividades', servico=r.servico, periodo_inicio=periodo_inicio, periodo_fim=periodo_fim) }}"
+                               class="text-muted" title="Baixar fotos de {{ r.servico }} (.zip)">
+                                <i class="fas fa-download"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% if qtd_servicos_enviaram < qtd_servicos_total %}
+            <p class="text-muted small mt-2 mb-0">
+                <i class="fas fa-circle-exclamation text-secondary"></i>
+                Serviços com badge cinza ainda não enviaram fotos neste período.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Filtros avançados -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <a class="text-decoration-none text-dark d-block" data-bs-toggle="collapse" href="#filtrosAvancados">
+                <i class="fas fa-filter"></i> Filtros avançados (período manual / serviço) <i class="fas fa-chevron-down float-end"></i>
+            </a>
+        </div>
+        <div class="collapse {{ 'show' if busca_servico else '' }}" id="filtrosAvancados">
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('atividades') }}" class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-muted">DE</label>
+                        <input type="date" name="periodo_inicio" class="form-control" value="{{ periodo_inicio }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-muted">ATÉ</label>
+                        <input type="date" name="periodo_fim" class="form-control" value="{{ periodo_fim }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-muted">SERVIÇO/UNIDADE</label>
+                        <select name="busca_servico" class="form-select">
+                            <option value="">Todos</option>
+                            {% for u in lista_unidades %}
+                            <option value="{{ u }}" {% if busca_servico == u %}selected{% endif %}>{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Filtrar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if not atividades %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> Nenhuma atividade registrada
+        {% if periodo_inicio or periodo_fim or busca_servico %}para esse filtro{% endif %}.
+    </div>
+    {% else %}
+    <div class="row g-3">
+        {% for a in atividades %}
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 shadow-sm">
+                <a href="{{ url_for('ver_atividade', id=a.id) }}">
+                    {% if a.capa_url %}
+                    <img src="{{ a.capa_url }}" class="card-img-top" style="height:160px;object-fit:cover;" alt="{{ a.titulo }}">
+                    {% else %}
+                    <div class="d-flex align-items-center justify-content-center bg-light" style="height:160px;">
+                        <i class="fas fa-image fa-2x text-muted"></i>
+                    </div>
+                    {% endif %}
+                </a>
+                <div class="card-body">
+                    <h6 class="card-title mb-1">
+                        <a href="{{ url_for('ver_atividade', id=a.id) }}" class="text-decoration-none text-dark">{{ a.titulo }}</a>
+                    </h6>
+                    <p class="mb-1 small text-muted">
+                        <i class="fas fa-calendar-alt"></i> {{ a.data_atividade|formatar_data }}
+                    </p>
+                    {% if a.servico %}
+                    <p class="mb-1 small text-muted"><i class="fas fa-building"></i> {{ a.servico }}</p>
+                    {% endif %}
+                    <p class="mb-0 small text-muted"><i class="fas fa-camera"></i> {{ a.num_fotos }} foto(s)</p>
+                </div>
+                {% if a.pode_gerenciar %}
+                <div class="card-footer bg-white d-flex gap-2">
+                    <a href="{{ url_for('editar_atividade', id=a.id) }}" class="btn btn-sm btn-outline-primary flex-fill">
+                        <i class="fas fa-edit"></i> Editar
+                    </a>
+                    <form method="POST" action="{{ url_for('excluir_atividade', id=a.id) }}" class="flex-fill"
+                          onsubmit="return confirm('Excluir esta atividade e todas as fotos? Essa ação não pode ser desfeita.');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                            <i class="fas fa-trash"></i> Excluir
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Cestas Básicas - SEMASF</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+    <style>
+        /* ── Paleta SEMASF / Prefeitura Ji-Paraná ── */
+        :root {
+            --semasf-navy:  #1b2f5e;
+            --semasf-green: #2d8b38;
+            --semasf-blue:  #2d6eb5;
+            --semasf-gold:  #f5a61e;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            padding-bottom: 70px;
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            background: var(--semasf-navy) !important;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+            padding: 0.7rem 1rem;
+            border-bottom: 3px solid var(--semasf-gold);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #fff !important;
+        }
+
+        .navbar-brand:hover { color: var(--semasf-gold) !important; }
+
+        .nav-link {
+            font-weight: 500;
+            color: rgba(255,255,255,0.88) !important;
+            border-radius: 6px;
+            padding: 7px 14px !important;
+            transition: background 0.2s;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(255,255,255,0.15);
+            color: #fff !important;
+        }
+
+        .nav-link.active {
+            background-color: var(--semasf-blue);
+            color: #fff !important;
+        }
+
+        .nav-link.text-danger { color: #ff8888 !important; }
+        .nav-link.text-danger:hover {
+            background-color: rgba(220,53,69,0.2);
+            color: #ffb3b3 !important;
+        }
+
+        .navbar-nav { align-items: center; gap: 3px; }
+
+        @media (max-width: 992px) {
+            .navbar-nav { margin-top: 12px; }
+        }
+
+        /* ── Dropdowns da navbar (Administração / Conta) ── */
+        .navbar .dropdown-menu {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            padding: 6px;
+            margin-top: 8px;
+            min-width: 220px;
+        }
+
+        .navbar .dropdown-item {
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .navbar .dropdown-item:hover,
+        .navbar .dropdown-item:focus { background-color: #f0f2f5; }
+
+        .navbar .dropdown-item.text-danger:hover { background-color: #fdecea; }
+
+        .navbar .dropdown-header {
+            font-weight: 700;
+            color: var(--semasf-navy);
+            white-space: normal;
+        }
+
+        /* ── Botão de conta (avatar + nome) ── */
+        .user-toggle {
+            background-color: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 20px !important;
+            padding: 5px 12px 5px 9px !important;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .user-toggle:hover,
+        .user-toggle:focus {
+            background-color: rgba(255,255,255,0.2) !important;
+            color: #fff !important;
+        }
+
+        .user-toggle::after { margin-left: 6px; }
+
+        .user-name { font-weight: 600; color: #fff; }
+
+        .user-profile {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background-color: var(--semasf-gold);
+            color: var(--semasf-navy);
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: fit-content;
+        }
+
+        /* ── Cards ── */
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.09);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: var(--semasf-navy);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: 600;
+        }
+
+        /* card-header coloridos mantém suas cores Bootstrap */
+        .card-header.bg-success { background-color: var(--semasf-green) !important; }
+        .card-header.bg-primary { background-color: var(--semasf-blue)  !important; }
+
+        /* ── Tabelas ── */
+        .table { background-color: white; }
+
+        .table-dark thead { background-color: var(--semasf-navy) !important; }
+
+        /* ── Status badges ── */
+        .status-badge       { padding: 4px 10px; border-radius: 5px; font-size: 0.82em; font-weight: bold; }
+        .status-cadastrada  { background-color: #ffc107; color: #000; }
+        .status-entregue    { background-color: var(--semasf-green); color: #fff; }
+        .status-ausente     { background-color: #dc3545; color: #fff; }
+
+        /* ── Flash alerts ── */
+        .flash-messages {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 320px;
+            max-width: 420px;
+        }
+
+        @media (max-width: 768px) {
+            .flash-messages { left: 10px; right: 10px; min-width: auto; }
+        }
+
+        .flash-messages .alert {
+            border-left: 5px solid transparent;
+            border-radius: 8px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.15);
+        }
+
+        .flash-messages .alert-success { border-left-color: var(--semasf-green); }
+        .flash-messages .alert-danger  { border-left-color: #dc3545; }
+        .flash-messages .alert-warning { border-left-color: var(--semasf-gold); }
+        .flash-messages .alert-info    { border-left-color: var(--semasf-blue); }
+
+        /* ── Formulário de seções ── */
+        .form-section {
+            background-color: #fff;
+            border: 1px solid #e0e4ed;
+            padding: 18px;
+            border-radius: 10px;
+            margin-bottom: 22px;
+        }
+
+        .form-section h5 {
+            color: var(--semasf-navy);
+            margin-bottom: 14px;
+            border-left: 4px solid var(--semasf-green);
+            padding-left: 10px;
+            font-weight: 700;
+        }
+
+        .required:after { content: " *"; color: #dc3545; }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 14px 20px;
+            background-color: var(--semasf-navy);
+            color: rgba(255,255,255,0.75);
+            border-top: 3px solid var(--semasf-gold);
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            font-size: 0.85rem;
+        }
+
+        footer a { color: var(--semasf-gold); text-decoration: none; }
+
+        /* ── Botões primários adaptados ── */
+        .btn-primary   { background-color: var(--semasf-blue);  border-color: var(--semasf-blue); }
+        .btn-primary:hover { background-color: #235a9a; border-color: #235a9a; }
+        .btn-success   { background-color: var(--semasf-green); border-color: var(--semasf-green); }
+        .btn-success:hover { background-color: #236c2c; border-color: #236c2c; }
+    </style>
+
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="app-version" content="{{ app_versao }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+{% if current_user.is_authenticated %}
+{% set ep = request.endpoint %}
+{% set eh_admin_gestor = current_user.perfil in ['admin', 'gestor'] %}
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('dashboard') if eh_admin_gestor else url_for('solicitacoes') }}">
+            <span style="background:#fff;border-radius:6px;padding:2px 6px;display:inline-flex;align-items:center;">
+                <img src="{{ url_for('static', filename='img/logo_prefeitura.png') }}"
+                     alt="Prefeitura de Ji-Paraná"
+                     style="height:34px;width:auto;">
+            </span>
+            <span style="font-size:0.95rem;line-height:1.2;">
+                <span style="display:block;font-size:0.7rem;opacity:0.8;font-weight:400;">SEMASF</span>
+                Cestas Básicas
+            </span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarMain">
+            <!-- Navegação principal -->
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if ep == 'solicitacoes' }}" href="{{ url_for('solicitacoes') }}">
+                        <i class="fas fa-clipboard-list"></i> Solicitações
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if ep == 'relatorio' }}" href="{{ url_for('relatorio') }}">
+                        <i class="fas fa-calendar-alt"></i> Relatórios
+                    </a>
+                </li>
+
+                {% if eh_admin_gestor %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if ep == 'dashboard' }}" href="{{ url_for('dashboard') }}">
+                        <i class="fas fa-chart-line"></i> Dashboard
+                    </a>
+                </li>
+                {% endif %}
+
+                {% if eh_admin_gestor or current_user.acesso_atividades %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if ep == 'atividades' }}" href="{{ url_for('atividades') }}">
+                        <i class="fas fa-images"></i> Fotos Quadrimestral
+                    </a>
+                </li>
+                {% endif %}
+
+                {% if eh_admin_gestor %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {{ 'active' if ep in ['listar_usuarios', 'configuracoes', 'administracao'] }}"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-tools"></i> Administração
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'listar_usuarios' }}" href="/usuarios">
+                                <i class="fas fa-users-cog me-2"></i>Usuários
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'configuracoes' }}" href="{{ url_for('configuracoes') }}">
+                                <i class="fas fa-sliders-h me-2"></i>Configurações
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ 'active' if ep == 'administracao' }}" href="{{ url_for('administracao') }}">
+                                <i class="fas fa-tools me-2"></i>Administração do Sistema
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Notificações e conta -->
+            <ul class="navbar-nav mb-2 mb-lg-0 align-items-center">
+                <li class="nav-item">
+                    <a class="nav-link position-relative {{ 'active' if ep == 'notificacoes' }}" href="{{ url_for('notificacoes') }}" title="Notificações">
+                        <i class="fas fa-bell"></i>
+                        {% if notificacoes_nao_lidas > 0 %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                              style="font-size:0.6rem;">
+                            {{ notificacoes_nao_lidas }}
+                        </span>
+                        {% endif %}
+                    </a>
+                </li>
+
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle user-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-user-circle fa-lg"></i>
+                        <span class="user-name">{{ current_user.nome if current_user.nome else current_user.id }}</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <h6 class="dropdown-header d-flex flex-column gap-1">
+                                {{ current_user.nome if current_user.nome else current_user.id }}
+                                <span class="user-profile">
+                                    {% if current_user.perfil == 'admin' %}
+                                        <i class="fas fa-crown"></i> Administrador
+                                    {% elif current_user.perfil == 'gestor' %}
+                                        <i class="fas fa-chart-line"></i> Gestor
+                                    {% elif current_user.perfil == 'cras_volante' %}
+                                        <i class="fas fa-road"></i> Equipe Volante
+                                    {% elif current_user.perfil == 'servico' %}
+                                        <i class="fas fa-hands-helping"></i> {{ current_user.cras or 'Serviço' }}
+                                    {% else %}
+                                        <i class="fas fa-clipboard-list"></i> Técnico
+                                    {% endif %}
+                                </span>
+                                {% if current_user.acesso_atividades %}
+                                <span class="user-profile" title="Também tem acesso a Fotos Quadrimestral">
+                                    <i class="fas fa-images"></i> Fotos Quadrimestral
+                                </span>
+                                {% endif %}
+                            </h6>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#alterarSenhaModal">
+                                <i class="fas fa-key me-2"></i>Redefinir Senha
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i>Sair
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+{% endif %}
+
+<div class="flash-messages">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            {% set cat = category if category != 'message' else 'info' %}
+            <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+                {% if cat == 'success' %}<i class="fas fa-check-circle me-2"></i>
+                {% elif cat == 'danger'  %}<i class="fas fa-exclamation-circle me-2"></i>
+                {% elif cat == 'warning' %}<i class="fas fa-exclamation-triangle me-2"></i>
+                {% else %}<i class="fas fa-info-circle me-2"></i>{% endif %}
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="container-fluid mt-4">
+    {% block content %}{% endblock %}
+</div>
+
+<footer>
+    <span>&copy; 2026 · SEMASF Ji-Paraná · Sistema de Controle de Entrega de Cestas Básicas
+        · <span title="Informe esta versão ao suporte em caso de problemas">Versão: {{ app_versao }}</span></span>
+</footer>
+
+<!-- Modal Alterar Senha -->
+<div class="modal fade" id="alterarSenhaModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-key"></i> Redefinir Senha
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/usuario/alterar_senha">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="senha_atual" class="form-label">Senha Atual</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="senha_atual" name="senha_atual" required>
+                            <button type="button" class="btn btn-outline-secondary btn-ver-senha-modal" tabindex="-1"><i class="fas fa-eye"></i></button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="nova_senha" class="form-label">Nova Senha</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="nova_senha" name="nova_senha" required>
+                            <button type="button" class="btn btn-outline-secondary btn-ver-senha-modal" tabindex="-1"><i class="fas fa-eye"></i></button>
+                        </div>
+                        <small class="text-muted">Mínimo de 6 caracteres, 1 maiúscula e 1 número</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirmar_senha" class="form-label">Confirmar Nova Senha</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="confirmar_senha" name="confirmar_senha" required>
+                            <button type="button" class="btn btn-outline-secondary btn-ver-senha-modal" tabindex="-1"><i class="fas fa-eye"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Alterar Senha</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+// ── Mostrar/ocultar senha (modal redefinição) ──
+document.querySelectorAll('.btn-ver-senha-modal').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const input = this.previousElementSibling;
+        const icon  = this.querySelector('i');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'fas fa-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'fas fa-eye';
+        }
+    });
+});
+
+// ── Auto-fechar alertas após 5 s ──
+// (exceto os marcados com .alert-persistente, como o aviso de rascunho
+// recuperado, que precisa ficar visível até o usuário decidir algo)
+setTimeout(function() {
+    document.querySelectorAll('.alert:not(.alert-persistente)').forEach(function(el) {
+        try { new bootstrap.Alert(el).close(); } catch(e) {}
+    });
+}, 5000);
+
+// ── CSRF: injeta token em todos os forms POST e em fetch() ──
+(function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!csrfToken) return;
+
+    // Adiciona campo oculto a todos os forms POST existentes e futuros
+    function injetarCsrf(form) {
+        if (form.method && form.method.toLowerCase() === 'post') {
+            if (!form.querySelector('input[name="csrf_token"]')) {
+                const inp = document.createElement('input');
+                inp.type  = 'hidden';
+                inp.name  = 'csrf_token';
+                inp.value = csrfToken;
+                form.appendChild(inp);
+            }
+        }
+    }
+    document.querySelectorAll('form').forEach(injetarCsrf);
+
+    // Observa novos forms adicionados dinamicamente (modais)
+    new MutationObserver(mutations => {
+        mutations.forEach(m => m.addedNodes.forEach(node => {
+            if (node.nodeType === 1) {
+                if (node.tagName === 'FORM') injetarCsrf(node);
+                node.querySelectorAll?.('form').forEach(injetarCsrf);
+            }
+        }));
+    }).observe(document.body, { childList: true, subtree: true });
+
+    // Intercepta fetch() para incluir o token no cabeçalho
+    const _fetch = window.fetch;
+    window.fetch = function(url, opts = {}) {
+        opts.headers = opts.headers || {};
+        if (!(opts.headers instanceof Headers)) {
+            opts.headers['X-CSRFToken'] = csrfToken;
+        } else {
+            opts.headers.set('X-CSRFToken', csrfToken);
+        }
+        return _fetch(url, opts);
+    };
+})();
+
+// ── Verificador de nova versão ─────────────────────────────────────
+// Abas que ficam abertas por muito tempo continuam rodando o código
+// antigo mesmo após um deploy. Este verificador consulta o servidor
+// periodicamente (e sempre que o usuário volta para a aba) e exibe um
+// aviso para recarregar quando detecta que houve atualização.
+(function() {
+    const versaoAtual = document.querySelector('meta[name="app-version"]')?.content;
+    if (!versaoAtual) return;
+    let avisado = false;
+
+    function mostrarAvisoNovaVersao() {
+        if (avisado) return;
+        avisado = true;
+        const div = document.createElement('div');
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2000;';
+        div.innerHTML = `
+            <div class="alert alert-warning text-center mb-0 rounded-0 shadow" style="cursor:pointer;">
+                🔄 <strong>Nova versão do sistema disponível!</strong>
+                Clique aqui para atualizar (dados de formulários não enviados serão perdidos).
+            </div>`;
+        div.addEventListener('click', () => location.reload());
+        document.body.prepend(div);
+    }
+
+    function verificarVersao() {
+        if (avisado) return;
+        fetch('/api/versao', { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => {
+                if (d && d.versao && d.versao !== versaoAtual) mostrarAvisoNovaVersao();
+            })
+            .catch(() => {});
+    }
+
+    setInterval(verificarVersao, 5 * 60 * 1000);  // a cada 5 minutos
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') verificarVersao();
+    });
+})();
+</script>
+
+{% block extra_js %}{% endblock %}
+
+{% if mostrar_modal_notif %}
+<div class="modal fade" id="modalNotifLogin" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white" style="background: linear-gradient(135deg, #1b2f5e, #2e5f9e);">
+                <h5 class="modal-title">
+                    <i class="fas fa-bell me-2"></i> Você tem notificações não lidas
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="mb-3">
+                    <span class="badge rounded-pill bg-danger" style="font-size: 2rem; padding: 0.6rem 1.2rem;">
+                        {{ notificacoes_nao_lidas }}
+                    </span>
+                </div>
+                <p class="fs-5 mb-1">
+                    {% if notificacoes_nao_lidas == 1 %}
+                        Você tem <strong>1 notificação</strong> não lida.
+                    {% else %}
+                        Você tem <strong>{{ notificacoes_nao_lidas }} notificações</strong> não lidas.
+                    {% endif %}
+                </p>
+                <p class="text-muted small">Clique em "Ver Notificações" para conferir.</p>
+            </div>
+            <div class="modal-footer justify-content-center gap-2 border-0 pb-4">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Fechar
+                </button>
+                <a href="{{ url_for('notificacoes') }}" class="btn btn-primary">
+                    <i class="fas fa-bell"></i> Ver Notificações
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new bootstrap.Modal(document.getElementById('modalNotifLogin')).show();
+    });
+</script>
+{% endif %}
+</body>
+</html>

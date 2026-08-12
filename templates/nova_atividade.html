@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="fas fa-plus-circle text-success"></i> Nova Atividade</h3>
+        <a href="{{ url_for('atividades') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-section">
+            <h5>Dados da atividade</h5>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label required">Título</label>
+                    <input type="text" name="titulo" class="form-control" placeholder="ex: Grupo de Convivência de Idosos" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label required">Data da atividade</label>
+                    <input type="date" name="data_atividade" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Serviço/Unidade responsável</label>
+                    <select name="servico" class="form-select">
+                        <option value="">— Selecione —</option>
+                        {% for u in lista_unidades %}
+                        <option value="{{ u }}"
+                                {% if u == 'Gestão/SEMASF' and current_user.perfil in ['admin', 'gestor'] %}selected{% endif %}>
+                            {{ u }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Descrição</label>
+                    <textarea name="descricao" class="form-control" rows="3"
+                              placeholder="Breve descrição da ação/grupo/atendimento realizado"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h5>Fotos</h5>
+            <p class="text-muted small">
+                Adicione uma ou mais fotos. Cada foto pode ter sua própria legenda (ex: nome/identificação
+                da atividade, quantidade de participantes). As imagens são comprimidas automaticamente no envio.
+            </p>
+            <div id="containerFotos"></div>
+            <button type="button" id="btnAdicionarFoto" class="btn btn-outline-primary btn-sm mt-2">
+                <i class="fas fa-camera"></i> Adicionar foto
+            </button>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 py-2">
+            <i class="fas fa-save"></i> Salvar Atividade
+        </button>
+    </form>
+</div>
+
+{% block extra_js %}
+<script>
+let contadorFotos = 0;
+
+function adicionarFoto() {
+    contadorFotos++;
+    const id = contadorFotos;
+    const div = document.createElement('div');
+    div.className = 'row g-2 align-items-center border rounded p-2 mb-2';
+    div.id = `linhaFoto${id}`;
+    div.innerHTML = `
+        <div class="col-md-2 text-center">
+            <img id="previaFoto${id}" src="" alt="" class="img-fluid rounded d-none" style="max-height:70px;">
+            <i id="iconeFoto${id}" class="fas fa-image fa-2x text-muted"></i>
+        </div>
+        <div class="col-md-4">
+            <input type="file" name="fotos[]" accept="image/*" class="form-control form-control-sm" required
+                   onchange="previewFoto(this, ${id})">
+        </div>
+        <div class="col-md-5">
+            <input type="text" name="legenda[]" class="form-control form-control-sm" placeholder="Legenda da foto (opcional)">
+        </div>
+        <div class="col-md-1 text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('linhaFoto${id}').remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    document.getElementById('containerFotos').appendChild(div);
+}
+
+function previewFoto(input, id) {
+    if (!input.files || !input.files[0]) return;
+    const url = URL.createObjectURL(input.files[0]);
+    const img = document.getElementById(`previaFoto${id}`);
+    img.src = url;
+    img.classList.remove('d-none');
+    document.getElementById(`iconeFoto${id}`).classList.add('d-none');
+}
+
+document.getElementById('btnAdicionarFoto').addEventListener('click', adicionarFoto);
+adicionarFoto(); // primeira linha já visível
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Reprovar Solicitação</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 50px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #dc3545;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: Arial;
+        }
+        button {
+            background-color: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #c82333;
+        }
+        .btn-voltar {
+            background-color: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>⚠️ Reprovar Solicitação</h2>
+        
+        <div class="alert">
+            <strong>Atenção!</strong> Você está prestes a reprovar esta solicitação.
+        </div>
+        
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label><strong>Justificativa para Reprovação:</strong></label><br><br>
+            <textarea 
+                name="justificativa" 
+                rows="5" 
+                required
+                placeholder="Descreva o motivo da reprovação..."></textarea>
+            
+            <br><br>
+            
+            <button type="submit">✅ Confirmar Reprovação</button>
+            <a href="/solicitacoes" class="btn-voltar">⬅️ Voltar</a>
+        </form>
+    </div>
+</body>
+</html>

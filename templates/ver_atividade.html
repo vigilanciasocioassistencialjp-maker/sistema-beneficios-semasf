@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .navbar, footer { display: none !important; }
+    body { padding-bottom: 0 !important; background: #fff !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 no-print">
+        <a href="{{ url_for('atividades') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+        <div class="d-flex gap-2">
+            {% if fotos %}
+            <a href="{{ url_for('download_zip_atividades', atividade_id=atividade.id) }}" class="btn btn-outline-success">
+                <i class="fas fa-file-zipper"></i> Baixar todas (.zip)
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-outline-primary" onclick="window.print()">
+                <i class="fas fa-print"></i> Imprimir
+            </button>
+            {% if pode_gerenciar %}
+            <a href="{{ url_for('editar_atividade', id=atividade.id) }}" class="btn btn-primary">
+                <i class="fas fa-edit"></i> Editar
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h3>{{ atividade.titulo }}</h3>
+            <p class="mb-1 text-muted">
+                <i class="fas fa-calendar-alt"></i> {{ atividade.data_atividade|formatar_data }}
+                {% if atividade.servico %} &nbsp;·&nbsp; <i class="fas fa-building"></i> {{ atividade.servico }}{% endif %}
+            </p>
+            <p class="mb-1 text-muted small">
+                <i class="fas fa-user"></i> Registrado por {{ atividade.criado_por_nome }}
+            </p>
+            {% if atividade.descricao %}
+            <p class="mt-3 mb-0">{{ atividade.descricao }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not fotos %}
+    <div class="alert alert-info">Nenhuma foto nesta atividade.</div>
+    {% else %}
+    <div class="row g-3">
+        {% for f in fotos %}
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm">
+                <div class="position-relative">
+                    {% if f.url %}
+                    <img src="{{ f.url }}" class="card-img-top" alt="{{ f.legenda or atividade.titulo }}">
+                    {% endif %}
+                    <a href="{{ url_for('download_foto_atividade', foto_id=f.id) }}"
+                       class="btn btn-sm btn-light shadow-sm position-absolute top-0 end-0 m-2 no-print"
+                       title="Baixar esta foto">
+                        <i class="fas fa-download"></i>
+                    </a>
+                </div>
+                {% if f.legenda %}
+                <div class="card-body py-2">
+                    <p class="mb-0 small">{{ f.legenda }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

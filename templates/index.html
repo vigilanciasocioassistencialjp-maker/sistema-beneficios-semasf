@@ -1,0 +1,1216 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<style>
+/* ── Editor Quill ── */
+.ql-container { font-size: 14px; min-height: 160px; border-radius: 0 0 6px 6px; }
+.ql-toolbar { border-radius: 6px 6px 0 0; background: #f8f9fa; }
+.ql-editor { min-height: 150px; }
+
+/* ── Wizard ── */
+.wizard-header {
+    background: var(--semasf-navy);
+    color: #fff;
+    border-radius: 10px 10px 0 0;
+    padding: 18px 24px 0;
+}
+
+.wizard-steps {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+}
+
+.wizard-steps li { cursor: pointer; }
+.wizard-steps li:hover .wizard-step-num { transform: scale(1.12); transition: transform .15s; }
+.wizard-steps li {
+    flex: 1;
+    text-align: center;
+    padding: 10px 6px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    position: relative;
+    cursor: default;
+    white-space: nowrap;
+    min-width: 90px;
+}
+
+.wizard-steps li::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+}
+
+.wizard-steps li.active {
+    color: #fff;
+}
+
+.wizard-steps li.active::after {
+    background: var(--semasf-gold);
+}
+
+.wizard-steps li.done {
+    color: rgba(255,255,255,0.75);
+}
+
+.wizard-steps li.done::after {
+    background: var(--semasf-green);
+}
+
+.wizard-step-num {
+    display: inline-flex;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+
+.wizard-steps li.active  .wizard-step-num { background: var(--semasf-gold); color: var(--semasf-navy); }
+.wizard-steps li.done    .wizard-step-num { background: var(--semasf-green); color: #fff; }
+
+.wizard-body { padding: 24px; }
+
+.wizard-pane { display: none !important; }
+.wizard-pane.active { display: block !important; }
+
+.wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e4ed;
+}
+
+.step-counter {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow rounded-4 p-0 overflow-hidden">
+
+        <!-- ── Wizard Header ── -->
+        <div class="wizard-header">
+            <h5 class="mb-3 fw-bold">
+                <i class="fas fa-hand-holding-heart"></i> Nova Solicitação de Cesta Básica
+            </h5>
+            <ul class="wizard-steps" id="wizardSteps">
+                <li data-step="1" class="active">
+                    <div class="wizard-step-num">1</div><br>Dados Pessoais
+                </li>
+                <li data-step="2">
+                    <div class="wizard-step-num">2</div><br>Endereço
+                </li>
+                <li data-step="3">
+                    <div class="wizard-step-num">3</div><br>Família
+                </li>
+                <li data-step="4">
+                    <div class="wizard-step-num">4</div><br>Renda
+                </li>
+                <li data-step="5">
+                    <div class="wizard-step-num">5</div><br>Parecer
+                </li>
+            </ul>
+        </div>
+
+        <!-- ── Form ── -->
+        <div class="wizard-body">
+            {% if sucesso %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i> Solicitação salva com sucesso!
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endif %}
+
+            <form method="POST" id="solicitacaoForm">
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 1 — DADOS PESSOAIS                          -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane active" id="pane-1">
+                    <div class="form-section">
+                        <h5>Dados Pessoais</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Nome Completo</label>
+                                <input type="text" name="nome" class="form-control" id="nome" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">CPF</label>
+                                <input type="text" name="cpf" class="form-control" id="cpf" required maxlength="14" minlength="14">
+                                <small class="text-muted">Formato: 000.000.000-00</small>
+                                <div id="alertaCpf"></div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">Data de Nascimento</label>
+                                <input type="date" name="data_nascimento" class="form-control" id="data_nascimento" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required" id="labelTelefone">Telefone</label>
+                                <input type="text" name="telefone" class="form-control" id="telefone" required>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" id="semTelefone">
+                                    <label class="form-check-label small text-muted" for="semTelefone">
+                                        Beneficiário(a) não possui telefone
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">E-mail</label>
+                                <input type="email" name="email" class="form-control" placeholder="Opcional">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wizard-nav">
+                        <span class="step-counter">Passo 1 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="2">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 2 — ENDEREÇO + CRAS                         -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-2">
+                    <div class="form-section">
+                        <h5>Endereço</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Logradouro</label>
+                                <input type="text" name="endereco" class="form-control" placeholder="Rua, Avenida..." required>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label required">Número</label>
+                                <input type="text" name="numero" class="form-control" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Complemento</label>
+                                <input type="text" name="complemento" class="form-control" placeholder="Casa, AP, Bloco...">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-5 mb-3">
+                                <label class="form-label required">Bairro</label>
+                                <select name="bairro" class="form-select" id="bairro" required>
+                                    <option value="">Selecione o bairro</option>
+                                    {% if current_user.perfil in ['gestor', 'admin', 'creas', 'cras_volante', 'servico'] %}
+                                        {% for cras_nome, bairros in bairros_por_cras.items() %}
+                                        <optgroup label="{{ cras_nome }}">
+                                            {% for b in bairros %}
+                                            <option value="{{ b }}">{{ b }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% endfor %}
+                                        <optgroup label="CASOS ESPECIAIS">
+                                            <option value="OUTRO MUNICÍPIO">OUTRO MUNICÍPIO</option>
+                                        </optgroup>
+                                    {% else %}
+                                        {% for b in bairros_por_cras.get(current_user.cras, []) %}
+                                        <option value="{{ b }}">{{ b }}</option>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label required">CEP</label>
+                                <div class="input-group">
+                                    <input type="text" name="cep" class="form-control" id="cep" placeholder="00000-000" required>
+                                    <button type="button" class="btn btn-outline-secondary" id="btnBuscarCep" title="Buscar CEP pelo logradouro">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Digite o CEP ou clique em 🔍 para buscar pelo endereço</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Ponto de Referência</label>
+                                <input type="text" name="referencia" class="form-control" placeholder="Próximo a...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h5>CRAS e Data da Escuta</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Unidade Responsável</label>
+                                {% if current_user.perfil in ['gestor', 'admin'] %}
+                                    <select name="cras" class="form-select" id="cras" required>
+                                        <option value="">Selecione o CRAS</option>
+                                        {% for c in bairros_por_cras.keys() %}
+                                        <option value="{{ c }}">{{ c }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% elif current_user.perfil == 'creas' %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="CREAS" readonly style="background-color:#e9ecef">
+                                {% elif current_user.perfil == 'cras_volante' %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="EQUIPE VOLANTE" readonly style="background-color:#e9ecef">
+                                {% else %}
+                                    <input type="text" name="cras" id="cras" class="form-control" value="{{ current_user.cras }}" readonly style="background-color:#e9ecef">
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required">Data da Escuta Técnica</label>
+                                <input type="date" name="data_escuta" class="form-control" id="data_escuta" required>
+                                <small class="text-muted">Preencha com a data da entrevista</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="1">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 2 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="3">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 3 — COMPOSIÇÃO FAMILIAR                     -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-3">
+                    <div class="form-section">
+                        <h5>Composição Familiar</h5>
+                        <div class="alert alert-info py-2">
+                            <i class="fas fa-info-circle"></i>
+                            O nome e idade do beneficiário principal são preenchidos automaticamente.
+                        </div>
+
+                        <div id="composicaoFamiliar">
+                            <div class="row membro-familia mb-2">
+                                <div class="col-md-4">
+                                    <input type="text" name="membro_nome[]" class="form-control" id="membro_nome_0" placeholder="Nome completo" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" name="membro_idade[]" class="form-control" id="membro_idade_0" placeholder="Idade" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <select name="membro_vinculo[]" class="form-select" required>
+                                        <option value="">Vínculo</option>
+                                        <option value="Beneficiário(a)">Beneficiário(a)</option>
+                                        <option value="Cônjuge">Cônjuge</option>
+                                        <option value="Filho(a)">Filho(a)</option>
+                                        <option value="Pai">Pai</option>
+                                        <option value="Mãe">Mãe</option>
+                                        <option value="Avô/Avó">Avô/Avó</option>
+                                        <option value="Neto(a)">Neto(a)</option>
+                                        <option value="Irmão(ã)">Irmão(ã)</option>
+                                        <option value="Outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-danger btn-sm remover-membro" style="display:none">Remover</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnAdicionarMembro">
+                                <i class="fas fa-plus"></i> Adicionar membro
+                            </button>
+                            <button type="button" class="btn btn-outline-info btn-sm ms-2" id="btnUnipessoal">
+                                <i class="fas fa-user"></i> Família unipessoal
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="2">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 3 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="4">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 4 — RENDA + VULNERABILIDADE + SERVIÇOS      -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-4">
+                    <div class="form-section">
+                        <h5>Renda Familiar</h5>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Renda Familiar (R$)</label>
+                                <input type="text" inputmode="numeric" name="renda_bruta" class="form-control" id="renda_bruta" placeholder="0,00" autocomplete="off" required>
+                                <small class="text-muted">Total de renda de todos os membros</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Renda Per Capita (R$)</label>
+                                <input type="text" name="renda_per_capita" class="form-control" id="renda_per_capita" placeholder="Calculado automaticamente" readonly>
+                                <small class="text-muted">Renda ÷ total de pessoas</small>
+                                <div id="avisoRPC"></div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label required">Benefícios Recebidos</label>
+                                <select name="beneficios" class="form-select" id="selectBeneficios" required>
+                                    <option value="">Selecione</option>
+                                    <option value="Bolsa Família">Bolsa Família</option>
+                                    <option value="BPC">BPC (Benefício de Prestação Continuada)</option>
+                                    <option value="Outros">Outros</option>
+                                    <option value="Nenhum">Nenhum</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3" id="divValorBF" style="display:none;">
+                                <label class="form-label required">Valor do Bolsa Família (R$)</label>
+                                <input type="text" name="valor_bolsa_familia" id="valorBF" class="form-control" placeholder="0,00">
+                                <small class="text-muted">Informe o valor mensal recebido</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h5>Situação de Vulnerabilidade</h5>
+                        <div class="row">
+                            {% for vul in ['Desemprego', 'Doença na família', 'Desabrigado(a)', 'Pessoa Idosa', 'Pessoa com Deficiência', 'Gestante', 'Criança em risco', 'Adolescente em risco', 'Violência doméstica', 'Situação de rua', 'Calamidade/emergência'] %}
+                            <div class="col-md-3 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="vulnerabilidade" value="{{ vul }}">
+                                    <label class="form-check-label">{{ vul }}</label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h5>Serviços do SUAS que a Família Participa</h5>
+                        <div class="row">
+                            {% for serv in ['PAIF', 'PAEFI', 'SCFV', 'Criança Feliz', 'Centro DIA', 'BPC', 'Bolsa Família', 'Acolhimento Institucional', 'Serviço de Abordagem Social', 'Medidas Socioeducativas em Meio Aberto (adolescente)', 'Nenhum'] %}
+                            <div class="col-md-3 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="servicos_suas" value="{{ serv }}">
+                                    <label class="form-check-label">{{ serv }}</label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="3">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 4 de 5</span>
+                        <button type="button" class="btn btn-primary btn-wizard-next" data-next="5">
+                            Próximo <i class="fas fa-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════════════ -->
+                <!-- PASSO 5 — PARECER TÉCNICO                         -->
+                <!-- ══════════════════════════════════════════════════ -->
+                <div class="wizard-pane" id="pane-5">
+                    <div class="form-section">
+                        <h5>Parecer Técnico / Histórico Familiar</h5>
+                        <div class="mb-3">
+                            <label class="form-label required">Parecer Técnico</label>
+                            <div id="quillParecer"></div>
+                            <input type="hidden" name="parecer" id="parecerTexto">
+                            <small class="text-muted">Este texto será impresso no PDF na seção "Parecer Técnico"</small>
+                        </div>
+
+                        <div class="border border-info rounded p-3 bg-info bg-opacity-10 mt-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="visita_domiciliar" id="visita_domiciliar" value="1">
+                                <label class="form-check-label fw-bold" for="visita_domiciliar">
+                                    <i class="fas fa-home text-info"></i>
+                                    Solicitar <strong>Visita Domiciliar</strong> para averiguação
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">
+                                Marque quando houver indícios de inconsistência no relato ou necessidade de verificação das condições reais da família.
+                            </small>
+                        </div>
+
+                        <div class="border border-warning rounded p-3 bg-warning bg-opacity-10 mt-3" id="divExcecao">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="excecao_art64" id="excecao_art64" value="1">
+                                <label class="form-check-label fw-bold" for="excecao_art64">
+                                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                                    Concessão com base no <strong>Art. 64 — Lei Municipal nº 3.603/2022</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1 ms-4">
+                                Marque quando a família não atende integralmente os critérios ordinários, mas a concessão é
+                                justificada por situação excepcional com autorização do gestor da SEMASF.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary btn-wizard-prev" data-prev="4">
+                            <i class="fas fa-arrow-left me-1"></i> Anterior
+                        </button>
+                        <span class="step-counter">Passo 5 de 5</span>
+                        <button type="button" class="btn btn-success px-4" id="btnRevisar">
+                            <i class="fas fa-eye me-1"></i> <strong>Revisar e Salvar</strong>
+                        </button>
+                    </div>
+                </div>
+
+            </form>
+        </div><!-- wizard-body -->
+    </div><!-- card -->
+</div>
+
+<!-- Modal Busca CEP -->
+<div class="modal fade" id="modalBuscarCep" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-search"></i> Buscar CEP por Endereço</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small"><i class="fas fa-info-circle"></i> Busca para <strong>Ji-Paraná / RO</strong> via ViaCEP.</p>
+                <div class="input-group mb-3">
+                    <input type="text" id="inputBuscarLogradouro" class="form-control" placeholder="Ex: Rua das Flores, Av. Brasil...">
+                    <button type="button" class="btn btn-primary" id="btnConfirmarBuscaCep">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+                <div id="resultadoBuscaCep"></div>
+                <hr>
+                <p class="small text-muted mb-1"><i class="fas fa-external-link-alt"></i> Não encontrou? Busque diretamente nos Correios:</p>
+                <a href="https://buscacepinter.correios.com.br/app/endereco/index.php" target="_blank" class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="fas fa-search"></i> Buscar CEP no site dos Correios
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Revisão -->
+<div class="modal fade" id="modalRevisao" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--semasf-navy);color:#fff">
+                <h5 class="modal-title">
+                    <i class="fas fa-eye"></i> Revisão — Confirme os dados antes de salvar
+                </h5>
+            </div>
+            <div class="modal-body" id="conteudoRevisao"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-lg" data-bs-dismiss="modal">
+                    <i class="fas fa-edit"></i> Voltar e Corrigir
+                </button>
+                <button type="button" class="btn btn-success btn-lg" id="btnConfirmarSalvar">
+                    <i class="fas fa-check"></i> Confirmar e Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+// ── Wizard navigation ──────────────────────────────────────────────
+let stepAtual = 1;
+const TOTAL_STEPS = 5;
+
+function mostrarPane(destino) {
+    document.getElementById('pane-' + stepAtual).classList.remove('active');
+    document.getElementById('pane-' + destino).classList.add('active');
+    document.querySelectorAll('#wizardSteps li').forEach(li => {
+        const s = parseInt(li.dataset.step);
+        li.classList.remove('active', 'done');
+        if (s === destino) li.classList.add('active');
+        else if (s < destino) li.classList.add('done');
+    });
+    stepAtual = destino;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function validarPane(numero) {
+    const pane = document.getElementById('pane-' + numero);
+    const campos = pane.querySelectorAll('input[required], select[required], textarea[required]');
+    let valido = true;
+    campos.forEach(c => {
+        if (!c.value.trim()) {
+            c.classList.add('is-invalid');
+            valido = false;
+        } else {
+            c.classList.remove('is-invalid');
+        }
+    });
+    return valido;
+}
+
+function irParaStep(destino) {
+    // Ao avançar (inclusive pulando etapas pelo cabeçalho), valida todos
+    // os passos intermediários; para no primeiro que tiver pendência
+    if (destino > stepAtual) {
+        for (let s = stepAtual; s < destino; s++) {
+            if (!validarPane(s)) {
+                mostrarPane(s);
+                const pendente = document.getElementById('pane-' + s).querySelector('.is-invalid');
+                pendente?.focus();
+                pendente?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+        }
+    }
+    mostrarPane(destino);
+}
+
+document.querySelectorAll('.btn-wizard-next').forEach(btn => {
+    btn.addEventListener('click', () => irParaStep(parseInt(btn.dataset.next)));
+});
+document.querySelectorAll('.btn-wizard-prev').forEach(btn => {
+    btn.addEventListener('click', () => irParaStep(parseInt(btn.dataset.prev)));
+});
+
+// ── Passos clicáveis no cabeçalho do wizard ────────────────────────
+document.querySelectorAll('#wizardSteps li').forEach(li => {
+    li.addEventListener('click', () => irParaStep(parseInt(li.dataset.step)));
+});
+
+// ── Remover is-invalid ao digitar ──────────────────────────────────
+document.getElementById('solicitacaoForm').addEventListener('input', e => {
+    if (e.target.required) e.target.classList.remove('is-invalid');
+});
+
+// ── Membro principal sincronizado com dados pessoais ───────────────
+function calcularIdade(dataIso) {
+    if (!dataIso) return '';
+    const nasc = new Date(dataIso);
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    if (hoje.getMonth() < nasc.getMonth() ||
+        (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
+    return idade;
+}
+
+function atualizarMembroPrincipal() {
+    const nome  = document.querySelector('input[name="nome"]').value;
+    const nasc  = document.getElementById('data_nascimento').value;
+    const pNome = document.getElementById('membro_nome_0');
+    const pIdade= document.getElementById('membro_idade_0');
+    if (pNome  && nome)  pNome.value  = nome;
+    if (pIdade && nasc)  pIdade.value = calcularIdade(nasc);
+}
+document.querySelector('input[name="nome"]').addEventListener('input', atualizarMembroPrincipal);
+document.getElementById('data_nascimento').addEventListener('change', atualizarMembroPrincipal);
+
+// ── Mapeamento bairro → CRAS (gerado dinamicamente do banco) ──────
+const mapaBairrosCRAS = {
+    {% for cras_nome, bairros in bairros_por_cras.items() %}
+        {% for b in bairros %}"{{ b }}":"{{ cras_nome }}",
+        {% endfor %}
+    {% endfor %}
+    "OUTRO MUNICÍPIO":"EQUIPE VOLANTE"
+};
+
+const bairroSel = document.getElementById('bairro');
+if (bairroSel) {
+    bairroSel.addEventListener('change', function() {
+        const crasEl = document.getElementById('cras');
+        if (crasEl && mapaBairrosCRAS[this.value]) {
+            crasEl.value = mapaBairrosCRAS[this.value];
+            crasEl.style.backgroundColor = '#e8f5e9';
+            setTimeout(() => crasEl.style.backgroundColor = '', 600);
+        }
+    });
+}
+
+// Data escuta = hoje
+const de = document.getElementById('data_escuta');
+if (de && !de.value) de.value = new Date().toISOString().slice(0,10);
+
+// ── Máscaras ───────────────────────────────────────────────────────
+document.getElementById('cpf').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+    this.value = v;
+});
+document.getElementById('telefone').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d)/,'$1-$2');
+    this.value = v;
+});
+
+// ── "Não possui telefone" torna o campo opcional ───────────────────
+document.getElementById('semTelefone').addEventListener('change', function() {
+    const tel = document.getElementById('telefone');
+    const label = document.getElementById('labelTelefone');
+    if (this.checked) {
+        tel.value = 'Não possui';
+        tel.required = false;
+        tel.readOnly = true;
+        tel.classList.remove('is-invalid');
+        label.classList.remove('required');
+    } else {
+        tel.value = '';
+        tel.required = true;
+        tel.readOnly = false;
+        label.classList.add('required');
+    }
+});
+document.getElementById('cep').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    v = v.replace(/(\d{5})(\d)/,'$1-$2');
+    this.value = v;
+    // Auto-preenche endereço ao completar 8 dígitos
+    if (v.length === 8) {
+        fetch(`https://viacep.com.br/ws/${v}/json/`)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.erro) {
+                    const end = document.querySelector('input[name="endereco"]');
+                    if (end && !end.value) end.value = d.logradouro || '';
+                }
+            }).catch(() => {});
+    }
+});
+
+// ── Valor Bolsa Família ────────────────────────────────────────────
+document.getElementById('selectBeneficios').addEventListener('change', function() {
+    const div = document.getElementById('divValorBF');
+    const input = document.getElementById('valorBF');
+    if (this.value === 'Bolsa Família') {
+        div.style.display = 'block';
+        input.required = true;
+    } else {
+        div.style.display = 'none';
+        input.required = false;
+        input.value = '';
+    }
+});
+document.getElementById('valorBF').addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    if (!v) { this.value = ''; return; }
+    this.value = (parseInt(v)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
+});
+
+// ── Busca CEP por logradouro (ViaCEP) ─────────────────────────────
+document.getElementById('btnBuscarCep').addEventListener('click', function() {
+    new bootstrap.Modal(document.getElementById('modalBuscarCep')).show();
+});
+document.getElementById('btnConfirmarBuscaCep').addEventListener('click', function() {
+    const logradouro = document.getElementById('inputBuscarLogradouro').value.trim();
+    if (!logradouro) return;
+    const res = document.getElementById('resultadoBuscaCep');
+    res.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Buscando...</div>';
+    const correiosUrl = `https://buscacepinter.correios.com.br/app/endereco/index.php`;
+    const fallbackHtml = `<div class="alert alert-info small mt-2">
+        <i class="fas fa-external-link-alt"></i>
+        Também pode buscar pelo site oficial dos Correios:
+        <a href="${correiosUrl}" target="_blank" class="alert-link">Buscar CEP nos Correios</a>
+    </div>`;
+
+    fetch(`https://viacep.com.br/ws/RO/Ji-Parana/${encodeURIComponent(logradouro)}/json/`)
+        .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        })
+        .then(dados => {
+            if (!Array.isArray(dados) || dados.length === 0) {
+                res.innerHTML = '<div class="alert alert-warning">Nenhum endereço encontrado para Ji-Paraná/RO. Tente palavras diferentes ou use o link abaixo.</div>' + fallbackHtml;
+                return;
+            }
+            res.innerHTML = '<p class="small text-muted mb-2">Clique para selecionar:</p>' +
+                dados.map(d => `
+                <div class="list-group-item list-group-item-action p-2 mb-1 border rounded resultado-cep" style="cursor:pointer"
+                     data-cep="${d.cep}" data-logradouro="${d.logradouro}">
+                    <strong>${d.logradouro}</strong><br>
+                    <small class="text-muted">CEP: ${d.cep} · ${d.bairro || ''}</small>
+                </div>`).join('') + fallbackHtml;
+            document.querySelectorAll('.resultado-cep').forEach(el => {
+                el.addEventListener('click', function() {
+                    document.getElementById('cep').value = this.dataset.cep;
+                    const end = document.querySelector('input[name="endereco"]');
+                    if (end && !end.value) end.value = this.dataset.logradouro;
+                    bootstrap.Modal.getInstance(document.getElementById('modalBuscarCep')).hide();
+                });
+            });
+        })
+        .catch(err => {
+            res.innerHTML = `<div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                Não foi possível buscar via ViaCEP. Use o link abaixo para buscar o CEP diretamente nos Correios.
+            </div>` + fallbackHtml;
+        });
+});
+document.getElementById('inputBuscarLogradouro').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('btnConfirmarBuscaCep').click();
+});
+
+// ── Composição familiar ────────────────────────────────────────────
+function adicionarMembro(nome='',idade='',vinculo='') {
+    const container = document.getElementById('composicaoFamiliar');
+    const div = document.createElement('div');
+    div.className = 'row membro-familia mb-2';
+    div.innerHTML = `
+        <div class="col-md-4">
+            <input type="text" name="membro_nome[]" class="form-control" placeholder="Nome completo" value="${nome.replace(/"/g,'&quot;')}" required>
+        </div>
+        <div class="col-md-2">
+            <input type="number" name="membro_idade[]" class="form-control" placeholder="Idade" value="${idade}" required>
+        </div>
+        <div class="col-md-3">
+            <select name="membro_vinculo[]" class="form-select" required>
+                <option value="">Vínculo</option>
+                ${['Beneficiário(a)','Cônjuge','Filho(a)','Pai','Mãe','Avô/Avó','Neto(a)','Irmão(ã)','Outro']
+                    .map(v=>`<option${v===vinculo?' selected':''}>${v}</option>`).join('')}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-danger btn-sm remover-membro">Remover</button>
+        </div>`;
+    container.appendChild(div);
+    div.querySelector('.remover-membro').addEventListener('click', () => { div.remove(); calcularRPC(); });
+}
+
+document.getElementById('btnAdicionarMembro').addEventListener('click', () => adicionarMembro());
+document.querySelectorAll('.remover-membro').forEach(btn =>
+    btn.addEventListener('click', () => { btn.closest('.membro-familia').remove(); calcularRPC(); })
+);
+document.getElementById('btnUnipessoal').addEventListener('click', function() {
+    const container = document.getElementById('composicaoFamiliar');
+    [...container.querySelectorAll('.membro-familia')].slice(1).forEach(m => m.remove());
+    const nasc = document.getElementById('data_nascimento').value;
+    document.getElementById('membro_nome_0').value  = document.querySelector('input[name="nome"]').value;
+    document.getElementById('membro_idade_0').value = calcularIdade(nasc);
+    container.querySelector('select[name="membro_vinculo[]"]').value = 'Beneficiário(a)';
+    calcularRPC();
+});
+new MutationObserver(calcularRPC).observe(document.getElementById('composicaoFamiliar'), {childList:true,subtree:true});
+
+// ── Renda ──────────────────────────────────────────────────────────
+function mascaraMoeda(v) {
+    let n = v.replace(/\D/g,'');
+    if (!n) return '';
+    return (parseInt(n)/100).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.');
+}
+function desmascarar(v) {
+    if (!v) return 0;
+    return parseFloat(v.replace(/\./g,'').replace(',','.')) || 0;
+}
+function formatarMoeda(v) {
+    return v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function calcularTotalPessoas() {
+    return [...document.querySelectorAll('input[name="membro_nome[]"]')].filter(i=>i.value.trim()).length || 1;
+}
+
+let limiteRPC = 405.25;
+fetch('/api/configuracoes').then(r=>r.json()).then(d=>{ limiteRPC = d.limite_renda_per_capita; }).catch(()=>{});
+
+const rendaBrutaInput = document.getElementById('renda_bruta');
+rendaBrutaInput.addEventListener('input', function() {
+    const pos = this.selectionStart, antes = this.value.length;
+    this.value = mascaraMoeda(this.value);
+    const depois = this.value.length;
+    this.setSelectionRange(pos+(depois-antes), pos+(depois-antes));
+    calcularRPC();
+});
+
+function calcularRPC() {
+    const brutaPreenchida = document.getElementById('renda_bruta').value.trim() !== '';
+    const bruta = desmascarar(document.getElementById('renda_bruta').value);
+    const pessoas = calcularTotalPessoas();
+    const rpc = bruta / pessoas;
+    const rpcInput = document.getElementById('renda_per_capita');
+    // Renda 0,00 é válida (famílias sem nenhuma renda): exibe "0,00"
+    // desde que o campo tenha sido preenchido
+    rpcInput.value = brutaPreenchida ? mascaraMoeda(Math.round(rpc*100).toString()) || '0,00' : '';
+    verificarRPC();
+}
+
+function verificarRPC() {
+    const rpcInput = document.getElementById('renda_per_capita');
+    const avisoRPC = document.getElementById('avisoRPC');
+    const divExcecao = document.getElementById('divExcecao');
+    const excecao = document.getElementById('excecao_art64');
+    const rpc = desmascarar(rpcInput.value);
+    if (rpc > limiteRPC && rpc > 0) {
+        avisoRPC.innerHTML = `<div class="text-danger fw-bold mt-1 small">
+            <i class="fas fa-exclamation-triangle"></i>
+            R$ ${formatarMoeda(rpc)} ultrapassa o limite legal de R$ ${formatarMoeda(limiteRPC)} (Art. 34). Marque a exceção do Art. 64.
+        </div>`;
+        rpcInput.classList.add('is-invalid');
+        divExcecao?.classList.replace('border-warning','border-danger');
+    } else if (rpcInput.value.trim() !== '') {
+        avisoRPC.innerHTML = `<div class="text-success mt-1 small"><i class="fas fa-check-circle"></i> Dentro do critério (limite: R$ ${formatarMoeda(limiteRPC)}).</div>`;
+        rpcInput.classList.remove('is-invalid');
+        rpcInput.classList.add('is-valid');
+        if (!excecao?.checked) divExcecao?.classList.replace('border-danger','border-warning');
+    } else {
+        avisoRPC.innerHTML = '';
+        rpcInput.classList.remove('is-invalid','is-valid');
+    }
+}
+
+document.getElementById('excecao_art64')?.addEventListener('change', function() {
+    const caixa = document.getElementById('divExcecao');
+    const parecer = document.getElementById('parecerTexto');
+    if (this.checked) {
+        caixa.classList.replace('border-warning','border-danger');
+        caixa.classList.replace('bg-warning','bg-danger');
+        } else {
+        caixa.classList.replace('border-danger','border-warning');
+        caixa.classList.replace('bg-danger','bg-warning');
+    }
+});
+
+// ── Validação CPF ──────────────────────────────────────────────────
+function validarCPF(cpf) {
+    cpf = cpf.replace(/\D/g,'');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let s=0; for(let i=0;i<9;i++) s+=parseInt(cpf[i])*(10-i);
+    let r=(s*10)%11; if(r===10)r=0; if(r!==parseInt(cpf[9])) return false;
+    s=0; for(let i=0;i<10;i++) s+=parseInt(cpf[i])*(11-i);
+    r=(s*10)%11; if(r===10)r=0; return r===parseInt(cpf[10]);
+}
+
+document.getElementById('cpf').addEventListener('blur', function() {
+    const limpo = this.value.replace(/\D/g,'');
+    if (limpo.length !== 11) return;
+    if (!validarCPF(this.value)) {
+        document.getElementById('alertaCpf').innerHTML = '<div class="alert alert-danger mt-2 py-1 small">❌ CPF inválido!</div>';
+        this.classList.add('is-invalid');
+        return;
+    }
+    this.classList.remove('is-invalid');
+    fetch(`/api/verificar_cpf/${limpo}`)
+        .then(r=>r.json())
+        .then(data => {
+            const div = document.getElementById('alertaCpf');
+            if (!data.valido) { div.innerHTML='<div class="alert alert-danger mt-2 py-1 small">❌ CPF inválido!</div>'; return; }
+            // Datas das entregas anteriores como links (abrem a solicitação em nova aba)
+            const linksEntregas = (data.entregas || [])
+                .map(e => `<a href="/ver_solicitacao/${e.id}" target="_blank" class="alert-link" title="Abrir solicitação #${e.id} em nova aba">${e.data_entrega || '#' + e.id}</a>`)
+                .join(', ');
+            const historicoHtml = linksEntregas ? `<br>📋 Entregas anteriores: ${linksEntregas}` : '';
+            if (data.alerta==='vermelho') {
+                div.innerHTML=`<div class="alert alert-danger mt-2 py-1 small">🚨 ${data.total_recebido} cesta(s) recebida(s). Última há ${data.dias_desde_ultima} dia(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}${historicoHtml}</div>`;
+            } else if (data.alerta==='amarelo') {
+                div.innerHTML=`<div class="alert alert-warning mt-2 py-1 small">⚠️ ${data.total_recebido} cesta(s) recebida(s). ${data.pendente?'⚠️ Solicitação em andamento!':''}${historicoHtml}</div>`;
+            } else {
+                div.innerHTML='<div class="alert alert-success mt-2 py-1 small">✅ Primeira solicitação para este CPF.</div>';
+            }
+        }).catch(()=>{});
+});
+
+// ── Revisão e envio ────────────────────────────────────────────────
+document.getElementById('btnRevisar').addEventListener('click', function() {
+    const form = document.getElementById('solicitacaoForm');
+
+    // Validar passo 5 (parecer)
+    const pane5 = document.getElementById('pane-5');
+    const obrigatorios = pane5.querySelectorAll('input[required],select[required],textarea[required]');
+    let ok = true;
+    obrigatorios.forEach(c=>{ if(!c.value.trim()){ c.classList.add('is-invalid'); ok=false; } });
+    if (!ok) return;
+
+    const rpcValor = desmascarar(document.getElementById('renda_per_capita').value);
+    // Renda 0,00 é aceita (famílias sem renda) — bloqueia apenas se o campo
+    // não foi preenchido
+    if (document.getElementById('renda_bruta').value.trim() === '') {
+        alert('⚠️ Volte ao Passo 4 e preencha a Renda Familiar (digite 0,00 se a família não possui renda).');
+        irParaStep(4); return;
+    }
+    const excecao = document.getElementById('excecao_art64');
+    if (rpcValor > limiteRPC && !excecao?.checked) {
+        alert(`⚠️ Renda per capita (R$ ${formatarMoeda(rpcValor)}) ultrapassa o limite. Marque a exceção do Art. 64.`);
+        return;
+    }
+    if (excecao?.checked && quillParecer.getText().trim().length < 20) {
+        document.getElementById('quillParecer').classList.add('is-invalid');
+        quillParecer.focus();
+        alert('⚠️ O Parecer Técnico é obrigatório ao marcar o Art. 64.'); return;
+    }
+
+    function fmtData(iso) {
+        if(!iso) return 'Não informado';
+        const p=iso.split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso;
+    }
+    const nomes = [...document.querySelectorAll('input[name="membro_nome[]"]')].map(i=>i.value).filter(v=>v.trim());
+    const idades= [...document.querySelectorAll('input[name="membro_idade[]"]')].map(i=>i.value);
+    const vinculos=[...document.querySelectorAll('select[name="membro_vinculo[]"]')].map(s=>s.value);
+    const vuls  = [...document.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c=>c.value).join(', ') || 'Nenhuma';
+    const servs = [...document.querySelectorAll('input[name="servicos_suas"]:checked')].map(c=>c.value).join(', ') || 'Nenhum';
+    const excecaoHtml = excecao?.checked
+        ? `<div class="alert alert-danger py-2"><i class="fas fa-exclamation-triangle"></i> <strong>Concessão com base no Art. 64 — Lei Municipal nº 3.603/2022</strong></div>` : '';
+
+    document.getElementById('conteudoRevisao').innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><strong>Dados Pessoais</strong></div>
+                    <div class="card-body">
+                        <p><strong>Nome:</strong> ${document.querySelector('input[name="nome"]').value}</p>
+                        <p><strong>CPF:</strong> ${document.getElementById('cpf').value}</p>
+                        <p><strong>Nascimento:</strong> ${fmtData(document.querySelector('input[name="data_nascimento"]').value)}</p>
+                        <p><strong>Telefone:</strong> ${document.querySelector('input[name="telefone"]').value}</p>
+                        <p><strong>E-mail:</strong> ${document.querySelector('input[name="email"]').value || '—'}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><strong>Endereço</strong></div>
+                    <div class="card-body">
+                        <p><strong>Logradouro:</strong> ${document.querySelector('input[name="endereco"]').value}, ${document.querySelector('input[name="numero"]').value}</p>
+                        <p><strong>Bairro:</strong> ${document.getElementById('bairro').value}</p>
+                        <p><strong>CRAS:</strong> ${document.getElementById('cras').value}</p>
+                        <p><strong>Data Escuta:</strong> ${fmtData(document.getElementById('data_escuta').value)}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><strong>Composição Familiar (${nomes.length} pessoa(s))</strong></div>
+                    <div class="card-body p-2">
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th>Nome</th><th>Idade</th><th>Vínculo</th></tr></thead>
+                            <tbody>${nomes.map((n,i)=>`<tr><td>${n}</td><td>${idades[i]||''}</td><td>${vinculos[i]||''}</td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><strong>Renda e Benefícios</strong></div>
+                    <div class="card-body">
+                        <p><strong>Renda Familiar:</strong> R$ ${document.getElementById('renda_bruta').value}</p>
+                        <p><strong>Renda Per Capita:</strong> R$ ${document.getElementById('renda_per_capita').value}</p>
+                        <p><strong>Benefícios:</strong> ${document.querySelector('select[name="beneficios"]').value}${document.getElementById('selectBeneficios').value==='Bolsa Família'?' — R$ '+document.getElementById('valorBF').value:''}</p>
+                        <p><strong>Vulnerabilidades:</strong> ${vuls}</p>
+                        <p><strong>Serviços SUAS:</strong> ${servs}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header"><strong>Parecer Técnico</strong></div>
+            <div class="card-body">${quillParecer.root.innerHTML}</div>
+        </div>
+        ${excecaoHtml}
+        ${document.getElementById('visita_domiciliar')?.checked ? '<div class="alert alert-info py-2"><i class="fas fa-home"></i> <strong>Visita domiciliar solicitada</strong> para averiguação das condições relatadas.</div>' : ''}
+        <div class="alert alert-info small">
+            <i class="fas fa-info-circle"></i>
+            Após confirmar, a solicitação será salva e um PDF poderá ser gerado.
+        </div>`;
+
+    new bootstrap.Modal(document.getElementById('modalRevisao')).show();
+});
+
+document.getElementById('btnConfirmarSalvar').addEventListener('click', function() {
+    // Trava contra duplo clique / duplo toque: desabilita assim que o
+    // primeiro clique é processado, antes de qualquer outra coisa, para
+    // que cliques extras (rede lenta, app "acordando" no Render) sejam
+    // ignorados em vez de enviar o formulário duas vezes.
+    if (this.disabled) return;
+    this.disabled = true;
+    const textoOriginal = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+    // Trava o autosave a partir daqui: se o servidor demorar a responder
+    // (ex.: Render "acordando"), o setInterval de 10s ou algum evento de
+    // digitação não pode ressuscitar no localStorage os dados de uma
+    // solicitação que já foi enviada com sucesso.
+    envioEmAndamento = true;
+
+    try {
+        const rb  = document.getElementById('renda_bruta');
+        const rpc = document.getElementById('renda_per_capita');
+        if (rb)  rb.value  = desmascarar(rb.value).toFixed(2);
+        if (rpc) rpc.value = desmascarar(rpc.value).toFixed(2);
+        localStorage.removeItem(RASCUNHO_KEY); // limpa antes de enviar
+        document.getElementById('solicitacaoForm').submit();
+    } catch (e) {
+        // Se algo impedir o envio, reabilita o botão e o autosave para o usuário tentar de novo
+        envioEmAndamento = false;
+        this.disabled = false;
+        this.innerHTML = textoOriginal;
+    }
+});
+
+// ── Rascunho automático (localStorage) ────────────────────────────
+// Salva os dados do formulário a cada 10 segundos e ao digitar
+// para evitar perda se o servidor dormir ou a página recarregar.
+
+const RASCUNHO_KEY = 'rascunho_solicitacao_v2';
+const form = document.getElementById('solicitacaoForm');
+
+// Fica true a partir do clique em "Confirmar e Salvar", impedindo que o
+// autosave (setInterval ou eventos de digitação) grave de novo um
+// rascunho que já foi enviado com sucesso, caso o servidor demore a
+// responder (ex.: Render "acordando").
+let envioEmAndamento = false;
+
+// Campos de texto/select simples a salvar
+const CAMPOS_SIMPLES = [
+    'nome','cpf','data_nascimento','telefone','email',
+    'endereco','numero','complemento','bairro','cep','referencia','cras',
+    'data_escuta','renda_bruta','renda_per_capita','beneficios','valor_bolsa_familia'
+];
+
+function salvarRascunho() {
+    if (envioEmAndamento) return;
+    try {
+        const dados = {};
+        CAMPOS_SIMPLES.forEach(nome => {
+            const el = form.querySelector(`[name="${nome}"]`);
+            if (el) dados[nome] = el.value;
+        });
+        dados.parecer         = quillParecer.root.innerHTML;
+        dados.vulnerabilidade = [...form.querySelectorAll('input[name="vulnerabilidade"]:checked')].map(c => c.value);
+        dados.servicos_suas   = [...form.querySelectorAll('input[name="servicos_suas"]:checked')].map(c => c.value);
+        dados.excecao_art64     = form.querySelector('#excecao_art64')?.checked || false;
+        dados.visita_domiciliar = form.querySelector('#visita_domiciliar')?.checked || false;
+        localStorage.setItem(RASCUNHO_KEY, JSON.stringify(dados));
+    } catch(e) {}
+}
+
+function restaurarRascunho() {
+    try {
+        const raw = localStorage.getItem(RASCUNHO_KEY);
+        if (!raw) return;
+        const dados = JSON.parse(raw);
+        let algumCampo = false;
+
+        CAMPOS_SIMPLES.forEach(nome => {
+            if (!dados[nome]) return;
+            const el = form.querySelector(`[name="${nome}"]`);
+            if (el && !el.value) { el.value = dados[nome]; algumCampo = true; }
+        });
+        if (dados.vulnerabilidade?.length) {
+            dados.vulnerabilidade.forEach(v => {
+                const cb = form.querySelector(`input[name="vulnerabilidade"][value="${v}"]`);
+                if (cb) { cb.checked = true; algumCampo = true; }
+            });
+        }
+        if (dados.servicos_suas?.length) {
+            dados.servicos_suas.forEach(v => {
+                const cb = form.querySelector(`input[name="servicos_suas"][value="${v}"]`);
+                if (cb) { cb.checked = true; algumCampo = true; }
+            });
+        }
+        if (dados.parecer && dados.parecer !== '<p><br></p>') {
+            quillParecer.root.innerHTML = dados.parecer;
+            document.getElementById('parecerTexto').value = dados.parecer;
+            algumCampo = true;
+        }
+        if (dados.excecao_art64) {
+            const cb = form.querySelector('#excecao_art64');
+            if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); algumCampo = true; }
+        }
+        if (dados.visita_domiciliar) {
+            const cb = form.querySelector('#visita_domiciliar');
+            if (cb) { cb.checked = true; algumCampo = true; }
+        }
+        // Reativa campo valor BF se benefício era Bolsa Família
+        const selBen = form.querySelector('#selectBeneficios');
+        if (selBen && selBen.value === 'Bolsa Família') {
+            selBen.dispatchEvent(new Event('change'));
+        }
+
+        if (algumCampo) {
+            // Sem botão de fechar (X) genérico: o usuário precisa escolher
+            // explicitamente "Continuar" ou "Descartar" — um fechamento
+            // acidental pelo X deixaria o rascunho salvo sem forma visível
+            // de descartá-lo nesta tela.
+            const aviso = document.createElement('div');
+            aviso.className = 'alert alert-info mb-3 alert-persistente';
+            aviso.innerHTML = `<i class="fas fa-history"></i> <strong>Rascunho restaurado.</strong> Os dados da última solicitação incompleta foram recuperados.
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="btnManterRascunho">
+                        <i class="fas fa-check"></i> Continuar preenchendo
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" id="btnLimparRascunho">
+                        <i class="fas fa-trash"></i> Descartar rascunho
+                    </button>
+                </div>`;
+            form.prepend(aviso);
+            document.getElementById('btnManterRascunho')?.addEventListener('click', () => {
+                aviso.remove();
+            });
+            document.getElementById('btnLimparRascunho')?.addEventListener('click', () => {
+                localStorage.removeItem(RASCUNHO_KEY);
+                // Recarrega a página: os campos já restaurados no formulário
+                // continuam preenchidos e o autosave (a cada 10s ou ao digitar)
+                // gravaria o rascunho de volta no localStorage se não recarregasse.
+                location.reload();
+            });
+        }
+    } catch(e) {}
+}
+
+// Salva ao digitar/mudar qualquer campo
+form.addEventListener('input',  salvarRascunho);
+form.addEventListener('change', salvarRascunho);
+
+// Salva a cada 10 segundos
+setInterval(salvarRascunho, 10000);
+
+// Apaga rascunho ao enviar com sucesso
+form.addEventListener('submit', () => localStorage.removeItem(RASCUNHO_KEY));
+
+// Restaura ao carregar a página
+restaurarRascunho();
+
+}); // fim DOMContentLoaded
+
+// ── Quill (fora do DOMContentLoaded pois precisa do script carregado) ──
+let quillParecer;
+document.addEventListener('DOMContentLoaded', function() {
+    quillParecer = new Quill('#quillParecer', {
+        theme: 'snow',
+        placeholder: 'Descreva detalhadamente a situação da família, motivos que justificam a concessão da cesta básica, histórico de atendimentos, etc.',
+        modules: {
+            toolbar: [
+                ['bold', 'italic', 'underline'],
+                [{ 'align': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                ['clean']
+            ]
+        }
+    });
+
+    // Sincroniza HTML com input hidden ao digitar
+    quillParecer.on('text-change', function() {
+        document.getElementById('parecerTexto').value = quillParecer.root.innerHTML;
+        salvarRascunho();
+    });
+
+    // Garante sincronização antes do submit
+    document.getElementById('solicitacaoForm').addEventListener('submit', function() {
+        document.getElementById('parecerTexto').value = quillParecer.root.innerHTML;
+    }, true);
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+{% endblock %}

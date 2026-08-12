@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-sliders-h text-primary"></i> Configurações do Sistema
+            </h2>
+        </div>
+
+        {% if erro %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ erro }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if sucesso %}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            {{ sucesso }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Card Salário Mínimo -->
+        <div class="card border-primary mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-dollar-sign"></i> Salário Mínimo Nacional
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center mb-3">
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="text-muted small">Valor Atual</div>
+                            <div class="fs-3 fw-bold text-primary">R$ {{ "%.2f"|format(salario_minimo) }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="text-muted small">Limite Renda Per Capita (1/4)</div>
+                            <div class="fs-3 fw-bold text-success">R$ {{ "%.2f"|format(limite_rpc) }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-warning bg-opacity-10 border border-warning rounded">
+                            <div class="text-muted small">Base Legal</div>
+                            <div class="fw-bold text-warning">Art. 34, §2º</div>
+                            <div class="small text-muted">Lei Municipal nº 3.603/2022</div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <form method="POST">
+                    <div class="row align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-edit"></i> Novo Valor do Salário Mínimo (R$)
+                            </label>
+                            <input type="number" step="0.01" min="0.01" name="salario_minimo"
+                                   class="form-control form-control-lg"
+                                   value="{{ "%.2f"|format(salario_minimo) }}"
+                                   placeholder="ex: 1518.00" required>
+                            <small class="text-muted">Atualize sempre que houver reajuste do salário mínimo federal.</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded text-center" id="previewLimite">
+                                <div class="text-muted small">Novo limite RPC será</div>
+                                <div class="fw-bold text-success fs-5" id="previewValor">R$ {{ "%.2f"|format(limite_rpc) }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="fas fa-save"></i> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Histórico de configurações -->
+        <div class="card border-secondary">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="fas fa-history"></i> Configurações Registradas</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Chave</th>
+                                <th>Valor</th>
+                                <th>Descrição</th>
+                                <th>Última atualização</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in configs %}
+                            <tr>
+                                <td><code>{{ c[0] }}</code></td>
+                                <td><strong>{{ c[1] }}</strong></td>
+                                <td>{{ c[2] or '—' }}</td>
+                                <td>{{ c[3] or '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gerenciamento de Bairros por CRAS -->
+        <div class="card border-primary mt-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-map-marker-alt"></i> Bairros por CRAS</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Gerencie quais bairros pertencem a cada CRAS. Alterações refletem imediatamente nos formulários de cadastro e edição.
+                </p>
+
+                <!-- Adicionar novo bairro -->
+                <form action="/configuracoes/bairro/adicionar" method="POST" class="row g-2 align-items-end mb-4">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold"><i class="fas fa-plus-circle text-success"></i> Novo bairro</label>
+                        <input type="text" name="bairro" class="form-control" placeholder="Nome do bairro (em maiúsculas)" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">CRAS de destino</label>
+                        <select name="cras" class="form-select" required>
+                            <option value="">Selecione o CRAS</option>
+                            {% for c in lista_cras %}
+                            <option value="{{ c }}">{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> Adicionar Bairro
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Lista de bairros agrupados por CRAS -->
+                <div class="accordion" id="accordionBairros">
+                    {% for cras_nome, itens in bairros_com_id.items() %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed fw-bold" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#collapse_{{ loop.index }}">
+                                <i class="fas fa-building me-2 text-primary"></i>
+                                {{ cras_nome }}
+                                <span class="badge bg-primary ms-2">{{ itens|length }} bairros</span>
+                            </button>
+                        </h2>
+                        <div id="collapse_{{ loop.index }}" class="accordion-collapse collapse">
+                            <div class="accordion-body p-2">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <tbody>
+                                            {% for bid, bairro, volante in itens %}
+                                            <tr>
+                                                <td class="align-middle">
+                                                    {{ bairro }}
+                                                    {% if volante %}
+                                                    <span class="badge bg-info text-dark ms-1" title="A entrega das cestas deste bairro é feita pela Equipe Volante">
+                                                        <i class="fas fa-truck"></i> Equipe Volante
+                                                    </span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-end">
+                                                    <div class="d-inline-flex gap-1">
+                                                        <!-- Alternar entrega pela Equipe Volante -->
+                                                        <form action="/configuracoes/bairro/volante" method="POST" class="d-inline">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <button type="submit"
+                                                                    class="btn btn-sm {{ 'btn-info' if volante else 'btn-outline-info' }}"
+                                                                    title="{{ 'Voltar a entrega para o CRAS do território' if volante else 'Marcar entrega pela Equipe Volante (área rural)' }}"
+                                                                    onclick="return confirm('{{ 'Devolver a entrega de ' + bairro + ' ao CRAS do território?' if volante else 'Marcar ' + bairro + ' como entrega da Equipe Volante (área rural)?' }}')">
+                                                                <i class="fas fa-truck"></i>
+                                                            </button>
+                                                        </form>
+                                                        <!-- Mover para outro CRAS -->
+                                                        <form action="/configuracoes/bairro/mover" method="POST" class="d-inline-flex gap-1">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <select name="novo_cras" class="form-select form-select-sm" style="width:180px;" required>
+                                                                <option value="">Mover para...</option>
+                                                                {% for c in lista_cras %}
+                                                                {% if c != cras_nome %}
+                                                                <option value="{{ c }}">{{ c }}</option>
+                                                                {% endif %}
+                                                                {% endfor %}
+                                                            </select>
+                                                            <button type="submit" class="btn btn-sm btn-outline-primary"
+                                                                    onclick="return confirm('Mover {{ bairro }}?')">
+                                                                <i class="fas fa-exchange-alt"></i>
+                                                            </button>
+                                                        </form>
+                                                        <!-- Remover -->
+                                                        <form action="/configuracoes/bairro/remover" method="POST" class="d-inline">
+                                                            <input type="hidden" name="bairro_id" value="{{ bid }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                                    onclick="return confirm('Remover {{ bairro }} do sistema?')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Gerenciamento de Serviços da Secretaria -->
+        <div class="card border-primary mt-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-hands-helping"></i> Serviços da Secretaria</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Serviços além de CRAS/CREAS/Equipe Volante (CCVB, Casa da Mulher, acolhimento, PROCAD-SUAS,
+                    ACESSUAS, etc.). Usados no cadastro de "Técnico de Serviço" e para marcar de qual serviço
+                    são as fotos em Fotos Quadrimestral.
+                </p>
+
+                <!-- Adicionar novo serviço -->
+                <form action="/configuracoes/servico/adicionar" method="POST" class="row g-2 align-items-end mb-4">
+                    <div class="col-md-9">
+                        <label class="form-label fw-bold"><i class="fas fa-plus-circle text-success"></i> Novo serviço</label>
+                        <input type="text" name="nome" class="form-control" placeholder="Nome do serviço" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> Adicionar Serviço
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Lista de serviços -->
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <tbody>
+                            {% for sid, snome in servicos %}
+                            <tr>
+                                <td class="align-middle" style="width:60%;">
+                                    <form action="/configuracoes/servico/renomear" method="POST" class="d-inline-flex gap-1 w-100">
+                                        <input type="hidden" name="servico_id" value="{{ sid }}">
+                                        <input type="text" name="novo_nome" value="{{ snome }}" class="form-control form-control-sm">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salvar novo nome">
+                                            <i class="fas fa-save"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                <td class="text-end align-middle">
+                                    <form action="/configuracoes/servico/remover" method="POST" class="d-inline">
+                                        <input type="hidden" name="servico_id" value="{{ sid }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                onclick="return confirm('Remover o serviço \'{{ snome }}\' da lista? Usuários e registros que já usam esse nome não são afetados.')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup -->
+        <div class="card border-success mt-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-database"></i> Backup dos Dados</h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <p class="mb-1">O backup automático é enviado por e-mail <strong>todo dia às 8h da manhã</strong> (horário de Rondônia).</p>
+                        <p class="mb-1 text-muted small">
+                            <i class="fas fa-envelope"></i>
+                            Enviado de <strong>sistema.cestas.semasf@gmail.com</strong> para o mesmo endereço.
+                        </p>
+                        <p class="mb-0 text-muted small">
+                            <i class="fas fa-info-circle"></i>
+                            O arquivo é compactado (.json.gz). Para abrir, descompacte e abra com qualquer editor de texto.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="/api/backup" class="btn btn-success"
+                           onclick="return confirm('Enviar backup agora por e-mail?')">
+                            <i class="fas fa-paper-plane"></i> Enviar Backup Agora
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Preview do novo limite em tempo real
+    document.querySelector('input[name="salario_minimo"]').addEventListener('input', function() {
+        const val = parseFloat(this.value) || 0;
+        const limite = val / 4;
+        document.getElementById('previewValor').textContent = 'R$ ' + limite.toFixed(2);
+    });
+</script>
+{% endblock %}
+{% endblock %}

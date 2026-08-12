@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+.stat-card { border-left: 5px solid transparent; }
+.stat-card.total    { border-left-color: var(--semasf-blue); }
+.stat-card.entregue { border-left-color: var(--semasf-green); }
+.stat-card.pendente { border-left-color: var(--semasf-gold); }
+.stat-card.ausente  { border-left-color: #dc3545; }
+.stat-card.espera   { border-left-color: var(--semasf-navy); }
+.stat-card.alerta   { border-left-color: #dc3545; }
+.stat-icon { font-size: 2.4rem; opacity: 0.18; }
+.chart-container { position: relative; height: 280px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">
+            <i class="fas fa-chart-line" style="color:var(--semasf-blue)"></i>
+            Painel de Controle
+        </h2>
+        <small class="text-muted">Atualizado em {{ datetime.now().strftime('%d/%m/%Y %H:%M') }}</small>
+    </div>
+
+    <!-- ── Cards de tempo de espera (destaque) ── -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card stat-card espera h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Tempo Médio de Espera da Concessão</div>
+                        <div class="fs-2 fw-bold" style="color:var(--semasf-navy)">
+                            {% if tempo_medio_espera is not none %}{{ tempo_medio_espera|round|int }} dias{% else %}—{% endif %}
+                        </div>
+                        <small class="text-muted">Entre a escuta e a concessão, considerando as solicitações já entregues</small>
+                    </div>
+                    <i class="fas fa-hourglass-half stat-icon" style="color:var(--semasf-navy)"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card stat-card alerta h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Escuta Mais Antiga Aguardando</div>
+                        <div class="fs-2 fw-bold text-danger">
+                            {% if escuta_mais_antiga %}{{ escuta_mais_antiga[2] }} dias{% else %}—{% endif %}
+                        </div>
+                        {% if escuta_mais_antiga %}
+                        <small class="text-muted">{{ escuta_mais_antiga[1] }} · </small>
+                        <a href="{{ url_for('escutas_aguardando') }}" class="small">Ver as 10 mais antigas <i class="fas fa-arrow-right"></i></a>
+                        {% else %}
+                        <small class="text-muted">Nenhuma escuta pendente de concessão</small>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-calendar-times stat-icon text-danger"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Cards de totais ── -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card stat-card total h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Total</div>
+                        <div class="fs-2 fw-bold" style="color:var(--semasf-blue)">{{ total_solicitacoes }}</div>
+                        <small class="text-muted">{{ total_canceladas }} canceladas (não incluídas)</small>
+                    </div>
+                    <i class="fas fa-folder-open stat-icon" style="color:var(--semasf-blue)"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card entregue h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Entregues</div>
+                        <div class="fs-2 fw-bold" style="color:var(--semasf-green)">{{ total_entregues }}</div>
+                    </div>
+                    <i class="fas fa-check-circle stat-icon" style="color:var(--semasf-green)"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card pendente h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Pendentes</div>
+                        <div class="fs-2 fw-bold" style="color:var(--semasf-gold)">{{ total_pendentes }}</div>
+                    </div>
+                    <i class="fas fa-clock stat-icon" style="color:var(--semasf-gold)"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card ausente h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Ausentes</div>
+                        <div class="fs-2 fw-bold text-danger">{{ total_ausentes }}</div>
+                    </div>
+                    <i class="fas fa-user-slash stat-icon text-danger"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Gráficos ── -->
+    <div class="row g-3 mb-4">
+
+        <!-- Pizza: status geral -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie"></i> Distribuição por Status
+                </div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <div class="chart-container w-100">
+                        <canvas id="graficoPizza"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Barras: por CRAS -->
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i> Solicitações por CRAS
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="graficoCras"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Linha: evolução mensal -->
+    {% if por_mes %}
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-line"></i> Evolução Mensal (últimos 6 meses)
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height:220px">
+                        <canvas id="graficoMensal"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Ações rápidas -->
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body py-4">
+                    <i class="fas fa-plus-circle fa-2x mb-2" style="color:var(--semasf-green)"></i>
+                    <h6 class="fw-bold">Nova Solicitação</h6>
+                    <a href="/" class="btn btn-success btn-sm">Abrir formulário</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body py-4">
+                    <i class="fas fa-chart-bar fa-2x mb-2" style="color:var(--semasf-blue)"></i>
+                    <h6 class="fw-bold">Relatório Mensal</h6>
+                    <a href="/relatorio" class="btn btn-primary btn-sm">Ver relatório</a>
+                </div>
+            </div>
+        </div>
+        {% if current_user.perfil == 'admin' %}
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body py-4">
+                    <i class="fas fa-users-cog fa-2x mb-2" style="color:var(--semasf-navy)"></i>
+                    <h6 class="fw-bold">Gerenciar Usuários</h6>
+                    <a href="/usuarios" class="btn btn-secondary btn-sm">Acessar</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.font.family = "'Segoe UI', sans-serif";
+Chart.defaults.font.size   = 13;
+
+const navyColor  = '#1b2f5e';
+const greenColor = '#2d8b38';
+const blueColor  = '#2d6eb5';
+const goldColor  = '#f5a61e';
+const redColor   = '#dc3545';
+
+// ── Pizza: status ──
+new Chart(document.getElementById('graficoPizza'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Entregues', 'Pendentes', 'Ausentes'],
+        datasets: [{
+            data: [{{ total_entregues }}, {{ total_pendentes }}, {{ total_ausentes }}],
+            backgroundColor: [greenColor, goldColor, redColor],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+                callbacks: {
+                    // "Ausentes" é acumulativo (pode contar mais de uma vez por
+                    // solicitação), então o percentual usa a soma das 3 fatias
+                    // como base, não o total de solicitações.
+                    label: ctx => {
+                        const somaFatias = {{ total_entregues }} + {{ total_pendentes }} + {{ total_ausentes }};
+                        const pct = somaFatias ? Math.round(ctx.parsed / somaFatias * 100) : 0;
+                        return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                    }
+                }
+            }
+        }
+    }
+});
+
+// ── Barras: por CRAS ──
+const crasDados = {{ por_cras | tojson }};
+new Chart(document.getElementById('graficoCras'), {
+    type: 'bar',
+    data: {
+        labels: crasDados.map(r => r[0] || 'Sem CRAS'),
+        datasets: [
+            {
+                label: 'Total',
+                data: crasDados.map(r => r[1]),
+                backgroundColor: blueColor + 'cc'
+            },
+            {
+                label: 'Entregues',
+                data: crasDados.map(r => r[2]),
+                backgroundColor: greenColor + 'cc'
+            },
+            {
+                label: 'Ausentes',
+                data: crasDados.map(r => r[3]),
+                backgroundColor: redColor + 'cc'
+            },
+            {
+                label: 'Entregues após tentativa',
+                data: crasDados.map(r => r[4]),
+                backgroundColor: goldColor + 'cc'
+            },
+            {
+                label: 'Canceladas',
+                data: crasDados.map(r => r[5]),
+                backgroundColor: '#6c757dcc'
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+            x: { grid: { display: false } },
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+
+// ── Linha: mensal ──
+{% if por_mes %}
+const mesesDados = {{ por_mes | tojson }};
+new Chart(document.getElementById('graficoMensal'), {
+    type: 'line',
+    data: {
+        labels: mesesDados.map(r => r[0]),
+        datasets: [{
+            label: 'Solicitações',
+            data: mesesDados.map(r => r[1]),
+            borderColor: navyColor,
+            backgroundColor: navyColor + '22',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointBackgroundColor: navyColor,
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+{% endif %}
+</script>
+{% endblock %}
