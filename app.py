@@ -961,7 +961,10 @@ def solicitacoes(pagina=1):
     order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
 
     busca_nome              = request.args.get('busca_nome', '').strip()
-    busca_status            = request.args.get('busca_status', '').strip()
+    # Sem filtro de status escolhido, mostra só "Cadastrada" (as pendentes de
+    # entrega) — Entregue/Ausente/Cancelada só aparecem se o técnico
+    # selecionar explicitamente no filtro (inclusive escolhendo "Todos").
+    busca_status            = request.args.get('busca_status', 'Cadastrada').strip()
     busca_cpf               = request.args.get('busca_cpf', '').strip()
     busca_unidade           = request.args.get('busca_unidade', '').strip()
     busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
@@ -984,6 +987,13 @@ def solicitacoes(pagina=1):
 
     if busca_status == 'Visita':
         filtros.append("s.visita_domiciliar = TRUE")
+    elif busca_status == 'Cadastrada':
+        # Visita Domiciliar é um marcador independente do status (o técnico
+        # condiciona a entrega a uma visita por sinais de inconsistência no
+        # relato) — uma solicitação sinalizada continua aparecendo na visão
+        # padrão mesmo que o status dela não seja mais 'Cadastrada'.
+        filtros.append("(s.status = %s OR s.visita_domiciliar = TRUE)")
+        params.append(busca_status)
     elif busca_status:
         filtros.append("s.status = %s")
         params.append(busca_status)
