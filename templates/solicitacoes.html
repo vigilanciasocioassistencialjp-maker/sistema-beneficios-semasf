@@ -127,19 +127,36 @@
         </div>
     </div>
 
+    {% macro th_sort(campo, rotulo, ordenar_por, ordenar_dir, filtro_args) %}
+    {% set nova_dir = 'desc' if (ordenar_por == campo and ordenar_dir == 'asc') else 'asc' %}
+    <th>
+        <a href="{{ url_for('solicitacoes', pagina=1, ordenar_por=campo, ordenar_dir=nova_dir, **filtro_args) }}"
+           class="text-white text-decoration-none d-inline-flex align-items-center gap-1"
+           title="Ordenar por {{ rotulo }}">
+            {{ rotulo }}
+            {% if ordenar_por == campo %}
+            <i class="fas fa-sort-{{ 'up' if ordenar_dir == 'asc' else 'down' }}"></i>
+            {% else %}
+            <i class="fas fa-sort" style="opacity:.4;"></i>
+            {% endif %}
+        </a>
+    </th>
+    {% endmacro %}
+    {% set filtro_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
+
     <!-- Tabela -->
     <div class="table-responsive">
         <table class="table table-striped table-hover align-middle" id="tabelaSolicitacoes">
             <thead class="table-dark">
                 <tr>
-                    <th>ID</th>
-                    <th>Técnico</th>
-                    <th>Nome</th>
+                    {{ th_sort('id', 'ID', ordenar_por, ordenar_dir, filtro_args) }}
+                    {{ th_sort('tecnico', 'Técnico', ordenar_por, ordenar_dir, filtro_args) }}
+                    {{ th_sort('nome', 'Nome', ordenar_por, ordenar_dir, filtro_args) }}
                     <th>CPF</th>
-                    <th>Bairro</th>
-                    <th>Unidade</th>
-                    <th>Data Solicitação</th>
-                    <th>Status</th>
+                    {{ th_sort('bairro', 'Bairro', ordenar_por, ordenar_dir, filtro_args) }}
+                    {{ th_sort('unidade', 'Unidade', ordenar_por, ordenar_dir, filtro_args) }}
+                    {{ th_sort('data_solicitacao', 'Data Solicitação', ordenar_por, ordenar_dir, filtro_args) }}
+                    {{ th_sort('status', 'Status', ordenar_por, ordenar_dir, filtro_args) }}
                     <th>Marcadores</th>
                     <th style="width: 180px">Ações</th>
                 </tr>
@@ -223,7 +240,7 @@
     {% if total_paginas > 1 %}
     <nav class="mt-4">
         <ul class="pagination justify-content-center">
-            {% set pg_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
+            {% set pg_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim, 'ordenar_por': ordenar_por, 'ordenar_dir': ordenar_dir} %}
             {% if pagina_atual > 1 %}
             <li class="page-item">
                 <a class="page-link" href="{{ url_for('solicitacoes', pagina=pagina_atual-1, **pg_args) }}">

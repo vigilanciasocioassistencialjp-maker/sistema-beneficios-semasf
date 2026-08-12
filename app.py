@@ -927,12 +927,38 @@ def inicio():
 # LISTAR SOLICITAÇÕES (CPF DESCRIPTOGRAFADO)
 # =====================================================
 
+# Colunas em que a listagem de Solicitações pode ser ordenada ao clicar no
+# cabeçalho — chave usada na URL (?ordenar_por=) mapeada para a expressão SQL
+# real. data_solicitacao é TEXT em formato 'DD/MM/AAAA HH:MM:SS', então a
+# expressão reordena os pedaços para AAAAMMDD... antes de comparar, senão a
+# ordenação ficaria alfabética (dia) em vez de cronológica.
+COLUNAS_ORDENAVEIS_SOLICITACOES = {
+    'id': 's.id',
+    'tecnico': 's.tecnico',
+    'nome': 's.nome',
+    'bairro': 's.bairro',
+    'unidade': 's.cras',
+    'data_solicitacao': (
+        "(SUBSTRING(s.data_solicitacao, 7, 4) || SUBSTRING(s.data_solicitacao, 4, 2) "
+        "|| SUBSTRING(s.data_solicitacao, 1, 2) || SUBSTRING(s.data_solicitacao, 12, 8))"
+    ),
+    'status': 's.status',
+}
+
 @app.route("/solicitacoes")
 @app.route("/solicitacoes/<int:pagina>")
 @login_required
 def solicitacoes(pagina=1):
     registros_por_pagina = 20
     offset = (pagina - 1) * registros_por_pagina
+
+    ordenar_por = request.args.get('ordenar_por', 'data_solicitacao').strip()
+    ordenar_dir = request.args.get('ordenar_dir', 'asc').strip().lower()
+    if ordenar_por not in COLUNAS_ORDENAVEIS_SOLICITACOES:
+        ordenar_por = 'data_solicitacao'
+    if ordenar_dir not in ('asc', 'desc'):
+        ordenar_dir = 'asc'
+    order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
 
     busca_nome              = request.args.get('busca_nome', '').strip()
     busca_status            = request.args.get('busca_status', '').strip()
@@ -1017,7 +1043,7 @@ def solicitacoes(pagina=1):
         cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
-            f"{base_query} ORDER BY s.id DESC",
+            f"{base_query} ORDER BY {order_by_sql}",
             params
         )
         todos = cursor.fetchall()
@@ -1035,7 +1061,7 @@ def solicitacoes(pagina=1):
         total_registros = cursor.fetchone()[0]
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
-            f"{base_query} ORDER BY s.id DESC LIMIT %s OFFSET %s",
+            f"{base_query} ORDER BY {order_by_sql} LIMIT %s OFFSET %s",
             params + [registros_por_pagina, offset]
         )
         dados_raw = cursor.fetchall()
@@ -1058,6 +1084,8 @@ def solicitacoes(pagina=1):
         pagina_atual=pagina,
         total_paginas=total_paginas,
         total_registros=total_registros,
+        ordenar_por=ordenar_por,
+        ordenar_dir=ordenar_dir,
         busca_nome=busca_nome,
         busca_status=busca_status,
         busca_cpf=busca_cpf,
