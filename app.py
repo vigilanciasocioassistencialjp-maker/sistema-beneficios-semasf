@@ -509,14 +509,15 @@ def login():
         senha = request.form["senha"]
         conexao = get_db()
         cursor = conexao.cursor()
-        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email, acesso_atividades FROM usuarios WHERE usuario = %s", (usuario,))
+        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email, acesso_atividades, unidade_id FROM usuarios WHERE usuario = %s", (usuario,))
         dados = cursor.fetchone()
         cursor.close()
         conexao.close()
 
         if dados and bcrypt.checkpw(senha.encode('utf-8'), dados[1].encode('utf-8')):
             user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None,
-                            dados[5] if len(dados) > 5 else dados[0], dados[7] if len(dados) > 7 else False)
+                            dados[5] if len(dados) > 5 else dados[0], dados[7] if len(dados) > 7 else False,
+                            dados[8] if len(dados) > 8 else None)
             login_user(user, remember=False)
             session.permanent = True
             session['mostrar_modal_notif'] = True
@@ -801,6 +802,61 @@ def get_lista_servicos():
     return [r[0] for r in rows]
 
 # =====================================================
+# UNIDADES — fonte única de verdade pra unidade de lotação (fase 1 de
+# uma refatoração maior; ver plano em .claude/plans). Ainda não usadas
+# em nenhuma rota — só disponíveis pra próxima etapa da migração.
+# =====================================================
+
+def get_todas_unidades():
+    """Retorna todas as unidades (id, nome, categoria, tem_territorio,
+    servicos_ofertados), ordenadas por categoria e nome."""
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades ORDER BY categoria, nome"
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return rows
+
+def get_unidade_por_id(unidade_id):
+    """Retorna (id, nome, categoria, tem_territorio, servicos_ofertados)
+    da unidade com o id dado, ou None."""
+    if unidade_id is None:
+        return None
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades WHERE id = %s",
+            (unidade_id,)
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+def get_unidade_por_nome(nome):
+    """Retorna (id, nome, categoria, tem_territorio, servicos_ofertados)
+    da unidade com o nome dado, ou None."""
+    if not nome:
+        return None
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades WHERE nome = %s",
+            (nome,)
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+# =====================================================
 # PÁGINA PRINCIPAL - NOVA SOLICITAÇÃO
 # =====================================================
 
@@ -944,6 +1000,21 @@ COLUNAS_ORDENAVEIS_SOLICITACOES = {
     ),
     'status': 's.status',
 }
+
+# Rótulo de unidade a partir do perfil do técnico (u) / cras da solicitação
+# (s) — hoje esse mesmo CASE está duplicado (com divergências) em pelo
+# menos 3 lugares (dashboard, relatório, PDF). Ainda não usada em nenhuma
+# query — fica pronta pra próxima etapa da migração de unidades substituir
+# as cópias existentes. Requer JOIN "usuarios u ON s.tecnico = u.usuario"
+# (ou alias equivalente) e as tabelas terem os aliases "u"/"s".
+UNIDADE_CASE_SQL = (
+    "CASE "
+    "WHEN u.perfil = 'creas' THEN 'CREAS' "
+    "WHEN u.perfil = 'cras_volante' THEN 'EQUIPE VOLANTE' "
+    "WHEN u.perfil IN ('admin', 'gestor') THEN 'ADMINISTRAÇÃO' "
+    "ELSE COALESCE(NULLIF(u.cras, ''), s.cras, 'Não informado') "
+    "END"
+)
 
 @app.route("/solicitacoes")
 @app.route("/solicitacoes/<int:pagina>")
