@@ -29,6 +29,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 import io
+import zipfile
 import qrcode
 import secrets
 import logging
@@ -476,6 +477,22 @@ def formatar_data(data):
         logger.error(f"formatar_data: falha ao formatar '{data}': {e}")
     return data
 
+# Nomes completos dos serviços (cadastro/filtros/registros) continuam intactos
+# — este mapeamento só encurta o texto exibido nos cards da página Fotos
+# Quadrimestral, que ficavam confusos com nomes de serviço muito extensos.
+NOMES_CURTOS_SERVICO = {
+    'Instituição de Acolhimento Adélia Francisca Santana': 'Instituição Adélia Francisca',
+    'Instituição de Acolhimento Girassol': 'Instituição Girassol',
+    'Programa de Promoção do Acesso ao Mundo do Trabalho – ACESSUAS Trabalho': 'Acessuas Trabalho',
+    'Programa de Fortalecimento do Atendimento do Cadastro Único no Sistema Único de Assistência Social – PROCAD-SUAS': 'PROCAD-SUAS',
+    'Serviço de Acolhimento Familiar em Família Acolhedora para Crianças e Adolescentes': 'Família Acolhedora - Crianças e Adolescentes',
+    'Serviço de Acolhimento Familiar em Família Acolhedora para Pessoas Idosas': 'Família Acolhedora - Pessoa Idosa',
+}
+
+@app.template_filter('nome_curto_servico')
+def nome_curto_servico(nome):
+    return NOMES_CURTOS_SERVICO.get(nome, nome)
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = None
@@ -910,6 +927,24 @@ def inicio():
 # LISTAR SOLICITAÇÕES (CPF DESCRIPTOGRAFADO)
 # =====================================================
 
+# Colunas em que a listagem de Solicitações pode ser ordenada ao clicar no
+# cabeçalho — chave usada na URL (?ordenar_por=) mapeada para a expressão SQL
+# real. data_solicitacao é TEXT em formato 'DD/MM/AAAA HH:MM:SS', então a
+# expressão reordena os pedaços para AAAAMMDD... antes de comparar, senão a
+# ordenação ficaria alfabética (dia) em vez de cronológica.
+COLUNAS_ORDENAVEIS_SOLICITACOES = {
+    'id': 's.id',
+    'tecnico': 's.tecnico',
+    'nome': 's.nome',
+    'bairro': 's.bairro',
+    'unidade': 's.cras',
+    'data_solicitacao': (
+        "(SUBSTRING(s.data_solicitacao, 7, 4) || SUBSTRING(s.data_solicitacao, 4, 2) "
+        "|| SUBSTRING(s.data_solicitacao, 1, 2) || SUBSTRING(s.data_solicitacao, 12, 8))"
+    ),
+    'status': 's.status',
+}
+
 @app.route("/solicitacoes")
 @app.route("/solicitacoes/<int:pagina>")
 @login_required
@@ -917,8 +952,20 @@ def solicitacoes(pagina=1):
     registros_por_pagina = 20
     offset = (pagina - 1) * registros_por_pagina
 
+    ordenar_por = request.args.get('ordenar_por', 'data_solicitacao').strip()
+    ordenar_dir = request.args.get('ordenar_dir', 'asc').strip().lower()
+    if ordenar_por not in COLUNAS_ORDENAVEIS_SOLICITACOES:
+        ordenar_por = 'data_solicitacao'
+    if ordenar_dir not in ('asc', 'desc'):
+        ordenar_dir = 'asc'
+    order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
+
     busca_nome              = request.args.get('busca_nome', '').strip()
-    busca_status            = request.args.get('busca_status', '').strip()
+    # Sem filtro de status escolhido, mostra só Cadastrada + Ausente (ainda
+    # pendentes de ação) — Entregue/Cancelada só aparecem se o técnico
+    # selecionar explicitamente no filtro (inclusive escolhendo "Todos").
+    # Visita Domiciliar é um marcador à parte, sem relação com esse padrão.
+    busca_status            = request.args.get('busca_status', 'Pendentes').strip()
     busca_cpf               = request.args.get('busca_cpf', '').strip()
     busca_unidade           = request.args.get('busca_unidade', '').strip()
     busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
@@ -941,6 +988,8 @@ def solicitacoes(pagina=1):
 
     if busca_status == 'Visita':
         filtros.append("s.visita_domiciliar = TRUE")
+    elif busca_status == 'Pendentes':
+        filtros.append("s.status IN ('Cadastrada', 'Ausente')")
     elif busca_status:
         filtros.append("s.status = %s")
         params.append(busca_status)
@@ -1000,7 +1049,7 @@ def solicitacoes(pagina=1):
         cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
-            f"{base_query} ORDER BY s.id DESC",
+            f"{base_query} ORDER BY {order_by_sql}",
             params
         )
         todos = cursor.fetchall()
@@ -1018,7 +1067,7 @@ def solicitacoes(pagina=1):
         total_registros = cursor.fetchone()[0]
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
-            f"{base_query} ORDER BY s.id DESC LIMIT %s OFFSET %s",
+            f"{base_query} ORDER BY {order_by_sql} LIMIT %s OFFSET %s",
             params + [registros_por_pagina, offset]
         )
         dados_raw = cursor.fetchall()
@@ -1041,6 +1090,8 @@ def solicitacoes(pagina=1):
         pagina_atual=pagina,
         total_paginas=total_paginas,
         total_registros=total_registros,
+        ordenar_por=ordenar_por,
+        ordenar_dir=ordenar_dir,
         busca_nome=busca_nome,
         busca_status=busca_status,
         busca_cpf=busca_cpf,
@@ -2245,6 +2296,27 @@ def _url_foto(path):
 def _pode_gerenciar_atividade(criado_por):
     return current_user.perfil in ('admin', 'gestor') or criado_por == current_user.id
 
+def _quadrimestre_da_data(data_str):
+    """(ano, quadrimestre 1-3) a partir de uma data 'YYYY-MM-DD'. Convenção da
+    audiência pública: 1º=jan-abr, 2º=mai-ago, 3º=set-dez."""
+    try:
+        ano, mes, _ = data_str.split('-')
+        mes = int(mes)
+    except (ValueError, AttributeError):
+        return None, None
+    quadrimestre = 1 if mes <= 4 else (2 if mes <= 8 else 3)
+    return int(ano), quadrimestre
+
+def _periodo_do_quadrimestre(ano, quadrimestre):
+    faixas = {1: ('01-01', '04-30'), 2: ('05-01', '08-31'), 3: ('09-01', '12-31')}
+    inicio, fim = faixas.get(quadrimestre, faixas[1])
+    return f"{ano}-{inicio}", f"{ano}-{fim}"
+
+def _nome_arquivo_foto(servico, data_atividade, titulo, foto_id):
+    base = f"{servico or 'sem-servico'}_{data_atividade or ''}_{titulo or ''}"
+    base = _re.sub(r'[^A-Za-z0-9._-]+', '-', base).strip('-')
+    return f"{base}_{foto_id}.jpg"
+
 def _pode_acessar_atividades():
     """Admin/gestor sempre têm acesso; os demais perfis (cras/creas/
     cras_volante) só se tiverem a permissão extra 'acesso_atividades'
@@ -2261,19 +2333,41 @@ def atividades():
     periodo_inicio = request.args.get('periodo_inicio', '').strip()
     periodo_fim    = request.args.get('periodo_fim', '').strip()
     busca_servico  = request.args.get('busca_servico', '').strip()
+    quadrimestre   = request.args.get('quadrimestre', '').strip()
+    ano            = request.args.get('ano', '').strip()
+    ver_tudo       = request.args.get('tudo', '').strip() == '1'
 
-    filtros = []
-    params  = []
+    hoje = datetime.now(FUSO_RONDONIA)
+    ano_atual, quad_atual = _quadrimestre_da_data(hoje.strftime('%Y-%m-%d'))
+
+    if quadrimestre and ano:
+        # Atalho de quadrimestre tem prioridade sobre datas manuais
+        try:
+            periodo_inicio, periodo_fim = _periodo_do_quadrimestre(int(ano), int(quadrimestre))
+        except ValueError:
+            quadrimestre = ''
+    elif not periodo_inicio and not periodo_fim and not ver_tudo:
+        # Nenhum filtro informado (e não pediram "ver tudo"): cai no
+        # quadrimestre corrente por padrão
+        quadrimestre, ano = str(quad_atual), str(ano_atual)
+        periodo_inicio, periodo_fim = _periodo_do_quadrimestre(ano_atual, quad_atual)
+
+    filtros_periodo = []
+    params_periodo  = []
     if periodo_inicio:
-        filtros.append("a.data_atividade >= %s")
-        params.append(periodo_inicio)
+        filtros_periodo.append("a.data_atividade >= %s")
+        params_periodo.append(periodo_inicio)
     if periodo_fim:
-        filtros.append("a.data_atividade <= %s")
-        params.append(periodo_fim)
+        filtros_periodo.append("a.data_atividade <= %s")
+        params_periodo.append(periodo_fim)
+    where_periodo = ("WHERE " + " AND ".join(filtros_periodo)) if filtros_periodo else ""
+
+    filtros_lista = list(filtros_periodo)
+    params_lista  = list(params_periodo)
     if busca_servico:
-        filtros.append("a.servico = %s")
-        params.append(busca_servico)
-    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+        filtros_lista.append("a.servico = %s")
+        params_lista.append(busca_servico)
+    where_lista = ("WHERE " + " AND ".join(filtros_lista)) if filtros_lista else ""
 
     conexao = get_db()
     cursor = conexao.cursor()
@@ -2285,10 +2379,21 @@ def atividades():
                 WHERE f.atividade_id = a.id ORDER BY f.ordem, f.id LIMIT 1)
         FROM atividades_fotos a
         LEFT JOIN usuarios u ON a.criado_por = u.usuario
-        {where}
+        {where_lista}
         ORDER BY a.data_atividade DESC, a.id DESC
-    """, params)
+    """, params_lista)
     linhas = cursor.fetchall()
+
+    # Contagem de fotos por serviço dentro do PERÍODO (sem aplicar o filtro
+    # de serviço) — é o que alimenta o painel de resumo abaixo.
+    cursor.execute(f"""
+        SELECT a.servico, COUNT(f.id)
+        FROM atividades_fotos a
+        LEFT JOIN fotos_atividade f ON f.atividade_id = a.id
+        {where_periodo}
+        GROUP BY a.servico
+    """, params_periodo)
+    contagem_servico = {servico: total for servico, total in cursor.fetchall()}
     conexao.close()
 
     lista_atividades = []
@@ -2301,6 +2406,11 @@ def atividades():
         })
 
     lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
+    resumo_servicos = [
+        {'servico': u, 'num_fotos': contagem_servico.get(u, 0)}
+        for u in lista_unidades
+    ]
+    qtd_servicos_enviaram = sum(1 for r in resumo_servicos if r['num_fotos'] > 0)
 
     return render_template(
         "atividades.html",
@@ -2310,6 +2420,13 @@ def atividades():
         periodo_fim=periodo_fim,
         busca_servico=busca_servico,
         storage_configurado=storage_fotos.esta_configurado(),
+        quadrimestre=quadrimestre,
+        ano=ano,
+        anos_disponiveis=list(range(ano_atual - 1, ano_atual + 2)),
+        resumo_servicos=resumo_servicos,
+        qtd_servicos_enviaram=qtd_servicos_enviaram,
+        qtd_servicos_total=len(lista_unidades),
+        total_fotos_periodo=sum(contagem_servico.values()),
     )
 
 @app.route("/atividades/nova", methods=["GET", "POST"])
@@ -2584,6 +2701,129 @@ def excluir_foto_atividade(foto_id):
     logger.info(f"Foto #{foto_id} ('{path}') da atividade #{atividade_id} '{titulo}' excluída por {current_user.id}")
     flash('✅ Foto removida.', 'success')
     return redirect(url_for('editar_atividade', id=atividade_id))
+
+@app.route("/atividades/foto/<int:foto_id>/download")
+@login_required
+def download_foto_atividade(foto_id):
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        SELECT f.storage_path, a.servico, a.data_atividade, a.titulo
+        FROM fotos_atividade f JOIN atividades_fotos a ON f.atividade_id = a.id
+        WHERE f.id = %s
+    """, (foto_id,))
+    row = cursor.fetchone()
+    conexao.close()
+    if not row:
+        return "Foto não encontrada", 404
+    path, servico, data_ativ, titulo = row
+
+    try:
+        dados = storage_fotos.baixar_foto(path)
+    except Exception as e:
+        logger.error(f"download_foto_atividade: falha ao baixar '{path}': {e}")
+        flash('❌ Não foi possível baixar esta foto agora. Tente novamente.', 'danger')
+        return redirect(request.referrer or url_for('atividades'))
+
+    nome = _nome_arquivo_foto(servico, data_ativ, titulo, foto_id)
+    return send_file(io.BytesIO(dados), mimetype='image/jpeg', as_attachment=True, download_name=nome)
+
+@app.route("/atividades/download_zip")
+@login_required
+def download_zip_atividades():
+    """Baixa em um .zip as fotos de uma atividade específica (atividade_id)
+    ou de um serviço num período/quadrimestre — é o fluxo usado pela
+    vigilância a cada 4 meses para reunir as fotos do Quadrimestral."""
+    if not _pode_acessar_atividades():
+        flash('❌ Você não tem acesso a essa área.', 'danger')
+        return redirect(url_for(pagina_inicial(current_user.perfil)))
+
+    atividade_id  = request.args.get('atividade_id', '').strip()
+    servico       = request.args.get('servico', '').strip()
+    periodo_inicio = request.args.get('periodo_inicio', '').strip()
+    periodo_fim    = request.args.get('periodo_fim', '').strip()
+    quadrimestre  = request.args.get('quadrimestre', '').strip()
+    ano           = request.args.get('ano', '').strip()
+    if quadrimestre and ano:
+        try:
+            periodo_inicio, periodo_fim = _periodo_do_quadrimestre(int(ano), int(quadrimestre))
+        except ValueError:
+            pass
+
+    conexao = get_db()
+    cursor = conexao.cursor()
+
+    if atividade_id:
+        cursor.execute("""
+            SELECT a.id, a.titulo, a.servico, a.data_atividade
+            FROM atividades_fotos a WHERE a.id = %s
+        """, (atividade_id,))
+        atividades_rows = cursor.fetchall()
+        nome_zip = f"atividade_{atividade_id}.zip"
+    else:
+        filtros = []
+        params = []
+        if periodo_inicio:
+            filtros.append("a.data_atividade >= %s"); params.append(periodo_inicio)
+        if periodo_fim:
+            filtros.append("a.data_atividade <= %s"); params.append(periodo_fim)
+        if servico:
+            filtros.append("a.servico = %s"); params.append(servico)
+        where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+        cursor.execute(f"""
+            SELECT a.id, a.titulo, a.servico, a.data_atividade
+            FROM atividades_fotos a
+            {where}
+            ORDER BY a.data_atividade, a.id
+        """, params)
+        atividades_rows = cursor.fetchall()
+        partes_nome = [servico or 'todos-servicos']
+        if periodo_inicio or periodo_fim:
+            partes_nome.append(f"{periodo_inicio or 'inicio'}_a_{periodo_fim or 'fim'}")
+        nome_zip = _re.sub(r'[^A-Za-z0-9._-]+', '-', '_'.join(partes_nome)).strip('-') + '.zip'
+
+    if not atividades_rows:
+        conexao.close()
+        flash('❌ Nenhuma atividade encontrada para esse filtro.', 'warning')
+        return redirect(url_for('atividades'))
+
+    ids = [row[0] for row in atividades_rows]
+    info_atividade = {row[0]: {'titulo': row[1], 'servico': row[2], 'data': row[3]} for row in atividades_rows}
+    cursor.execute("""
+        SELECT id, atividade_id, storage_path FROM fotos_atividade
+        WHERE atividade_id = ANY(%s) ORDER BY atividade_id, ordem, id
+    """, (ids,))
+    fotos_rows = cursor.fetchall()
+    conexao.close()
+
+    if not fotos_rows:
+        flash('❌ Nenhuma foto encontrada para esse filtro.', 'warning')
+        return redirect(url_for('atividades'))
+
+    buffer = io.BytesIO()
+    falhas = 0
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for foto_id, ativ_id, path in fotos_rows:
+            info = info_atividade[ativ_id]
+            try:
+                dados = storage_fotos.baixar_foto(path)
+            except Exception as e:
+                falhas += 1
+                logger.error(f"download_zip_atividades: falha ao baixar '{path}': {e}")
+                continue
+            pasta = _re.sub(r'[^A-Za-z0-9._-]+', '-', info['servico'] or 'sem-servico').strip('-')
+            nome = _nome_arquivo_foto(info['servico'], info['data'], info['titulo'], foto_id)
+            zf.writestr(f"{pasta}/{nome}", dados)
+
+    if falhas:
+        flash(f'⚠️ {falhas} foto(s) não puderam ser incluídas no zip (falha ao baixar do armazenamento).', 'warning')
+
+    buffer.seek(0)
+    return send_file(buffer, mimetype='application/zip', as_attachment=True, download_name=nome_zip)
 
 # =====================================================
 # DASHBOARD

@@ -109,3 +109,13 @@ def esta_configurado():
 def url_publica(path):
     url, _chave, bucket = _config()
     return f"{url}/storage/v1/object/public/{bucket}/{path}"
+
+
+def baixar_foto(path):
+    """Busca os bytes de uma foto direto no bucket (usado para download/zip
+    no servidor — a URL pública funciona para <img>, mas não garante o
+    nome/Content-Disposition de anexo que o navegador precisa para salvar)."""
+    resposta = requests.get(url_publica(path), timeout=30)
+    if resposta.status_code >= 300:
+        raise RuntimeError(f"Falha ao baixar foto do Storage: {resposta.status_code} | path={path}")
+    return resposta.content

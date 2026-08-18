@@ -17,6 +17,11 @@
             <i class="fas fa-arrow-left"></i> Voltar
         </a>
         <div class="d-flex gap-2">
+            {% if fotos %}
+            <a href="{{ url_for('download_zip_atividades', atividade_id=atividade.id) }}" class="btn btn-outline-success">
+                <i class="fas fa-file-zipper"></i> Baixar todas (.zip)
+            </a>
+            {% endif %}
             <button type="button" class="btn btn-outline-primary" onclick="window.print()">
                 <i class="fas fa-print"></i> Imprimir
             </button>
@@ -33,7 +38,7 @@
             <h3>{{ atividade.titulo }}</h3>
             <p class="mb-1 text-muted">
                 <i class="fas fa-calendar-alt"></i> {{ atividade.data_atividade|formatar_data }}
-                {% if atividade.servico %} &nbsp;·&nbsp; <i class="fas fa-building"></i> {{ atividade.servico }}{% endif %}
+                {% if atividade.servico %} &nbsp;·&nbsp; <i class="fas fa-building"></i> <span title="{{ atividade.servico }}">{{ atividade.servico|nome_curto_servico }}</span>{% endif %}
             </p>
             <p class="mb-1 text-muted small">
                 <i class="fas fa-user"></i> Registrado por {{ atividade.criado_por_nome }}
@@ -51,9 +56,16 @@
         {% for f in fotos %}
         <div class="col-md-4">
             <div class="card h-100 shadow-sm">
-                {% if f.url %}
-                <img src="{{ f.url }}" class="card-img-top" alt="{{ f.legenda or atividade.titulo }}">
-                {% endif %}
+                <div class="position-relative">
+                    {% if f.url %}
+                    <img src="{{ f.url }}" class="card-img-top" alt="{{ f.legenda or atividade.titulo }}">
+                    {% endif %}
+                    <a href="{{ url_for('download_foto_atividade', foto_id=f.id) }}"
+                       class="btn btn-sm btn-light shadow-sm position-absolute top-0 end-0 m-2 no-print"
+                       title="Baixar esta foto">
+                        <i class="fas fa-download"></i>
+                    </a>
+                </div>
                 {% if f.legenda %}
                 <div class="card-body py-2">
                     <p class="mb-0 small">{{ f.legenda }}</p>
