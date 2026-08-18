@@ -502,6 +502,10 @@ def criar_banco():
                 'Casa da Mulher Jiparanaense': 'PSE',
                 'Serviço de Acolhimento Familiar em Família Acolhedora para Crianças e Adolescentes': 'PSE',
                 'Serviço de Acolhimento Familiar em Família Acolhedora para Pessoas Idosas': 'PSE',
+                # Não é PSB nem PSE — é a própria gestão da secretaria,
+                # usada só como opção no Quadrimestral (fotos de atividades
+                # da equipe de Gestão/SEMASF, não de um serviço socioassistencial)
+                'Gestão SEMASF': 'SECRETARIA',
             }
             # CCVB é um Centro de Convivência (a unidade), não um Serviço em
             # si — o Serviço da Tipificação Nacional que ele oferta é o SCFV
