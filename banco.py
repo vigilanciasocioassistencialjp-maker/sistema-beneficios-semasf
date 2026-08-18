@@ -29,17 +29,38 @@ def _criar_pool():
     print("✅ Pool de conexões criado (1–10 conexões)!")
 
 def get_db_connection():
-    """Retorna uma conexão do pool. Deve ser fechada com conn.close() após uso."""
+    """Retorna uma conexão do pool. Deve ser fechada com conn.close() após uso.
+
+    Faz um "pre-ping" (SELECT 1) antes de entregar a conexão: o Supabase pode
+    fechar uma conexão ociosa do lado dele sem o cliente perceber, e nesse
+    caso o pool continua achando que ela está viva — a primeira query real
+    então quebra com "SSL SYSCALL error: EOF detected". Testando aqui,
+    descarta a conexão morta e tenta de novo em vez de propagar o erro pra
+    quem só queria salvar uma solicitação ou uma foto."""
     global _pool
     if _pool is None or _pool.closed:
         _criar_pool()
-    try:
-        conn = _pool.getconn()
-        conn.autocommit = False
-        return conn
-    except Exception as e:
-        print(f"❌ Erro ao obter conexão do pool: {e}")
-        raise e
+    ultimo_erro = None
+    for tentativa in range(2):
+        try:
+            conn = _pool.getconn()
+        except Exception as e:
+            print(f"❌ Erro ao obter conexão do pool: {e}")
+            raise
+        try:
+            conn.autocommit = False
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return conn
+        except psycopg2.OperationalError as e:
+            ultimo_erro = e
+            print(f"⚠️  Conexão do pool estava morta (tentativa {tentativa + 1}/2): {e}")
+            try:
+                _pool.putconn(conn, close=True)
+            except Exception:
+                pass
+    print(f"❌ Conexão do pool inválida mesmo após nova tentativa: {ultimo_erro}")
+    raise ultimo_erro
 
 def _devolver_conexao(conn):
     """Devolve a conexão ao pool (uso interno)."""
