@@ -1113,13 +1113,14 @@ def solicitacoes(pagina=1):
             break
         lista_meses_sol.append({'valor': d.strftime('%Y-%m'), 'nome': f"{nomes_meses[d.month-1]}/{d.year}"})
 
-    base_query = f"FROM solicitacoes s {join_usuario} {where}"
+    base_query = f"FROM solicitacoes s {join_usuario} LEFT JOIN cras_bairros cb ON s.bairro = cb.bairro {where}"
 
     # Busca por CPF: descriptografa em Python
     if busca_cpf:
         cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
         cursor.execute(
-            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
+            f"COALESCE(cb.entrega_volante, FALSE) "
             f"{base_query} ORDER BY {order_by_sql}",
             params
         )
@@ -1137,7 +1138,8 @@ def solicitacoes(pagina=1):
         cursor.execute(f"SELECT COUNT(*) {base_query}", params)
         total_registros = cursor.fetchone()[0]
         cursor.execute(
-            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
+            f"COALESCE(cb.entrega_volante, FALSE) "
             f"{base_query} ORDER BY {order_by_sql} LIMIT %s OFFSET %s",
             params + [registros_por_pagina, offset]
         )
@@ -1199,10 +1201,12 @@ def ver_solicitacao(id):
             u_entrega.nome as tecnico_entrega_nome,
             s.num_tentativas,
             s.valor_bolsa_familia,
-            s.visita_domiciliar
+            s.visita_domiciliar,
+            COALESCE(cb.entrega_volante, FALSE)
         FROM solicitacoes s
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
+        LEFT JOIN cras_bairros cb ON s.bairro = cb.bairro
         WHERE s.id = %s
     """, (id,))
     s = cursor.fetchone()
