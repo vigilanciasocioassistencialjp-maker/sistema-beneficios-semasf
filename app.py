@@ -1077,15 +1077,22 @@ def solicitacoes(pagina=1):
         filtros.append("(s.tecnico = %s OR s.tecnico_entrega = %s)")
         params.extend([busca_tecnico_qualquer, busca_tecnico_qualquer])
 
+    lista_cras_atual = get_lista_cras()
+
     if busca_unidade:
-        join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
-        if busca_unidade == 'CREAS':
-            filtros.append("u.perfil = 'creas'")
-        elif busca_unidade == 'EQUIPE VOLANTE':
-            filtros.append("u.perfil = 'cras_volante'")
-        elif busca_unidade == 'ADMINISTRAÇÃO':
+        if busca_unidade == 'ADMINISTRAÇÃO':
+            join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
             filtros.append("u.perfil IN ('admin', 'gestor')")
+        elif busca_unidade in lista_cras_atual or busca_unidade in ('CREAS', 'EQUIPE VOLANTE'):
+            # Filtra pela unidade RESPONSÁVEL PELA ENTREGA (território), não
+            # pelo perfil de quem registrou a escuta — mesma regra de
+            # /lista_entrega, ver _filtro_unidade_entrega()
+            join_entrega, cond_entrega, params_entrega = _filtro_unidade_entrega(busca_unidade)
+            join_usuario = join_entrega
+            filtros.append(cond_entrega)
+            params.extend(params_entrega)
         else:
+            join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
             filtros.append("COALESCE(u.cras, s.cras) = %s")
             params.append(busca_unidade)
 
@@ -1102,7 +1109,7 @@ def solicitacoes(pagina=1):
     # Listas para dropdowns
     cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
     lista_tecnicos = cursor.fetchall()
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
+    lista_unidades = lista_cras_atual + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
     nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
     lista_meses_sol = []
