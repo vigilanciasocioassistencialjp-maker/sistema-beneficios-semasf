@@ -3840,7 +3840,7 @@ def relatorio_pdf(tipo):
             return h - 5*cm
 
         c.setFont("Helvetica", 9)
-        for cras, tot, ent, aus in dados['por_cras']:
+        for cras, _escutas, ent, aus, tot in dados['por_cras']:
             if y < 4*cm:
                 y = nova_pagina_relatorio()
             c.drawString(2.2*cm, y, (cras or 'N/A')[:45])
@@ -3867,7 +3867,7 @@ def relatorio_pdf(tipo):
         c.line(2*cm, y, w - 2*cm, y)
         y -= 0.4*cm
         c.setFont("Helvetica", 9)
-        for nome, tot, ent, aus in dados['por_tecnico']:
+        for nome, _escutas, ent, aus, tot in dados['por_tecnico']:
             if y < 3*cm:
                 y = nova_pagina_relatorio()
             c.drawString(2.2*cm, y, (nome or 'N/A')[:45])
