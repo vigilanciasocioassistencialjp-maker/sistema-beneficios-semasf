@@ -74,6 +74,7 @@
                             <th>CPF</th>
                             <th>Bairro</th>
                             <th>Solicitada em</th>
+                            <th style="width:100px;">Status</th>
                             <th style="width:110px;"></th>
                         </tr>
                     </thead>
@@ -100,7 +101,8 @@
                         <div id="msgIncluir" class="small"></div>
                     </div>
                 </div>
-                <small class="text-muted">Somente solicitações com status <strong>Cadastrada</strong> podem ser incluídas.</small>
+                <small class="text-muted">Solicitações com status <strong>Cadastrada</strong> ou <strong>Entregue</strong> podem ser incluídas.
+                Uma solicitação já <strong>Entregue</strong> entra na lista com o campo de entrega do PDF pré-marcado como "Sim".</small>
             </div>
 
             <!-- Passo 3: gerar PDF -->
@@ -127,7 +129,7 @@ const META = {{ qtd or 0 }};
 function renderLista() {
     const tbody = document.querySelector('#tabelaLista tbody');
     if (!lista.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nenhum beneficiário na lista.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Nenhum beneficiário na lista.</td></tr>';
     } else {
         tbody.innerHTML = lista.map((b, i) => `
             <tr>
@@ -137,6 +139,7 @@ function renderLista() {
                 <td>${b.cpf}</td>
                 <td>${b.bairro}</td>
                 <td>${b.data}</td>
+                <td>${b.entregue ? '<span class="badge bg-success">Já entregue</span>' : '<span class="badge bg-secondary">Cadastrada</span>'}</td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-danger" data-remover="${b.id}" title="Remover da lista">
                         <i class="fas fa-times"></i> Remover
@@ -177,7 +180,7 @@ document.getElementById('btnIncluirCpf').addEventListener('click', function() {
         .then(d => {
             if (d.erro) { msg.innerHTML = `<span class="text-danger">${d.erro}</span>`; return; }
             if (!d.encontrados || !d.encontrados.length) {
-                msg.innerHTML = '<span class="text-danger">Nenhuma solicitação <strong>Cadastrada</strong> encontrada para este CPF.</span>';
+                msg.innerHTML = '<span class="text-danger">Nenhuma solicitação <strong>Cadastrada</strong> ou <strong>Entregue</strong> encontrada para este CPF.</span>';
                 return;
             }
             let incluidos = 0, jaExistiam = 0;

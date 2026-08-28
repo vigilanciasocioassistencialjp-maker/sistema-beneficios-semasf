@@ -2074,11 +2074,11 @@ def lista_entrega():
 @app.route("/api/lista_entrega/buscar_cpf/<cpf>")
 @login_required
 def api_lista_entrega_buscar_cpf(cpf):
-    """Busca solicitações Cadastradas de um CPF para incluir na lista de entrega."""
+    """Busca solicitações Cadastradas ou já Entregues de um CPF para incluir na lista de entrega."""
     cpf_limpo = ''.join(filter(str.isdigit, str(cpf)))
     if len(cpf_limpo) != 11 or not validar_cpf(cpf_limpo):
         return jsonify({'erro': 'CPF inválido', 'encontrados': []})
-    filtros = ["s.cpf_hash = %s", "s.status = 'Cadastrada'"]
+    filtros = ["s.cpf_hash = %s", "s.status IN ('Cadastrada', 'Entregue')"]
     params  = [hash_cpf(cpf_limpo)]
     join    = ""
     # Técnico de CRAS: escutas da própria equipe ou do próprio território
@@ -2089,7 +2089,7 @@ def api_lista_entrega_buscar_cpf(cpf):
     conexao = get_db()
     cursor  = conexao.cursor()
     cursor.execute(f"""
-        SELECT s.id, s.nome, s.cpf, s.bairro, s.data_solicitacao
+        SELECT s.id, s.nome, s.cpf, s.bairro, s.data_solicitacao, s.status
         FROM solicitacoes s {join}
         WHERE {' AND '.join(filtros)}
         ORDER BY s.id ASC
@@ -2102,6 +2102,7 @@ def api_lista_entrega_buscar_cpf(cpf):
         'cpf': formatar_cpf(descriptografar_cpf(r[2])) if r[2] else '—',
         'bairro': r[3] or '—',
         'data': str(r[4])[:10] if r[4] else '—',
+        'entregue': r[5] == 'Entregue',
     } for r in rows]
     return jsonify({'encontrados': encontrados})
 
@@ -2116,7 +2117,7 @@ def lista_entrega_pdf():
         flash("Monte a lista de entrega antes de gerar o PDF.", "warning")
         return redirect(url_for("lista_entrega"))
 
-    filtros = ["s.status = 'Cadastrada'", "s.id = ANY(%s)"]
+    filtros = ["s.status IN ('Cadastrada', 'Entregue')", "s.id = ANY(%s)"]
     params  = [ids]
     join    = ""
     # Técnico de CRAS: escutas da própria equipe ou do próprio território
@@ -2129,7 +2130,7 @@ def lista_entrega_pdf():
     cursor  = conexao.cursor()
     cursor.execute(f"""
         SELECT s.nome, s.cpf, s.endereco, s.numero, s.bairro, s.telefone,
-               s.renda_per_capita, s.visita_domiciliar, s.cras
+               s.renda_per_capita, s.visita_domiciliar, s.cras, s.status
         FROM solicitacoes s {join}
         WHERE {' AND '.join(filtros)}
         ORDER BY s.bairro, s.nome
@@ -2138,7 +2139,7 @@ def lista_entrega_pdf():
     conexao.close()
 
     if not linhas:
-        flash("Nenhuma solicitação válida (status Cadastrada) entre as selecionadas.", "warning")
+        flash("Nenhuma solicitação válida (status Cadastrada ou Entregue) entre as selecionadas.", "warning")
         return redirect(url_for("lista_entrega"))
 
     hoje = datetime.now(FUSO_RONDONIA)
@@ -2211,13 +2212,18 @@ def lista_entrega_pdf():
                  'Telefone', 'Renda Per Capita', 'Entrega', 'Sol. Visita']
     dados_tabela = [cabecalho]
 
-    for i, (nome, cpf, endereco, numero, bairro, telefone, rpc, visita, _cras) in enumerate(linhas, 1):
+    for i, (nome, cpf, endereco, numero, bairro, telefone, rpc, visita, _cras, status) in enumerate(linhas, 1):
         cpf_fmt = formatar_cpf(descriptografar_cpf(cpf)) if cpf else '—'
         end_fmt = f"{endereco or ''}, nº {numero}" if numero else (endereco or '—')
         tel_fmt = telefone or 'Não possui'
         rpc_fmt = f"R$ {float(rpc):.2f}".replace('.', ',') if rpc is not None else 'R$ 0,00'
-        # Entrega: em branco, para marcar à caneta no ato da entrega
-        chk_entrega = Paragraph('(&nbsp;&nbsp;) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
+        # Entrega: em branco, para marcar à caneta no ato da entrega — exceto
+        # quando a solicitação já está registrada como Entregue no sistema,
+        # caso em que o campo vem pré-marcado (não é para marcar de novo)
+        if status == 'Entregue':
+            chk_entrega = Paragraph('(X) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
+        else:
+            chk_entrega = Paragraph('(&nbsp;&nbsp;) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
         # Sol. Visita: pré-marcada conforme registrado no sistema
         if visita:
             chk_visita = Paragraph('(X) Sim<br/>(&nbsp;&nbsp;) Não', estilo_check)
