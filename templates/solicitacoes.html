@@ -9,6 +9,8 @@
         </h2>
     </div>
 
+    {% set filtro_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
+
     <!-- Botão Nova Solicitação -->
     <div class="mb-4 d-flex gap-2 flex-wrap">
         <a href="/" class="btn btn-success">
@@ -19,7 +21,40 @@
            title="Monte a lista dos beneficiários que receberão cesta hoje e gere o PDF para carimbo e assinatura">
             <i class="fas fa-clipboard-list"></i> Lista de Entrega
         </a>
+        <a href="{{ url_for('solicitacoes_pdf', ordenar_por=ordenar_por, ordenar_dir=ordenar_dir, **filtro_args) }}"
+           class="btn btn-outline-danger" target="_blank"
+           title="Gera um PDF com os cards por setor e a lista completa do filtro atual, para levar em reunião">
+            <i class="fas fa-file-pdf"></i> Gerar PDF
+        </a>
     </div>
+
+    {% if setores %}
+    <!-- Cards por setor: Cadastradas/Entregues/Ausentes, sempre nos 3 status -->
+    <div class="row g-3 mb-4">
+        {% for st in setores %}
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="fw-bold text-truncate mb-2" title="{{ st.nome }}">{{ st.nome }}</div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-warning">🟡 Cadastradas</span><span class="fw-bold">{{ st.cadastradas }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-success">✅ Entregues</span><span class="fw-bold">{{ st.entregues }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-danger">❌ Ausentes</span><span class="fw-bold">{{ st.ausentes }}</span>
+                    </div>
+                    <hr class="my-1">
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Total</span><span class="fw-bold">{{ st.total }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Filtros server-side -->
     <div class="card shadow-sm mb-4">
@@ -40,22 +75,12 @@
             <form method="GET" action="{{ url_for('solicitacoes') }}" class="row g-2">
                 <!-- Período -->
                 <div class="col-md-3">
-                    <label class="form-label fw-bold small text-muted">PERÍODO DE</label>
-                    <select name="periodo_inicio" class="form-select">
-                        <option value="">— Início —</option>
-                        {% for m in lista_meses|reverse %}
-                        <option value="{{ m.valor }}" {% if m.valor == periodo_inicio %}selected{% endif %}>{{ m.nome }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label fw-bold small text-muted">DATA DE</label>
+                    <input type="date" name="periodo_inicio" class="form-control" value="{{ periodo_inicio }}">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-bold small text-muted">ATÉ</label>
-                    <select name="periodo_fim" class="form-select">
-                        <option value="">— Fim —</option>
-                        {% for m in lista_meses|reverse %}
-                        <option value="{{ m.valor }}" {% if m.valor == periodo_fim %}selected{% endif %}>{{ m.nome }}</option>
-                        {% endfor %}
-                    </select>
+                    <input type="date" name="periodo_fim" class="form-control" value="{{ periodo_fim }}">
                 </div>
                 <div class="col-md-6"></div>
                 <!-- Linha 1 -->
@@ -150,13 +175,13 @@
         </a>
     </th>
     {% endmacro %}
-    {% set filtro_args = {'busca_nome': busca_nome, 'busca_status': busca_status, 'busca_cpf': busca_cpf, 'busca_unidade': busca_unidade, 'busca_tecnico_escuta': busca_tecnico_escuta, 'busca_tecnico_entrega': busca_tecnico_entrega, 'busca_tecnico_qualquer': busca_tecnico_qualquer, 'periodo_inicio': periodo_inicio, 'periodo_fim': periodo_fim} %}
 
     <!-- Tabela -->
     <div class="table-responsive">
         <table class="table table-striped table-hover align-middle" id="tabelaSolicitacoes">
             <thead class="table-dark">
                 <tr>
+                    <th>Nº</th>
                     {{ th_sort('id', 'ID', ordenar_por, ordenar_dir, filtro_args) }}
                     {{ th_sort('tecnico', 'Técnico', ordenar_por, ordenar_dir, filtro_args) }}
                     {{ th_sort('nome', 'Nome', ordenar_por, ordenar_dir, filtro_args) }}
@@ -172,6 +197,7 @@
             <tbody>
                 {% for s in solicitacoes %}
                 <tr data-status="{{ s[7] }}" data-nome="{{ s[2].lower() }}" data-id="{{ s[0] }}">
+                    <td class="text-muted">{{ numero_inicial + loop.index }}</td>
                     <td class="fw-bold">#{{ s[0] }}</td>
                     <td>{{ s[1] }}</td>
                     <td>{{ s[2] }}</td>
@@ -239,7 +265,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="9" class="text-center py-4 text-muted">
+                    <td colspan="10" class="text-center py-4 text-muted">
                         <i class="fas fa-inbox fa-3x mb-2 d-block"></i>
                         Nenhuma solicitação encontrada
                     </td>

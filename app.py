@@ -1016,35 +1016,15 @@ UNIDADE_CASE_SQL = (
     "END"
 )
 
-@app.route("/solicitacoes")
-@app.route("/solicitacoes/<int:pagina>")
-@login_required
-def solicitacoes(pagina=1):
-    registros_por_pagina = 20
-    offset = (pagina - 1) * registros_por_pagina
-
-    ordenar_por = request.args.get('ordenar_por', 'data_solicitacao').strip()
-    ordenar_dir = request.args.get('ordenar_dir', 'asc').strip().lower()
-    if ordenar_por not in COLUNAS_ORDENAVEIS_SOLICITACOES:
-        ordenar_por = 'data_solicitacao'
-    if ordenar_dir not in ('asc', 'desc'):
-        ordenar_dir = 'asc'
-    order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
-
-    busca_nome              = request.args.get('busca_nome', '').strip()
-    # Sem filtro de status escolhido, mostra só Cadastrada + Ausente (ainda
-    # pendentes de ação) — Entregue/Cancelada só aparecem se o técnico
-    # selecionar explicitamente no filtro (inclusive escolhendo "Todos").
-    # Visita Domiciliar é um marcador à parte, sem relação com esse padrão.
-    busca_status            = request.args.get('busca_status', 'Pendentes').strip()
-    busca_cpf               = request.args.get('busca_cpf', '').strip()
-    busca_unidade           = request.args.get('busca_unidade', '').strip()
-    busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
-    busca_tecnico_entrega   = request.args.get('busca_tecnico_entrega', '').strip()
-    busca_tecnico_qualquer  = request.args.get('busca_tecnico_qualquer', '').strip()
-    periodo_inicio          = request.args.get('periodo_inicio', '').strip()
-    periodo_fim             = request.args.get('periodo_fim', '').strip()
-
+def _construir_filtro_solicitacoes(busca_nome, busca_status, busca_unidade,
+                                    busca_tecnico_escuta, busca_tecnico_entrega,
+                                    busca_tecnico_qualquer, periodo_inicio, periodo_fim,
+                                    current_user, lista_cras_atual, incluir_status=True):
+    """Monta (filtros, params, join_usuario) pros filtros da página de
+    Solicitações — reaproveitado pela listagem, pelos cards por setor e pelo
+    PDF. incluir_status=False ignora o filtro de Status (usado pelos cards,
+    que sempre quebram em Cadastrada/Entregue/Ausente, independente do
+    status escolhido na tela)."""
     filtros = []
     params  = []
     join_usuario = ""
@@ -1057,13 +1037,18 @@ def solicitacoes(pagina=1):
         filtros.append("s.nome ILIKE %s")
         params.append(f"%{busca_nome}%")
 
-    if busca_status == 'Visita':
-        filtros.append("s.visita_domiciliar = TRUE")
-    elif busca_status == 'Pendentes':
-        filtros.append("s.status IN ('Cadastrada', 'Ausente')")
-    elif busca_status:
-        filtros.append("s.status = %s")
-        params.append(busca_status)
+    # Sem filtro de status escolhido, mostra só Cadastrada + Ausente (ainda
+    # pendentes de ação) — Entregue/Cancelada só aparecem se o técnico
+    # selecionar explicitamente no filtro (inclusive escolhendo "Todos").
+    # Visita Domiciliar é um marcador à parte, sem relação com esse padrão.
+    if incluir_status:
+        if busca_status == 'Visita':
+            filtros.append("s.visita_domiciliar = TRUE")
+        elif busca_status == 'Pendentes':
+            filtros.append("s.status IN ('Cadastrada', 'Ausente')")
+        elif busca_status:
+            filtros.append("s.status = %s")
+            params.append(busca_status)
 
     if busca_tecnico_escuta:
         filtros.append("s.tecnico = %s")
@@ -1076,8 +1061,6 @@ def solicitacoes(pagina=1):
     if busca_tecnico_qualquer:
         filtros.append("(s.tecnico = %s OR s.tecnico_entrega = %s)")
         params.extend([busca_tecnico_qualquer, busca_tecnico_qualquer])
-
-    lista_cras_atual = get_lista_cras()
 
     if busca_unidade:
         if busca_unidade == 'ADMINISTRAÇÃO':
@@ -1096,11 +1079,107 @@ def solicitacoes(pagina=1):
             filtros.append("COALESCE(u.cras, s.cras) = %s")
             params.append(busca_unidade)
 
-    cond_periodo, p_periodo = _periodo_sql(periodo_inicio, periodo_fim)
+    cond_periodo, p_periodo = _periodo_sql_dia(periodo_inicio, periodo_fim)
     if cond_periodo:
         filtros.append(cond_periodo)
         params.extend(p_periodo)
 
+    return filtros, params, join_usuario
+
+
+def _contagem_setores(filtros_base, params_base, join_usuario, current_user, busca_unidade):
+    """Cadastrada/Entregue/Ausente por unidade RESPONSÁVEL PELA ENTREGA (mesma
+    regra do _filtro_unidade_entrega), pros cards no topo da listagem de
+    Solicitações. filtros_base/params_base/join_usuario vêm de
+    _construir_filtro_solicitacoes(..., incluir_status=False) — ou seja, já
+    respeitam nome/técnico/período/unidade, mas nunca o Status.
+
+    Se busca_unidade estiver definido, ou o perfil do usuário for restrito a
+    uma unidade só, retorna 1 card (a unidade já filtrada). Senão, agrupa
+    por unidade usando um CASE que reproduz a mesma regra de roteamento do
+    _filtro_unidade_entrega (bairro rural/Volante → CREAS pelo perfil do
+    técnico → CRAS do técnico → s.cras como fallback)."""
+    where = ("WHERE " + " AND ".join(filtros_base)) if filtros_base else ""
+    and_status = (" AND " if where else " WHERE ") + "s.status IN ('Cadastrada', 'Entregue', 'Ausente')"
+
+    conexao = get_db()
+    cursor  = conexao.cursor()
+
+    unico_setor = bool(busca_unidade) or current_user.perfil not in ['admin', 'gestor', 'creas', 'cras_volante']
+    chave_status = {'Cadastrada': 'cadastradas', 'Entregue': 'entregues', 'Ausente': 'ausentes'}
+
+    if unico_setor:
+        rotulo = busca_unidade or current_user.cras or 'Sem unidade'
+        cursor.execute(f"""
+            SELECT s.status, COUNT(*) FROM solicitacoes s {join_usuario}
+            {where}{and_status}
+            GROUP BY s.status
+        """, params_base)
+        contagens = {row[0]: row[1] for row in cursor.fetchall()}
+        setores = [{
+            'nome': rotulo,
+            'cadastradas': contagens.get('Cadastrada', 0),
+            'entregues':   contagens.get('Entregue', 0),
+            'ausentes':    contagens.get('Ausente', 0),
+        }]
+    else:
+        cursor.execute(f"""
+            SELECT
+              CASE
+                WHEN COALESCE(s.bairro, '') IN (SELECT bairro FROM cras_bairros WHERE entrega_volante = TRUE)
+                     OR s.cras = 'EQUIPE VOLANTE' THEN 'EQUIPE VOLANTE'
+                WHEN u_setor.perfil = 'creas' THEN 'CREAS'
+                WHEN u_setor.perfil = 'cras'  THEN u_setor.cras
+                ELSE s.cras
+              END AS unidade, s.status, COUNT(*)
+            FROM solicitacoes s LEFT JOIN usuarios u_setor ON s.tecnico = u_setor.usuario
+            {where}{and_status}
+            GROUP BY 1, s.status
+        """, params_base)
+        agregados = {}
+        for unidade, status, qtd in cursor.fetchall():
+            unidade = unidade or 'Não informado'
+            agregados.setdefault(unidade, {'cadastradas': 0, 'entregues': 0, 'ausentes': 0})
+            agregados[unidade][chave_status[status]] = qtd
+        setores = [{'nome': nome, **valores} for nome, valores in sorted(agregados.items())]
+
+    conexao.close()
+    for s in setores:
+        s['total'] = s['cadastradas'] + s['entregues'] + s['ausentes']
+    return setores
+
+
+@app.route("/solicitacoes")
+@app.route("/solicitacoes/<int:pagina>")
+@login_required
+def solicitacoes(pagina=1):
+    registros_por_pagina = 100
+    offset = (pagina - 1) * registros_por_pagina
+
+    ordenar_por = request.args.get('ordenar_por', 'data_solicitacao').strip()
+    ordenar_dir = request.args.get('ordenar_dir', 'asc').strip().lower()
+    if ordenar_por not in COLUNAS_ORDENAVEIS_SOLICITACOES:
+        ordenar_por = 'data_solicitacao'
+    if ordenar_dir not in ('asc', 'desc'):
+        ordenar_dir = 'asc'
+    order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
+
+    busca_nome              = request.args.get('busca_nome', '').strip()
+    busca_status            = request.args.get('busca_status', 'Pendentes').strip()
+    busca_cpf               = request.args.get('busca_cpf', '').strip()
+    busca_unidade           = request.args.get('busca_unidade', '').strip()
+    busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
+    busca_tecnico_entrega   = request.args.get('busca_tecnico_entrega', '').strip()
+    busca_tecnico_qualquer  = request.args.get('busca_tecnico_qualquer', '').strip()
+    periodo_inicio          = request.args.get('periodo_inicio', '').strip()
+    periodo_fim             = request.args.get('periodo_fim', '').strip()
+
+    lista_cras_atual = get_lista_cras()
+
+    filtros, params, join_usuario = _construir_filtro_solicitacoes(
+        busca_nome, busca_status, busca_unidade, busca_tecnico_escuta,
+        busca_tecnico_entrega, busca_tecnico_qualquer, periodo_inicio, periodo_fim,
+        current_user, lista_cras_atual, incluir_status=True)
     where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
 
     conexao = get_db()
@@ -1110,15 +1189,6 @@ def solicitacoes(pagina=1):
     cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
     lista_tecnicos = cursor.fetchall()
     lista_unidades = lista_cras_atual + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
-    nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-    lista_meses_sol = []
-    agora = datetime.now(FUSO_RONDONIA)
-    for i in range(24):
-        d = agora - timedelta(days=30 * i)
-        if d.year < 2026:
-            break
-        lista_meses_sol.append({'valor': d.strftime('%Y-%m'), 'nome': f"{nomes_meses[d.month-1]}/{d.year}"})
 
     base_query = f"FROM solicitacoes s {join_usuario} LEFT JOIN cras_bairros cb ON s.bairro = cb.bairro {where}"
 
@@ -1162,9 +1232,22 @@ def solicitacoes(pagina=1):
 
     total_paginas = max(1, (total_registros + registros_por_pagina - 1) // registros_por_pagina)
 
+    # Cards por setor: ignoram o Status ativo (sempre quebram nos 3 valores).
+    # Não calculados durante busca por CPF — nesse caso o filtro já restringe
+    # a uma pessoa só, e a quebra por setor não agrega valor.
+    setores = None
+    if not busca_cpf:
+        filtros_setores, params_setores, join_setores = _construir_filtro_solicitacoes(
+            busca_nome, busca_status, busca_unidade, busca_tecnico_escuta,
+            busca_tecnico_entrega, busca_tecnico_qualquer, periodo_inicio, periodo_fim,
+            current_user, lista_cras_atual, incluir_status=False)
+        setores = _contagem_setores(filtros_setores, params_setores, join_setores, current_user, busca_unidade)
+
     return render_template(
         "solicitacoes.html",
         solicitacoes=dados,
+        numero_inicial=offset,
+        setores=setores,
         user_perfil=current_user.perfil,
         datetime=datetime,
         pagina_atual=pagina,
@@ -1183,9 +1266,207 @@ def solicitacoes(pagina=1):
         periodo_fim=periodo_fim,
         lista_tecnicos=lista_tecnicos,
         lista_unidades=lista_unidades,
-        lista_meses=lista_meses_sol,
         current_user=current_user
     )
+
+
+@app.route("/solicitacoes/pdf")
+@login_required
+def solicitacoes_pdf():
+    """PDF com os cards por setor + a lista completa do filtro ativo (não só
+    a página atual) — pra levar pra reunião de equipe. Mesmos filtros da
+    tela de Solicitações, recebidos na querystring."""
+    ordenar_por = request.args.get('ordenar_por', 'data_solicitacao').strip()
+    ordenar_dir = request.args.get('ordenar_dir', 'asc').strip().lower()
+    if ordenar_por not in COLUNAS_ORDENAVEIS_SOLICITACOES:
+        ordenar_por = 'data_solicitacao'
+    if ordenar_dir not in ('asc', 'desc'):
+        ordenar_dir = 'asc'
+    order_by_sql = f"{COLUNAS_ORDENAVEIS_SOLICITACOES[ordenar_por]} {ordenar_dir.upper()}, s.id {ordenar_dir.upper()}"
+
+    busca_nome              = request.args.get('busca_nome', '').strip()
+    busca_status            = request.args.get('busca_status', 'Pendentes').strip()
+    busca_cpf               = request.args.get('busca_cpf', '').strip()
+    busca_unidade           = request.args.get('busca_unidade', '').strip()
+    busca_tecnico_escuta    = request.args.get('busca_tecnico_escuta', '').strip()
+    busca_tecnico_entrega   = request.args.get('busca_tecnico_entrega', '').strip()
+    busca_tecnico_qualquer  = request.args.get('busca_tecnico_qualquer', '').strip()
+    periodo_inicio          = request.args.get('periodo_inicio', '').strip()
+    periodo_fim             = request.args.get('periodo_fim', '').strip()
+
+    lista_cras_atual = get_lista_cras()
+    filtros, params, join_usuario = _construir_filtro_solicitacoes(
+        busca_nome, busca_status, busca_unidade, busca_tecnico_escuta,
+        busca_tecnico_entrega, busca_tecnico_qualquer, periodo_inicio, periodo_fim,
+        current_user, lista_cras_atual, incluir_status=True)
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    base_query = f"FROM solicitacoes s {join_usuario} {where}"
+
+    conexao = get_db()
+    cursor  = conexao.cursor()
+
+    # Segurança: sem CPF a busca não tem um teto natural, então limita o PDF
+    # a um número razoável de linhas (evita gerar um documento gigante sem
+    # querer quando nenhum filtro de período/unidade está ativo).
+    LIMITE_LINHAS = 3000
+    truncado = False
+    campos = "s.id, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status"
+
+    if busca_cpf:
+        # Busca por CPF: descriptografa em Python, sem limite (é sempre uma
+        # pessoa só, mesmo padrão da listagem principal).
+        cursor.execute(f"SELECT {campos} {base_query} ORDER BY {order_by_sql}", params)
+        cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
+        linhas = []
+        for row in cursor.fetchall():
+            row = list(row)
+            cpf_desc = descriptografar_cpf(row[2]) if row[2] else ''
+            if cpf_limpo_busca in cpf_desc:
+                row[2] = formatar_cpf(cpf_desc)
+                linhas.append(row)
+    else:
+        cursor.execute(
+            f"SELECT {campos} {base_query} ORDER BY {order_by_sql} LIMIT %s",
+            params + [LIMITE_LINHAS + 1]
+        )
+        linhas_raw = cursor.fetchall()
+        truncado = len(linhas_raw) > LIMITE_LINHAS
+        linhas = []
+        for row in linhas_raw[:LIMITE_LINHAS]:
+            row = list(row)
+            if row[2]:
+                row[2] = formatar_cpf(descriptografar_cpf(row[2]))
+            linhas.append(row)
+
+    if not linhas:
+        conexao.close()
+        flash("Nenhuma solicitação encontrada para esse filtro.", "warning")
+        return redirect(url_for("solicitacoes"))
+
+    setores = None
+    if not busca_cpf:
+        filtros_setores, params_setores, join_setores = _construir_filtro_solicitacoes(
+            busca_nome, busca_status, busca_unidade, busca_tecnico_escuta,
+            busca_tecnico_entrega, busca_tecnico_qualquer, periodo_inicio, periodo_fim,
+            current_user, lista_cras_atual, incluir_status=False)
+        setores = _contagem_setores(filtros_setores, params_setores, join_setores, current_user, busca_unidade)
+
+    conexao.close()
+
+    hoje = datetime.now(FUSO_RONDONIA)
+    PAGE_W, PAGE_H = landscape(A4)
+
+    partes_filtro = []
+    if periodo_inicio or periodo_fim:
+        partes_filtro.append(f"PERÍODO: {periodo_inicio or '...'} a {periodo_fim or '...'}")
+    if busca_status:
+        partes_filtro.append(f"STATUS: {busca_status}")
+    if busca_unidade:
+        partes_filtro.append(f"UNIDADE: {busca_unidade}")
+    subtitulo_filtro = "   |   ".join(partes_filtro) if partes_filtro else "TODAS AS SOLICITAÇÕES"
+
+    def _cabecalho_solicitacoes(canvas_obj, doc):
+        canvas_obj.saveState()
+        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'img', 'logo_prefeitura.png')
+        if os.path.exists(logo_path):
+            try:
+                canvas_obj.drawImage(ImageReader(logo_path), 1*cm, PAGE_H - 2.2*cm,
+                                     width=4.5*cm, height=1.5*cm,
+                                     preserveAspectRatio=True, mask='auto')
+            except Exception:
+                pass
+        canvas_obj.setFont("Helvetica-Bold", 12)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 1.1*cm, "PREFEITURA MUNICIPAL DE JI-PARANÁ")
+        canvas_obj.setFont("Helvetica", 9)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 1.55*cm,
+                                     "Secretaria Municipal de Assistência Social e Família - SEMASF")
+        canvas_obj.setFont("Helvetica-Bold", 11)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 2.15*cm, "LISTA DE SOLICITAÇÕES DE CESTA BÁSICA")
+        canvas_obj.setFont("Helvetica-Bold", 9)
+        canvas_obj.drawCentredString(PAGE_W/2, PAGE_H - 2.6*cm,
+                                     f"{subtitulo_filtro}   |   TOTAL: {len(linhas)}")
+        canvas_obj.setLineWidth(0.8)
+        canvas_obj.line(1*cm, PAGE_H - 2.8*cm, PAGE_W - 1*cm, PAGE_H - 2.8*cm)
+
+        canvas_obj.setFont("Helvetica", 6.5)
+        canvas_obj.setFillColorRGB(0.35, 0.35, 0.35)
+        canvas_obj.drawString(1*cm, 0.8*cm,
+            f"Documento gerado pelo Sistema de Cestas Básicas SEMASF em {hoje.strftime('%d/%m/%Y às %H:%M')} (horário de Rondônia)")
+        canvas_obj.restoreState()
+
+    estilo_celula = ParagraphStyle('celulaSol', fontName='Helvetica', fontSize=7.5, leading=9)
+    elementos = []
+
+    if setores:
+        dados_setores = [['Unidade', 'Cadastradas', 'Entregues', 'Ausentes', 'Total']]
+        for st in setores:
+            dados_setores.append([st['nome'], str(st['cadastradas']), str(st['entregues']),
+                                   str(st['ausentes']), str(st['total'])])
+        tabela_setores = Table(dados_setores, colWidths=[8*cm, 3.5*cm, 3.5*cm, 3.5*cm, 3.5*cm])
+        tabela_setores.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#1B2F5E')),
+            ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+            ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME',      (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE',      (0, 0), (-1, -1), 8),
+            ('ALIGN',         (1, 0), (-1, -1), 'CENTER'),
+            ('GRID',          (0, 0), (-1, -1), 0.5, colors.black),
+            ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F8')]),
+            ('TOPPADDING',    (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elementos.append(tabela_setores)
+        elementos.append(Spacer(1, 0.6*cm))
+
+    cabecalho = ['Nº', 'ID', 'Nome', 'CPF', 'Bairro', 'Unidade', 'Data Solicitação', 'Status']
+    dados_tabela = [cabecalho]
+    for i, (id_, nome, cpf, bairro, cras, data_sol, status) in enumerate(linhas, 1):
+        dados_tabela.append([
+            str(i),
+            f"#{id_}",
+            Paragraph(nome or '—', estilo_celula),
+            cpf or '—',
+            Paragraph(bairro or '—', estilo_celula),
+            Paragraph(cras or '—', estilo_celula),
+            (data_sol or '—')[:10],
+            status or '—',
+        ])
+    larguras = [1.1*cm, 1.6*cm, 6*cm, 3*cm, 3.5*cm, 3.5*cm, 3*cm, 2.4*cm]
+    tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#1B2F5E')),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1, 0), 7.5),
+        ('FONTNAME',      (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE',      (0, 1), (-1, -1), 7.5),
+        ('ALIGN',         (0, 0), (1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID',          (0, 0), (-1, -1), 0.5, colors.black),
+        ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F8')]),
+        ('TOPPADDING',    (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    elementos.append(tabela)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        leftMargin=1*cm, rightMargin=1*cm,
+        topMargin=3.1*cm, bottomMargin=1.4*cm,
+    )
+    doc.build(elementos, onFirstPage=_cabecalho_solicitacoes, onLaterPages=_cabecalho_solicitacoes,
+              canvasmaker=_CanvasNumerado)
+    buffer.seek(0)
+
+    if truncado:
+        flash(f"⚠️ O filtro retornou mais de {LIMITE_LINHAS} solicitações; o PDF foi limitado às "
+              f"{LIMITE_LINHAS} primeiras. Refine o período ou a unidade para ver a lista completa.", "warning")
+
+    logger.info(f"PDF de Solicitações gerado por {current_user.id} ({len(linhas)} registros)")
+    nome_arquivo = f"solicitacoes_{hoje.strftime('%Y%m%d_%H%M')}.pdf"
+    return send_file(buffer, as_attachment=True, download_name=nome_arquivo, mimetype='application/pdf')
+
 
 # =====================================================
 # VER SOLICITAÇÕES
@@ -2189,6 +2470,29 @@ def api_lista_entrega_buscar_cpf(cpf):
     return jsonify({'encontrados': encontrados})
 
 
+class _CanvasNumerado(canvas.Canvas):
+    """Canvas que numera "Página X de Y" em duas passagens — reaproveitado
+    pelos PDFs de Lista de Entrega e de Solicitações."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._estados = []
+
+    def showPage(self):
+        self._estados.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._estados)
+        for estado in self._estados:
+            self.__dict__.update(estado)
+            largura = self._pagesize[0]
+            self.setFont("Helvetica", 7.5)
+            self.setFillColorRGB(0.2, 0.2, 0.2)
+            self.drawRightString(largura - 1*cm, 0.8*cm, f"Página {self._pageNumber} de {total}")
+            super().showPage()
+        super().save()
+
+
 @app.route("/lista_entrega/pdf")
 @login_required
 def lista_entrega_pdf():
@@ -2265,26 +2569,6 @@ def lista_entrega_pdf():
         canvas_obj.drawString(1*cm, 0.8*cm,
             f"Documento gerado pelo Sistema de Cestas Básicas SEMASF em {hoje.strftime('%d/%m/%Y às %H:%M')} (horário de Rondônia)")
         canvas_obj.restoreState()
-
-    # ── Numeração "Página X de Y" em passe único ──────────────────
-    class _CanvasNumerado(canvas.Canvas):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._estados = []
-
-        def showPage(self):
-            self._estados.append(dict(self.__dict__))
-            self._startPage()
-
-        def save(self):
-            total = len(self._estados)
-            for estado in self._estados:
-                self.__dict__.update(estado)
-                self.setFont("Helvetica", 7.5)
-                self.setFillColorRGB(0.2, 0.2, 0.2)
-                self.drawRightString(PAGE_W - 1*cm, 0.8*cm, f"Página {self._pageNumber} de {total}")
-                super().showPage()
-            super().save()
 
     # ── Montagem da tabela ─────────────────────────────────────────
     estilo_celula = ParagraphStyle('celula', fontName='Helvetica', fontSize=7.5, leading=9)
@@ -3075,6 +3359,21 @@ def _periodo_sql(periodo_inicio, periodo_fim):
         (data_solicitacao ~ '^[0-9]' AND
          (SUBSTRING(data_solicitacao, 7, 4) || '-' || SUBSTRING(data_solicitacao, 4, 2)) BETWEEN %s AND %s)
         OR (data_entrega IS NOT NULL AND data_entrega != '' AND SUBSTRING(data_entrega::text, 1, 7) BETWEEN %s AND %s)
+    )"""
+    return cond, [inicio, fim, inicio, fim]
+
+def _periodo_sql_dia(data_inicio, data_fim):
+    """Como _periodo_sql, mas granularidade de dia (YYYY-MM-DD) em vez de
+    mês — usada só pela listagem de Solicitações, que filtra por data
+    específica. Mesma semântica: casa na data da escuta OU da entrega."""
+    if not data_inicio and not data_fim:
+        return "", []
+    inicio = data_inicio or '2000-01-01'
+    fim    = data_fim    or '2099-12-31'
+    cond = """(
+        (data_solicitacao ~ '^[0-9]' AND
+         (SUBSTRING(data_solicitacao, 7, 4) || '-' || SUBSTRING(data_solicitacao, 4, 2) || '-' || SUBSTRING(data_solicitacao, 1, 2)) BETWEEN %s AND %s)
+        OR (data_entrega IS NOT NULL AND data_entrega != '' AND SUBSTRING(data_entrega::text, 1, 10) BETWEEN %s AND %s)
     )"""
     return cond, [inicio, fim, inicio, fim]
 
