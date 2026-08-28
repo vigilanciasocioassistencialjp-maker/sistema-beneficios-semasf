@@ -509,14 +509,15 @@ def login():
         senha = request.form["senha"]
         conexao = get_db()
         cursor = conexao.cursor()
-        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email, acesso_atividades FROM usuarios WHERE usuario = %s", (usuario,))
+        cursor.execute("SELECT usuario, senha, perfil, primeiro_acesso, cras, nome, email, acesso_atividades, unidade_id FROM usuarios WHERE usuario = %s", (usuario,))
         dados = cursor.fetchone()
         cursor.close()
         conexao.close()
 
         if dados and bcrypt.checkpw(senha.encode('utf-8'), dados[1].encode('utf-8')):
             user = Usuario(dados[0], dados[2], dados[4] if len(dados) > 4 else None,
-                            dados[5] if len(dados) > 5 else dados[0], dados[7] if len(dados) > 7 else False)
+                            dados[5] if len(dados) > 5 else dados[0], dados[7] if len(dados) > 7 else False,
+                            dados[8] if len(dados) > 8 else None)
             login_user(user, remember=False)
             session.permanent = True
             session['mostrar_modal_notif'] = True
@@ -801,6 +802,61 @@ def get_lista_servicos():
     return [r[0] for r in rows]
 
 # =====================================================
+# UNIDADES — fonte única de verdade pra unidade de lotação (fase 1 de
+# uma refatoração maior; ver plano em .claude/plans). Ainda não usadas
+# em nenhuma rota — só disponíveis pra próxima etapa da migração.
+# =====================================================
+
+def get_todas_unidades():
+    """Retorna todas as unidades (id, nome, categoria, tem_territorio,
+    servicos_ofertados), ordenadas por categoria e nome."""
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades ORDER BY categoria, nome"
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return rows
+
+def get_unidade_por_id(unidade_id):
+    """Retorna (id, nome, categoria, tem_territorio, servicos_ofertados)
+    da unidade com o id dado, ou None."""
+    if unidade_id is None:
+        return None
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades WHERE id = %s",
+            (unidade_id,)
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+def get_unidade_por_nome(nome):
+    """Retorna (id, nome, categoria, tem_territorio, servicos_ofertados)
+    da unidade com o nome dado, ou None."""
+    if not nome:
+        return None
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, categoria, tem_territorio, servicos_ofertados "
+            "FROM unidades WHERE nome = %s",
+            (nome,)
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+# =====================================================
 # PÁGINA PRINCIPAL - NOVA SOLICITAÇÃO
 # =====================================================
 
@@ -945,6 +1001,21 @@ COLUNAS_ORDENAVEIS_SOLICITACOES = {
     'status': 's.status',
 }
 
+# Rótulo de unidade a partir do perfil do técnico (u) / cras da solicitação
+# (s) — hoje esse mesmo CASE está duplicado (com divergências) em pelo
+# menos 3 lugares (dashboard, relatório, PDF). Ainda não usada em nenhuma
+# query — fica pronta pra próxima etapa da migração de unidades substituir
+# as cópias existentes. Requer JOIN "usuarios u ON s.tecnico = u.usuario"
+# (ou alias equivalente) e as tabelas terem os aliases "u"/"s".
+UNIDADE_CASE_SQL = (
+    "CASE "
+    "WHEN u.perfil = 'creas' THEN 'CREAS' "
+    "WHEN u.perfil = 'cras_volante' THEN 'EQUIPE VOLANTE' "
+    "WHEN u.perfil IN ('admin', 'gestor') THEN 'ADMINISTRAÇÃO' "
+    "ELSE COALESCE(NULLIF(u.cras, ''), s.cras, 'Não informado') "
+    "END"
+)
+
 @app.route("/solicitacoes")
 @app.route("/solicitacoes/<int:pagina>")
 @login_required
@@ -1006,15 +1077,22 @@ def solicitacoes(pagina=1):
         filtros.append("(s.tecnico = %s OR s.tecnico_entrega = %s)")
         params.extend([busca_tecnico_qualquer, busca_tecnico_qualquer])
 
+    lista_cras_atual = get_lista_cras()
+
     if busca_unidade:
-        join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
-        if busca_unidade == 'CREAS':
-            filtros.append("u.perfil = 'creas'")
-        elif busca_unidade == 'EQUIPE VOLANTE':
-            filtros.append("u.perfil = 'cras_volante'")
-        elif busca_unidade == 'ADMINISTRAÇÃO':
+        if busca_unidade == 'ADMINISTRAÇÃO':
+            join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
             filtros.append("u.perfil IN ('admin', 'gestor')")
+        elif busca_unidade in lista_cras_atual or busca_unidade in ('CREAS', 'EQUIPE VOLANTE'):
+            # Filtra pela unidade RESPONSÁVEL PELA ENTREGA (território), não
+            # pelo perfil de quem registrou a escuta — mesma regra de
+            # /lista_entrega, ver _filtro_unidade_entrega()
+            join_entrega, cond_entrega, params_entrega = _filtro_unidade_entrega(busca_unidade)
+            join_usuario = join_entrega
+            filtros.append(cond_entrega)
+            params.extend(params_entrega)
         else:
+            join_usuario = "LEFT JOIN usuarios u ON s.tecnico = u.usuario"
             filtros.append("COALESCE(u.cras, s.cras) = %s")
             params.append(busca_unidade)
 
@@ -1031,7 +1109,7 @@ def solicitacoes(pagina=1):
     # Listas para dropdowns
     cursor.execute("SELECT usuario, nome FROM usuarios ORDER BY nome")
     lista_tecnicos = cursor.fetchall()
-    lista_unidades = get_lista_cras() + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
+    lista_unidades = lista_cras_atual + ['CREAS', 'EQUIPE VOLANTE'] + get_lista_servicos()
     nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
     lista_meses_sol = []
@@ -1042,13 +1120,14 @@ def solicitacoes(pagina=1):
             break
         lista_meses_sol.append({'valor': d.strftime('%Y-%m'), 'nome': f"{nomes_meses[d.month-1]}/{d.year}"})
 
-    base_query = f"FROM solicitacoes s {join_usuario} {where}"
+    base_query = f"FROM solicitacoes s {join_usuario} LEFT JOIN cras_bairros cb ON s.bairro = cb.bairro {where}"
 
     # Busca por CPF: descriptografa em Python
     if busca_cpf:
         cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
         cursor.execute(
-            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
+            f"COALESCE(cb.entrega_volante, FALSE) "
             f"{base_query} ORDER BY {order_by_sql}",
             params
         )
@@ -1066,7 +1145,8 @@ def solicitacoes(pagina=1):
         cursor.execute(f"SELECT COUNT(*) {base_query}", params)
         total_registros = cursor.fetchone()[0]
         cursor.execute(
-            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar "
+            f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
+            f"COALESCE(cb.entrega_volante, FALSE) "
             f"{base_query} ORDER BY {order_by_sql} LIMIT %s OFFSET %s",
             params + [registros_por_pagina, offset]
         )
@@ -1128,10 +1208,12 @@ def ver_solicitacao(id):
             u_entrega.nome as tecnico_entrega_nome,
             s.num_tentativas,
             s.valor_bolsa_familia,
-            s.visita_domiciliar
+            s.visita_domiciliar,
+            COALESCE(cb.entrega_volante, FALSE)
         FROM solicitacoes s
         LEFT JOIN usuarios u_escuta ON s.tecnico = u_escuta.usuario
         LEFT JOIN usuarios u_entrega ON s.tecnico_entrega = u_entrega.usuario
+        LEFT JOIN cras_bairros cb ON s.bairro = cb.bairro
         WHERE s.id = %s
     """, (id,))
     s = cursor.fetchone()

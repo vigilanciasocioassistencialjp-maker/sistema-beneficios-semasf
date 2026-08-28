@@ -451,6 +451,139 @@ def criar_banco():
             )
             print("✅ Serviços iniciais inseridos!")
 
+        # =====================================================
+        # UNIDADES: fonte única de verdade pra unidade de lotação
+        # (hoje espalhada entre usuarios.perfil, usuarios.cras,
+        # cras_bairros e servicos). Fase 1 de uma refatoração maior:
+        # só cria/popula a tabela e o backfill de usuarios.unidade_id
+        # — nenhuma rota foi religada a isso ainda, então isso não
+        # muda nenhum comportamento hoje.
+        # =====================================================
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS unidades (
+                id SERIAL PRIMARY KEY,
+                nome TEXT UNIQUE NOT NULL,
+                categoria TEXT NOT NULL,
+                tem_territorio BOOLEAN DEFAULT FALSE,
+                servicos_ofertados TEXT[]
+            )
+        ''')
+        cursor.execute("SELECT COUNT(*) FROM unidades")
+        if cursor.fetchone()[0] == 0:
+            # Os 4 CRAS vêm de cras_bairros (nomes reais já cadastrados,
+            # não hardcoded aqui) — cada um oferta PAIF/SCFV/Criança Feliz
+            cursor.execute("SELECT DISTINCT cras FROM cras_bairros ORDER BY cras")
+            for (nome_cras,) in cursor.fetchall():
+                cursor.execute(
+                    "INSERT INTO unidades (nome, categoria, tem_territorio, servicos_ofertados) "
+                    "VALUES (%s, 'PSB', TRUE, %s) ON CONFLICT (nome) DO NOTHING",
+                    (nome_cras, ['PAIF', 'SCFV', 'Criança Feliz'])
+                )
+
+            cursor.execute(
+                "INSERT INTO unidades (nome, categoria, tem_territorio, servicos_ofertados) VALUES "
+                "('EQUIPE VOLANTE', 'PSB', FALSE, NULL), "
+                "('CREAS', 'PSE', FALSE, %s) "
+                "ON CONFLICT (nome) DO NOTHING",
+                (['PAEFI', 'Medidas Socioeducativas em Meio Aberto', 'Abordagem Social'],)
+            )
+
+            # Demais unidades vêm da tabela `servicos` (mesmos nomes —
+            # garante que o backfill abaixo bate com usuarios.cras
+            # existente). Os 2 itens de serviço do CREAS não viram
+            # unidade própria: CREAS já é uma unidade só, esses 2 nomes
+            # só entraram em unidades.servicos_ofertados acima.
+            categoria_por_servico = {
+                'Centro de Convivência Viver Bem – CCVB': 'PSB',
+                'Programa de Fortalecimento do Atendimento do Cadastro Único no Sistema Único de Assistência Social – PROCAD-SUAS': 'PSB',
+                'Programa de Promoção do Acesso ao Mundo do Trabalho – ACESSUAS Trabalho': 'PSB',
+                'Instituição de Acolhimento Adélia Francisca Santana': 'PSE',
+                'Instituição de Acolhimento Girassol': 'PSE',
+                'Casa da Mulher Jiparanaense': 'PSE',
+                'Serviço de Acolhimento Familiar em Família Acolhedora para Crianças e Adolescentes': 'PSE',
+                'Serviço de Acolhimento Familiar em Família Acolhedora para Pessoas Idosas': 'PSE',
+                # Não é PSB nem PSE — é a própria gestão da secretaria,
+                # usada só como opção no Quadrimestral (fotos de atividades
+                # da equipe de Gestão/SEMASF, não de um serviço socioassistencial)
+                'Gestão SEMASF': 'SECRETARIA',
+            }
+            # CCVB é um Centro de Convivência (a unidade), não um Serviço em
+            # si — o Serviço da Tipificação Nacional que ele oferta é o SCFV
+            # (Serviço de Convivência e Fortalecimento de Vínculos), o mesmo
+            # ofertado pelos CRAS.
+            servicos_ofertados_por_unidade = {
+                'Centro de Convivência Viver Bem – CCVB': ['SCFV'],
+            }
+            servicos_do_creas = (
+                'CREAS – Medidas Socioeducativas em Meio Aberto',
+                'CREAS – Serviço Especializado em Abordagem Social',
+            )
+            cursor.execute("SELECT nome FROM servicos ORDER BY nome")
+            for (nome_servico,) in cursor.fetchall():
+                if nome_servico in servicos_do_creas:
+                    continue
+                categoria = categoria_por_servico.get(nome_servico)
+                if not categoria:
+                    print(f"⚠️  Serviço '{nome_servico}' sem categoria PSB/PSE conhecida — não migrado para 'unidades', revisar manualmente.")
+                    continue
+                cursor.execute(
+                    "INSERT INTO unidades (nome, categoria, tem_territorio, servicos_ofertados) VALUES (%s, %s, FALSE, %s) "
+                    "ON CONFLICT (nome) DO NOTHING",
+                    (nome_servico, categoria, servicos_ofertados_por_unidade.get(nome_servico))
+                )
+            print("✅ Unidades iniciais inseridas!")
+
+        # usuarios.unidade_id: FK pra unidades, NULL pra admin/gestor
+        # (mesma semântica de usuarios.cras hoje). Colunas antigas
+        # (perfil, cras) continuam intactas — isso só adiciona e
+        # preenche o campo novo, nada é removido.
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'usuarios' AND column_name = 'unidade_id'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN unidade_id INTEGER REFERENCES unidades(id)")
+            print("✅ Coluna usuarios.unidade_id adicionada!")
+
+            cursor.execute("""
+                UPDATE usuarios u SET unidade_id = un.id
+                FROM unidades un
+                WHERE u.perfil = 'cras' AND u.cras = un.nome
+            """)
+            cursor.execute("""
+                UPDATE usuarios SET unidade_id = (SELECT id FROM unidades WHERE nome = 'CREAS')
+                WHERE perfil = 'creas'
+            """)
+            cursor.execute("""
+                UPDATE usuarios SET unidade_id = (SELECT id FROM unidades WHERE nome = 'EQUIPE VOLANTE')
+                WHERE perfil = 'cras_volante'
+            """)
+            cursor.execute("""
+                UPDATE usuarios u SET unidade_id = un.id
+                FROM unidades un
+                WHERE u.perfil = 'servico' AND u.cras = un.nome
+            """)
+            # Caso especial: perfil='servico' cadastrado com um dos 2
+            # nomes de serviço do CREAS -> mapeia pra unidade CREAS
+            # mesmo assim (o serviço específico não é rastreado no
+            # usuário, só na atividade do Quadrimestral)
+            cursor.execute("""
+                UPDATE usuarios SET unidade_id = (SELECT id FROM unidades WHERE nome = 'CREAS')
+                WHERE perfil = 'servico' AND cras IN (
+                    'CREAS – Medidas Socioeducativas em Meio Aberto',
+                    'CREAS – Serviço Especializado em Abordagem Social'
+                )
+            """)
+
+            cursor.execute("""
+                SELECT id, usuario, perfil, cras FROM usuarios
+                WHERE unidade_id IS NULL AND perfil NOT IN ('admin', 'gestor')
+            """)
+            nao_mapeados = cursor.fetchall()
+            for (uid, login_usr, perfil_usr, cras_usr) in nao_mapeados:
+                print(f"⚠️  usuarios.unidade_id não mapeado: id={uid} usuario={login_usr} perfil={perfil_usr} cras={cras_usr!r} — revisar manualmente.")
+            print(f"✅ Backfill de usuarios.unidade_id concluído ({len(nao_mapeados)} usuário(s) não mapeado(s), ver avisos acima)")
+
         # Tabela de atividades/ações registradas para o Quadrimestral
         # (fotos de atendimentos/grupos com legenda, enviadas por coordenadoras)
         cursor.execute('''

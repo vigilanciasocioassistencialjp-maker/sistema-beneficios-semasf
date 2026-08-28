@@ -62,7 +62,13 @@
                     <div class="card-body">
                         <p><strong>Endereço:</strong> {{ solicitacao[7] if solicitacao[7] else 'Não informado' }}, {{ solicitacao[8] if solicitacao[8] else 'S/N' }}</p>
                         <p><strong>Complemento:</strong> {{ solicitacao[9] if solicitacao[9] else 'Não informado' }}</p>
-                        <p><strong>Bairro:</strong> {{ solicitacao[10] }}</p>
+                        <p><strong>Bairro:</strong> {{ solicitacao[10] }}
+                            {% if solicitacao[30] %}
+                            <span class="badge bg-primary" title="Bairro de área rural — a entrega da cesta é responsabilidade da Equipe Volante, independente de quem fez a escuta">
+                                <i class="fas fa-truck"></i> Entrega: Equipe Volante
+                            </span>
+                            {% endif %}
+                        </p>
                         <p><strong>CEP:</strong> {{ solicitacao[11] if solicitacao[11] else 'Não informado' }}</p>
                         <p><strong>Referência:</strong> {{ solicitacao[12] if solicitacao[12] else 'Não informado' }}</p>
                         <p><strong>CRAS:</strong> {{ solicitacao[13] }}</p>
