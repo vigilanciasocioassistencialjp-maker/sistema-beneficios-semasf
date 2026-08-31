@@ -295,22 +295,35 @@ new Chart(document.getElementById('graficoMensal'), {
     type: 'line',
     data: {
         labels: mesesDados.map(r => r[0]),
-        datasets: [{
-            label: 'Solicitações',
-            data: mesesDados.map(r => r[1]),
-            borderColor: navyColor,
-            backgroundColor: navyColor + '22',
-            borderWidth: 2,
-            pointRadius: 5,
-            pointBackgroundColor: navyColor,
-            fill: true,
-            tension: 0.3
-        }]
+        datasets: [
+            {
+                label: 'Solicitadas',
+                data: mesesDados.map(r => r[1]),
+                borderColor: blueColor,
+                backgroundColor: blueColor + '22',
+                borderWidth: 2,
+                pointRadius: 5,
+                pointBackgroundColor: blueColor,
+                fill: true,
+                tension: 0.3
+            },
+            {
+                label: 'Entregues',
+                data: mesesDados.map(r => r[2]),
+                borderColor: greenColor,
+                backgroundColor: greenColor + '22',
+                borderWidth: 2,
+                pointRadius: 5,
+                pointBackgroundColor: greenColor,
+                fill: true,
+                tension: 0.3
+            }
+        ]
     },
     options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { position: 'top' } },
         scales: {
             y: { beginAtZero: true, ticks: { stepSize: 1 } }
         }

@@ -3290,14 +3290,27 @@ def dashboard():
     por_cras = [list(row) + [0] for row in cursor.fetchall()]
     por_cras.append(['Canceladas', 0, 0, 0, 0, canceladas])
 
-    # Últimos 6 meses (para gráfico de linha) — exclui canceladas
+    # Últimos 6 meses (para gráfico de linha) — solicitações feitas (exclui
+    # canceladas) e entregues, agrupadas por mês. UNION ALL + GROUP BY externo
+    # pra alinhar as duas séries no mesmo conjunto de meses (a união dos meses
+    # em que houve solicitação OU entrega).
     cursor.execute("""
-        SELECT TO_CHAR(TO_DATE(SUBSTRING(data_solicitacao, 7, 4) || '-' ||
-                                SUBSTRING(data_solicitacao, 4, 2) || '-01', 'YYYY-MM-DD'), 'YYYY-MM') AS mes,
-               COUNT(*) AS total
-        FROM solicitacoes
-        WHERE data_solicitacao ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
-          AND status != 'Cancelada'
+        SELECT mes, SUM(solicitadas) AS solicitadas, SUM(entregues) AS entregues
+        FROM (
+            SELECT TO_CHAR(TO_DATE(SUBSTRING(data_solicitacao, 7, 4) || '-' ||
+                                    SUBSTRING(data_solicitacao, 4, 2) || '-01', 'YYYY-MM-DD'), 'YYYY-MM') AS mes,
+                   COUNT(*) AS solicitadas, 0 AS entregues
+            FROM solicitacoes
+            WHERE data_solicitacao ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
+              AND status != 'Cancelada'
+            GROUP BY mes
+            UNION ALL
+            SELECT SUBSTRING(data_entrega, 1, 7) AS mes, 0 AS solicitadas, COUNT(*) AS entregues
+            FROM solicitacoes
+            WHERE data_entrega ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+              AND status = 'Entregue'
+            GROUP BY mes
+        ) x
         GROUP BY mes ORDER BY mes DESC LIMIT 6
     """)
     por_mes_raw = cursor.fetchall()
