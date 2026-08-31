@@ -1149,6 +1149,15 @@ def _contagem_setores(filtros_base, params_base, join_usuario, current_user, bus
     return setores
 
 
+def _formatar_data_entrega(valor):
+    """Converte data_entrega de 'YYYY-MM-DD...' para 'DD/MM/YYYY'; vazio se não entregue."""
+    data_fmt = str(valor)[:10] if valor else ''
+    if '-' in data_fmt:
+        partes = data_fmt.split('-')
+        if len(partes) == 3:
+            data_fmt = f"{partes[2]}/{partes[1]}/{partes[0]}"
+    return data_fmt
+
 @app.route("/solicitacoes")
 @app.route("/solicitacoes/<int:pagina>")
 @login_required
@@ -1197,7 +1206,7 @@ def solicitacoes(pagina=1):
         cpf_limpo_busca = _re.sub(r'\D', '', busca_cpf)
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
-            f"COALESCE(cb.entrega_volante, FALSE) "
+            f"COALESCE(cb.entrega_volante, FALSE), s.data_entrega "
             f"{base_query} ORDER BY {order_by_sql}",
             params
         )
@@ -1208,6 +1217,7 @@ def solicitacoes(pagina=1):
             cpf_desc = descriptografar_cpf(row[3]) if row[3] else ''
             if cpf_limpo_busca in cpf_desc:
                 row[3] = formatar_cpf(cpf_desc)
+                row[10] = _formatar_data_entrega(row[10])
                 dados_filtrados.append(tuple(row))
         total_registros = len(dados_filtrados)
         dados = dados_filtrados[(pagina - 1) * registros_por_pagina: pagina * registros_por_pagina]
@@ -1216,7 +1226,7 @@ def solicitacoes(pagina=1):
         total_registros = cursor.fetchone()[0]
         cursor.execute(
             f"SELECT s.id, s.tecnico, s.nome, s.cpf, s.bairro, s.cras, s.data_solicitacao, s.status, s.visita_domiciliar, "
-            f"COALESCE(cb.entrega_volante, FALSE) "
+            f"COALESCE(cb.entrega_volante, FALSE), s.data_entrega "
             f"{base_query} ORDER BY {order_by_sql} LIMIT %s OFFSET %s",
             params + [registros_por_pagina, offset]
         )
@@ -1226,6 +1236,7 @@ def solicitacoes(pagina=1):
             row = list(row)
             if row[3]:
                 row[3] = formatar_cpf(descriptografar_cpf(row[3]))
+            row[10] = _formatar_data_entrega(row[10])
             dados.append(tuple(row))
 
     conexao.close()

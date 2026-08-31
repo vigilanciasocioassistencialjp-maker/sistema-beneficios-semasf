@@ -189,6 +189,7 @@
                     {{ th_sort('bairro', 'Bairro', ordenar_por, ordenar_dir, filtro_args) }}
                     {{ th_sort('unidade', 'Unidade', ordenar_por, ordenar_dir, filtro_args) }}
                     {{ th_sort('data_solicitacao', 'Data Solicitação', ordenar_por, ordenar_dir, filtro_args) }}
+                    <th>Data Entrega</th>
                     {{ th_sort('status', 'Status', ordenar_por, ordenar_dir, filtro_args) }}
                     <th>Marcadores</th>
                     <th style="width: 180px">Ações</th>
@@ -205,6 +206,7 @@
                     <td>{{ s[4] }}</td>
                     <td>{{ s[5] }}</td>
                     <td>{{ s[6] }}</td>
+                    <td>{{ s[10] }}</td>
                     <td>
                         <span class="badge
                             {% if s[7] == 'Cadastrada' %}bg-warning text-dark
@@ -265,7 +267,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="10" class="text-center py-4 text-muted">
+                    <td colspan="12" class="text-center py-4 text-muted">
                         <i class="fas fa-inbox fa-3x mb-2 d-block"></i>
                         Nenhuma solicitação encontrada
                     </td>
