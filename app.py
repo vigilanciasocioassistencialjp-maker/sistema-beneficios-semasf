@@ -267,6 +267,7 @@ def enviar_backup_email():
     if not BREVO_API_KEY:
         print("Backup ignorado: BREVO_API_KEY nao configurada no Render.")
         return False
+    print(f"DEBUG BREVO_API_KEY: tamanho={len(BREVO_API_KEY)} inicio={BREVO_API_KEY[:8]!r} fim={BREVO_API_KEY[-4:]!r}")
     try:
         agora = datetime.now(FUSO_RONDONIA)
         nome_arquivo = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}.json.gz"
