@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow p-4 rounded-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-database text-danger"></i> Restaurar Backup
+            </h2>
+            <a href="{{ url_for('configuracoes') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+        </div>
+
+        <div class="alert alert-danger">
+            <i class="fas fa-triangle-exclamation"></i>
+            <strong>Atenção:</strong> restaurar um backup <strong>apaga todos os dados atuais</strong> das
+            tabelas presentes no arquivo e os substitui pelo conteúdo do backup. Essa ação
+            <strong>não pode ser desfeita</strong>. Use apenas em caso de perda de dados, com um arquivo
+            de backup que você confia.
+        </div>
+
+        <form method="POST" enctype="multipart/form-data"
+              onsubmit="return confirm('ATENÇÃO: isso vai apagar TODOS os dados atuais das tabelas restauradas e substituí-los pelos dados do arquivo. Essa ação não pode ser desfeita. Tem certeza que deseja continuar?')">
+
+            <div class="mb-3">
+                <label for="arquivo_backup" class="form-label">Arquivo de backup (.zip ou .json)</label>
+                <input type="file" class="form-control" id="arquivo_backup" name="arquivo_backup"
+                       accept=".zip,.json" required>
+                <div class="form-text">O mesmo arquivo enviado por e-mail (nome tipo <code>backup_semasf_AAAAMMDD_HHMMSS.zip</code>).</div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="confirmacao" name="confirmacao" required>
+                <label class="form-check-label" for="confirmacao">
+                    Confirmo que quero apagar os dados atuais e substituí-los pelo conteúdo desse arquivo.
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-triangle-exclamation"></i> Restaurar backup agora
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -298,14 +298,20 @@
                         </p>
                         <p class="mb-0 text-muted small">
                             <i class="fas fa-info-circle"></i>
-                            O arquivo é compactado (.json.gz). Para abrir, descompacte e abra com qualquer editor de texto.
+                            O arquivo é compactado (.zip) e contém todas as tabelas do sistema, não só as solicitações.
                         </p>
                     </div>
                     <div class="col-md-4 text-end">
-                        <a href="/api/backup" class="btn btn-success"
+                        <a href="/api/backup" class="btn btn-success mb-2"
                            onclick="return confirm('Enviar backup agora por e-mail?')">
                             <i class="fas fa-paper-plane"></i> Enviar Backup Agora
                         </a>
+                        {% if current_user.perfil == 'admin' %}
+                        <br>
+                        <a href="{{ url_for('restaurar_backup') }}" class="btn btn-outline-danger btn-sm">
+                            <i class="fas fa-database"></i> Restaurar backup
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

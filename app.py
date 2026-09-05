@@ -244,22 +244,28 @@ EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', 'sistema.cestas.semasf
 BREVO_API_KEY      = os.environ.get('BREVO_API_KEY', '')
 BREVO_API_URL      = 'https://api.brevo.com/v3/smtp/email'
 
+# Todas as tabelas do banco, na ordem de dependencia (pais antes de filhos).
+# Usada tanto para gerar o backup quanto, na restauracao, para apagar/inserir
+# na ordem certa (insercao nessa ordem, remocao na ordem inversa).
+TABELAS_BACKUP = [
+    'unidades', 'cras_bairros', 'servicos', 'configuracoes',
+    'usuarios', 'solicitacoes', 'atividades_fotos', 'fotos_atividade',
+    'notificacoes', 'historico_edicoes', 'auditoria_log',
+]
+
 def gerar_backup_json():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM solicitacoes")
-    cols_sol = [d[0] for d in cursor.description]
-    solicitacoes = [dict(zip(cols_sol, row)) for row in cursor.fetchall()]
-    cursor.execute("SELECT id, usuario, nome, perfil, cras FROM usuarios")
-    cols_usu = [d[0] for d in cursor.description]
-    usuarios = [dict(zip(cols_usu, row)) for row in cursor.fetchall()]
+    tabelas = {}
+    for tabela in TABELAS_BACKUP:
+        cursor.execute(f"SELECT * FROM {tabela}")
+        colunas = [d[0] for d in cursor.description]
+        tabelas[tabela] = [dict(zip(colunas, row)) for row in cursor.fetchall()]
     conn.close()
     return {
+        'versao_formato': 1,
         'gerado_em': datetime.now(FUSO_RONDONIA).strftime('%d/%m/%Y %H:%M:%S'),
-        'total_solicitacoes': len(solicitacoes),
-        'total_usuarios': len(usuarios),
-        'solicitacoes': solicitacoes,
-        'usuarios': usuarios
+        'tabelas': tabelas
     }
 
 def enviar_backup_email():
@@ -280,13 +286,15 @@ def enviar_backup_email():
         buffer_zip.seek(0)
         tamanho_kb = round(buffer_zip.getbuffer().nbytes / 1024, 1)
 
+        linhas_por_tabela = "\n".join(
+            f"  - {tabela}: {len(dados['tabelas'][tabela])}" for tabela in TABELAS_BACKUP
+        )
         corpo = (
             f"Backup automatico do Sistema de Cestas Basicas - SEMASF Ji-Parana\n\n"
             f"Data/Hora: {agora.strftime('%d/%m/%Y as %H:%M:%S')} (horario de Rondonia)\n"
-            f"Solicitacoes: {dados['total_solicitacoes']}\n"
-            f"Usuarios: {dados['total_usuarios']}\n"
             f"Tamanho: {tamanho_kb} KB (compactado)\n\n"
-            f"Este e-mail e gerado automaticamente todo dia a meia-noite.\n"
+            f"Registros por tabela:\n{linhas_por_tabela}\n\n"
+            f"Este e-mail e gerado automaticamente todo dia as 8h.\n"
             f"Guarde os ultimos 30 e-mails para manter 30 dias de historico.\n\n"
             f"-- Sistema SEMASF"
         )
@@ -4294,6 +4302,102 @@ def configuracoes():
         servicos=servicos,
         current_user=current_user
     )
+
+@app.route("/configuracoes/restaurar_backup", methods=["GET", "POST"])
+@login_required
+def restaurar_backup():
+    """Restaura o banco a partir de um arquivo de backup (.zip ou .json).
+    Apaga e recria as tabelas presentes no arquivo, numa unica transacao:
+    se qualquer etapa falhar, nada e alterado (ver get_db()/_PooledConn,
+    que da rollback automatico ao fechar sem commit)."""
+    if current_user.perfil != 'admin':
+        return "Acesso negado", 403
+
+    if request.method == "GET":
+        return render_template("restaurar_backup.html")
+
+    if not request.form.get("confirmacao"):
+        flash("❌ Você precisa marcar a caixa de confirmação para restaurar o backup.", "danger")
+        return redirect(url_for("restaurar_backup"))
+
+    arquivo = request.files.get("arquivo_backup")
+    if not arquivo or not arquivo.filename:
+        flash("❌ Nenhum arquivo enviado.", "danger")
+        return redirect(url_for("restaurar_backup"))
+
+    try:
+        conteudo_bruto = arquivo.read()
+        nome = arquivo.filename.lower()
+        if nome.endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(conteudo_bruto)) as zf:
+                nomes_json = [n for n in zf.namelist() if n.lower().endswith(".json")]
+                if not nomes_json:
+                    raise ValueError("O arquivo .zip não contém nenhum .json.")
+                conteudo_json = zf.read(nomes_json[0])
+        elif nome.endswith(".json"):
+            conteudo_json = conteudo_bruto
+        else:
+            raise ValueError("Envie um arquivo .zip ou .json gerado pelo backup do sistema.")
+
+        dados = json.loads(conteudo_json)
+        if "tabelas" not in dados or not isinstance(dados["tabelas"], dict):
+            raise ValueError(
+                "Formato de backup não reconhecido (faltando a chave 'tabelas'). "
+                "Esse arquivo pode ser de uma versão antiga do backup — gere um novo antes de restaurar."
+            )
+    except Exception as e:
+        flash(f"❌ Erro ao ler o arquivo de backup: {e}", "danger")
+        return redirect(url_for("restaurar_backup"))
+
+    tabelas_backup = dados["tabelas"]
+    conn = get_db()
+    cursor = conn.cursor()
+    contagens = {}
+    try:
+        # Apaga na ordem inversa da lista (filhos antes de pais, respeitando FKs)
+        for tabela in reversed(TABELAS_BACKUP):
+            if tabela in tabelas_backup:
+                cursor.execute(f"DELETE FROM {tabela}")
+
+        # Insere de volta na ordem normal (pais antes de filhos)
+        for tabela in TABELAS_BACKUP:
+            linhas = tabelas_backup.get(tabela)
+            if not linhas:
+                contagens[tabela] = 0
+                continue
+
+            cursor.execute(f"SELECT * FROM {tabela} LIMIT 0")
+            colunas_atuais = [d[0] for d in cursor.description]
+            colunas_usadas = [c for c in colunas_atuais if c in linhas[0]]
+
+            colunas_sql  = ", ".join(colunas_usadas)
+            placeholders = ", ".join(["%s"] * len(colunas_usadas))
+            valores = [tuple(linha.get(c) for c in colunas_usadas) for linha in linhas]
+            cursor.executemany(
+                f"INSERT INTO {tabela} ({colunas_sql}) VALUES ({placeholders})", valores
+            )
+            contagens[tabela] = len(linhas)
+
+            # Todas as tabelas usam "id SERIAL PRIMARY KEY" como primeira
+            # coluna, exceto configuracoes (chave TEXT) — que nao precisa
+            # de reset de sequencia.
+            if colunas_atuais and colunas_atuais[0] == 'id':
+                cursor.execute(
+                    f"SELECT setval(pg_get_serial_sequence('{tabela}', 'id'), "
+                    f"COALESCE((SELECT MAX(id) FROM {tabela}), 1))"
+                )
+
+        conn.commit()
+        resumo = ", ".join(f"{t}: {n}" for t, n in contagens.items())
+        logger.info(f"Backup restaurado por {current_user.id}: {resumo}")
+        flash(f"✅ Backup restaurado com sucesso! {resumo}", "success")
+    except Exception as e:
+        logger.error(f"Erro ao restaurar backup (solicitado por {current_user.id}): {e}")
+        flash(f"❌ Erro ao restaurar backup — nenhuma alteração foi salva: {e}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for("configuracoes"))
 
 @app.route("/configuracoes/bairro/adicionar", methods=["POST"])
 @login_required
