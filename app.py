@@ -319,7 +319,7 @@ def enviar_backup_email():
             raise Exception(f"Brevo retornou {resposta.status_code}: {resposta.text}")
 
         print(f"Backup enviado via Brevo: {nome_arquivo} ({tamanho_kb} KB)")
-        logger.info(f"Backup automatico enviado: {nome_arquivo} ({tamanho_kb} KB, {dados['total_solicitacoes']} solicitacoes)")
+        logger.info(f"Backup automatico enviado: {nome_arquivo} ({tamanho_kb} KB, {len(dados['tabelas']['solicitacoes'])} solicitacoes)")
 
     except Exception as e:
         print(f"Erro no backup automatico: {e}")
