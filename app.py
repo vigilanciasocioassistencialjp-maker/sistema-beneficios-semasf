@@ -36,7 +36,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 import hashlib
-import gzip
 import base64
 import requests
 import openpyxl
@@ -267,19 +266,19 @@ def enviar_backup_email():
     if not BREVO_API_KEY:
         print("Backup ignorado: BREVO_API_KEY nao configurada no Render.")
         return False
-    print(f"DEBUG BREVO_API_KEY: tamanho={len(BREVO_API_KEY)} inicio={BREVO_API_KEY[:8]!r} fim={BREVO_API_KEY[-4:]!r}")
     try:
         agora = datetime.now(FUSO_RONDONIA)
-        nome_arquivo = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}.json.gz"
+        nome_base = f"backup_semasf_{agora.strftime('%Y%m%d_%H%M%S')}"
+        nome_arquivo = f"{nome_base}.zip"
 
-        # Gerar e compactar backup
+        # Gerar e compactar backup (Brevo nao aceita anexos .gz, apenas .zip)
         dados = gerar_backup_json()
         conteudo = json.dumps(dados, ensure_ascii=False, indent=2, default=str).encode('utf-8')
-        buffer_gz = io.BytesIO()
-        with gzip.GzipFile(fileobj=buffer_gz, mode='wb') as gz:
-            gz.write(conteudo)
-        buffer_gz.seek(0)
-        tamanho_kb = round(buffer_gz.getbuffer().nbytes / 1024, 1)
+        buffer_zip = io.BytesIO()
+        with zipfile.ZipFile(buffer_zip, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{nome_base}.json", conteudo)
+        buffer_zip.seek(0)
+        tamanho_kb = round(buffer_zip.getbuffer().nbytes / 1024, 1)
 
         corpo = (
             f"Backup automatico do Sistema de Cestas Basicas - SEMASF Ji-Parana\n\n"
@@ -302,7 +301,7 @@ def enviar_backup_email():
                 'subject': f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}",
                 'textContent': corpo,
                 'attachment': [{
-                    'content': base64.b64encode(buffer_gz.read()).decode(),
+                    'content': base64.b64encode(buffer_zip.read()).decode(),
                     'name': nome_arquivo
                 }]
             },
