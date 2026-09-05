@@ -13,7 +13,6 @@ psycopg2-binary
 python-dotenv
 cryptography
 APScheduler
-sendgrid
 openpyxl
 flask-wtf
 bleach

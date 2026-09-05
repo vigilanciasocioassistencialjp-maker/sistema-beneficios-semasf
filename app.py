@@ -37,11 +37,13 @@ from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 import hashlib
 import gzip
-import base64
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
@@ -243,7 +245,7 @@ criar_banco()
 
 EMAIL_REMETENTE    = os.environ.get('EMAIL_REMETENTE', 'sistema.cestas.semasf@gmail.com')
 EMAIL_DESTINATARIO = os.environ.get('EMAIL_DESTINATARIO', 'sistema.cestas.semasf@gmail.com')
-SENDGRID_API_KEY   = os.environ.get('SENDGRID_API_KEY', '')
+EMAIL_SENHA_APP    = os.environ.get('EMAIL_SENHA_APP', '')
 
 def gerar_backup_json():
     conn = get_db()
@@ -264,8 +266,8 @@ def gerar_backup_json():
     }
 
 def enviar_backup_email():
-    if not SENDGRID_API_KEY:
-        print("Backup ignorado: SENDGRID_API_KEY nao configurada no Render.")
+    if not EMAIL_SENHA_APP:
+        print("Backup ignorado: EMAIL_SENHA_APP nao configurada no Render.")
         return False
     try:
         agora = datetime.now(FUSO_RONDONIA)
@@ -291,28 +293,25 @@ def enviar_backup_email():
             f"-- Sistema SEMASF"
         )
 
-        # Montar e-mail via SendGrid
-        mensagem = Mail(
-            from_email=EMAIL_REMETENTE,
-            to_emails=EMAIL_DESTINATARIO,
-            subject=f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}",
-            plain_text_content=corpo
-        )
+        # Montar e-mail com anexo compactado
+        msg = MIMEMultipart()
+        msg['From']    = f"Sistema SEMASF <{EMAIL_REMETENTE}>"
+        msg['To']      = EMAIL_DESTINATARIO
+        msg['Subject'] = f"[SEMASF] Backup automatico - {agora.strftime('%d/%m/%Y')}"
+        msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
 
-        # Anexar arquivo compactado
-        anexo = Attachment(
-            FileContent(base64.b64encode(buffer_gz.read()).decode()),
-            FileName(nome_arquivo),
-            FileType('application/gzip'),
-            Disposition('attachment')
-        )
-        mensagem.attachment = anexo
+        parte = MIMEBase('application', 'octet-stream')
+        parte.set_payload(buffer_gz.read())
+        encoders.encode_base64(parte)
+        parte.add_header('Content-Disposition', f'attachment; filename="{nome_arquivo}"')
+        msg.attach(parte)
 
-        # Enviar via API HTTP (sem bloqueio de porta)
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(mensagem)
+        # Enviar via SMTP do Gmail
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as servidor:
+            servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
+            servidor.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
 
-        print(f"Backup enviado via SendGrid: {nome_arquivo} ({tamanho_kb} KB) — status {response.status_code}")
+        print(f"Backup enviado via Gmail: {nome_arquivo} ({tamanho_kb} KB)")
         logger.info(f"Backup automatico enviado: {nome_arquivo} ({tamanho_kb} KB, {dados['total_solicitacoes']} solicitacoes)")
 
     except Exception as e:
@@ -321,9 +320,9 @@ def enviar_backup_email():
         raise
 
 def enviar_email_recuperacao_senha(destinatario, nome, link):
-    """Envia o link de redefinição de senha via SendGrid. Retorna True/False."""
-    if not SENDGRID_API_KEY:
-        logger.error("Recuperação de senha: SENDGRID_API_KEY não configurada.")
+    """Envia o link de redefinição de senha via SMTP do Gmail. Retorna True/False."""
+    if not EMAIL_SENHA_APP:
+        logger.error("Recuperação de senha: EMAIL_SENHA_APP não configurada.")
         return False
     try:
         corpo = (
@@ -336,15 +335,17 @@ def enviar_email_recuperacao_senha(destinatario, nome, link):
             f"e sua senha atual continuará funcionando normalmente.\n\n"
             f"-- Sistema SEMASF"
         )
-        mensagem = Mail(
-            from_email=EMAIL_REMETENTE,
-            to_emails=destinatario,
-            subject="[SEMASF] Redefinição de senha",
-            plain_text_content=corpo
-        )
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(mensagem)
-        logger.info(f"E-mail de recuperação de senha enviado para {destinatario} — status {response.status_code}")
+        msg = MIMEMultipart()
+        msg['From']    = f"Sistema SEMASF <{EMAIL_REMETENTE}>"
+        msg['To']      = destinatario
+        msg['Subject'] = "[SEMASF] Redefinição de senha"
+        msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as servidor:
+            servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
+            servidor.sendmail(EMAIL_REMETENTE, destinatario, msg.as_string())
+
+        logger.info(f"E-mail de recuperação de senha enviado para {destinatario}")
         return True
     except Exception as e:
         logger.error(f"Erro ao enviar e-mail de recuperação de senha para {destinatario}: {e}")
@@ -4471,7 +4472,7 @@ def backup_automatico():
     try:
         resultado = enviar_backup_email()
         if resultado is False:
-            return "Erro: SENDGRID_API_KEY nao configurada", 500
+            return "Erro: EMAIL_SENHA_APP nao configurada", 500
         return "Backup enviado com sucesso", 200
     except Exception as e:
         logger.error(f"Erro no backup automatico via cron externo: {e}")
